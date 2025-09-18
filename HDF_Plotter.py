@@ -399,7 +399,7 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
 
    # Path to the folder containing HDF5 files
-    hdf5_folder = "HDF5/Flight_Packets_Analysis_3/"
+    hdf5_folder = "HDF5/"
 
     # Launch application
     main_window = HDF5PlotterApp(hdf5_folder)
