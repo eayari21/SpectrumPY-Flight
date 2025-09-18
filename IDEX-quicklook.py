@@ -3,13 +3,16 @@
 
 # =====================================================================
 # IDEX Quicklook — QtAgg canvas + Matplotlib Navigation Toolbar
-# Panel layout: TL/TR, ML/MR, LL/LR (per user mapping)
+# Interactive viewer with channel selection, overlays, and fit editing tools
 # =====================================================================
 
 import os
 import sys
 import argparse
 import tempfile
+from dataclasses import dataclass, field
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
+
 import h5py
 import numpy as np
 
@@ -25,22 +28,36 @@ from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as Navigation
 _QT = None
 try:
     from PySide6.QtCore import Qt, QSize
-    from PySide6.QtGui import QAction
+    from PySide6.QtGui import QAction, QFont
     from PySide6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
-        QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy
+        QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
+        QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
+        QCheckBox, QDialogButtonBox
     )
     _QT = "PySide6"
 except Exception:
     from PyQt6.QtCore import Qt, QSize
-    from PyQt6.QtGui import QAction
+    from PyQt6.QtGui import QAction, QFont
     from PyQt6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
-        QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy
+        QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
+        QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
+        QCheckBox, QDialogButtonBox
     )
     _QT = "PyQt6"
 
 print(f"[info] Qt binding: {_QT}, Matplotlib backend: {matplotlib.get_backend()}")
+
+matplotlib.rcParams.update({
+    "figure.autolayout": False,
+    "axes.titlesize": 18,
+    "axes.labelsize": 16,
+    "xtick.labelsize": 14,
+    "ytick.labelsize": 14,
+    "legend.fontsize": 14,
+    "lines.linewidth": 1.8,
+})
 
 # --------- Small utils ---------
 def non_native_open_dialog(parent: QWidget, start_dir: str | None = None) -> str | None:
@@ -67,122 +84,177 @@ def dset(h5: h5py.File, path: str):
     except Exception:
         return None
 
-# --------- Plotting ---------
-def build_axes(fig: Figure):
-    """
-    Create a 3x2 grid and return a dict with slots:
-    TL, TR, ML, MR, LL, LR
-    """
-    gs = fig.add_gridspec(3, 2)
-    axes = {
-        "TL": fig.add_subplot(gs[0, 0]),
-        "TR": fig.add_subplot(gs[0, 1]),
-        "ML": fig.add_subplot(gs[1, 0]),
-        "MR": fig.add_subplot(gs[1, 1]),
-        "LL": fig.add_subplot(gs[2, 0]),
-        "LR": fig.add_subplot(gs[2, 1]),
+def _normalize_name(value: str) -> str:
+    return "".join(ch.lower() for ch in value if ch.isalnum())
+
+def _pair_key(path: str) -> str:
+    base = _normalize_name(os.path.basename(path))
+    for token in ("time", "result", "fit", "curve"):
+        base = base.replace(token, "")
+    return base
+
+def _friendly_label(path: str) -> str:
+    base = os.path.basename(path)
+    replacements = {
+        "FitResult": "Fit",
+        "fitresult": "Fit",
+        "Result": "Fit",
     }
-    return axes
+    for needle, repl in replacements.items():
+        base = base.replace(needle, repl)
+    return base
 
-# Channel → slot mapping per your request
-CHANNEL_SLOT = {
-    "TOF L":    "TL",
-    "Ion Grid": "TR",
-    "TOF M":    "ML",
-    "Target L": "MR",
-    "TOF H":    "LL",
-    "Target H": "LR",
+def _to_1d(array: np.ndarray) -> np.ndarray:
+    arr = np.asarray(array)
+    if arr.ndim == 0:
+        return arr.reshape(1)
+    return arr.ravel()
+
+# --------- Channel & fit metadata ---------
+FAMILY_HIGH = "high"
+FAMILY_LOW = "low"
+
+
+@dataclass(frozen=True)
+class ChannelDefinition:
+    dataset: str
+    time_dataset: str
+    family: str
+
+
+CHANNEL_DEFS: Dict[str, ChannelDefinition] = {
+    "TOF L": ChannelDefinition(dataset="TOF L", time_dataset="Time (high sampling)", family=FAMILY_HIGH),
+    "TOF M": ChannelDefinition(dataset="TOF M", time_dataset="Time (high sampling)", family=FAMILY_HIGH),
+    "TOF H": ChannelDefinition(dataset="TOF H", time_dataset="Time (high sampling)", family=FAMILY_HIGH),
+    "Ion Grid": ChannelDefinition(dataset="Ion Grid", time_dataset="Time (low sampling)", family=FAMILY_LOW),
+    "Target L": ChannelDefinition(dataset="Target L", time_dataset="Time (low sampling)", family=FAMILY_LOW),
+    "Target H": ChannelDefinition(dataset="Target H", time_dataset="Time (low sampling)", family=FAMILY_LOW),
 }
 
-# Time dataset name by channel family
-TIME_NAME = {
-    "TOF L":    "Time (high sampling)",
-    "TOF M":    "Time (high sampling)",
-    "TOF H":    "Time (high sampling)",
-    "Ion Grid": "Time (low sampling)",
-    "Target L": "Time (low sampling)",
-    "Target H": "Time (low sampling)",
+CHANNEL_ORDER: List[str] = ["TOF L", "TOF M", "TOF H", "Ion Grid", "Target L", "Target H"]
+
+FIT_ELIGIBLE_CHANNELS = {"Ion Grid", "Target L", "Target H"}
+
+FAMILY_TITLES = {
+    FAMILY_HIGH: "TOF Channels (High Sampling)",
+    FAMILY_LOW: "Ion Grid / Target Channels (Low Sampling)",
 }
 
-BOTTOM_SLOTS = {"LL", "LR"}  # add x-label only on bottom row
+FAMILY_YLABELS = {
+    FAMILY_HIGH: r"TOF Channels [pC/$\Delta t$]",
+    FAMILY_LOW: r"Ion Grid / Target Channels [pC]",
+}
+
+TIME_AXIS_LABEL = r"Time [$\mu$s]"
+
+
+@dataclass
+class FitData:
+    time_series: Dict[str, np.ndarray] = field(default_factory=dict)
+    value_series: Dict[str, np.ndarray] = field(default_factory=dict)
+    parameter_series: Dict[str, np.ndarray] = field(default_factory=dict)
+    extras: Dict[str, np.ndarray] = field(default_factory=dict)
+
+    def has_overlay(self) -> bool:
+        return any(True for _ in self.iter_time_result_pairs())
+
+    def has_parameters(self) -> bool:
+        return bool(self.parameter_series)
+
+    def iter_time_result_pairs(self) -> Iterable[Tuple[str, str, str, np.ndarray, np.ndarray]]:
+        seen_keys = set()
+        for time_path, time_values in self.time_series.items():
+            pair_key = _pair_key(time_path)
+            if not pair_key:
+                continue
+            for value_path, value_values in self.value_series.items():
+                if _pair_key(value_path) != pair_key:
+                    continue
+                dedupe_key = (time_path, value_path)
+                if dedupe_key in seen_keys:
+                    continue
+                seen_keys.add(dedupe_key)
+                yield (
+                    _friendly_label(value_path),
+                    time_path,
+                    value_path,
+                    _to_1d(time_values),
+                    _to_1d(value_values),
+                )
+
+    def iter_parameter_items(self) -> Iterable[Tuple[str, np.ndarray]]:
+        for path, values in self.parameter_series.items():
+            yield path, np.asarray(values)
+
 
 def y_label_with_units(channel_name: str) -> str:
-    """Append units in square brackets after the channel name."""
     if channel_name.startswith("TOF"):
         return rf"{channel_name} [pC/$\Delta t$]"
-    else:
-        return rf"{channel_name} [pC]"
-
-def plot_event_on_axes(h5: h5py.File, event_name: str, fig: Figure, axmap: dict):
-    """Render six channels directly to the provided axes map (TL/TR/ML/MR/LL/LR)."""
-    fig.suptitle(
-        f"{os.path.basename(getattr(h5, 'filename', '?'))} — Event {event_name}",
-        fontsize=14, fontweight="bold"
-    )
-
-    # Clear all first (keeps grid consistent on errors)
-    for a in axmap.values():
-        a.clear()
-
-    for chan, slot in CHANNEL_SLOT.items():
-        a = axmap[slot]
-        tname = TIME_NAME[chan]
-        t = dset(h5, f"/{event_name}/{tname}")
-        y = dset(h5, f"/{event_name}/{chan}")
-
-        if t is None or y is None:
-            a.text(0.5, 0.5, f"Missing: '{chan}' or '{tname}'",
-                   ha="center", va="center", transform=a.transAxes)
-            a.set_ylabel(y_label_with_units(chan))
-            a.grid(True, alpha=0.3)
-            continue
-
-        t = np.asarray(t).ravel()
-        y = np.asarray(y).ravel()
-        n = min(len(t), len(y))
-
-        if n == 0:
-            a.text(0.5, 0.5, "Empty dataset", ha="center", va="center", transform=a.transAxes)
-        else:
-            a.plot(t[:n], y[:n], lw=1.0)
-
-        a.set_ylabel(y_label_with_units(chan))
-        a.grid(True, alpha=0.3)
-
-    # X labels on bottom row only
-    for s in BOTTOM_SLOTS:
-        axmap[s].set_xlabel(r"Time [$\mu$s]")
+    return rf"{channel_name} [pC]"
 
 # --------- Main Window ---------
 class MainWindow(QMainWindow):
     def __init__(self, filename: str | None = None, eventnumber: int | None = None):
         super().__init__()
-        self.setWindowTitle("IDEX Quicklook — QtAgg + Matplotlib Toolbar")
-        self.setMinimumSize(1100, 750)
+        self.setWindowTitle("IDEX Quicklook — Interactive Viewer")
+        self.setMinimumSize(1250, 820)
         self.setStatusBar(QStatusBar(self))
 
-        self._h5: h5py.File | None = None
-               # list of str
-        self._events: list[str] = []
-        self._current_event: str | None = None
-        self._filename: str | None = None
+        self._h5: Optional[h5py.File] = None
+        self._events: List[str] = []
+        self._current_event: Optional[str] = None
+        self._filename: Optional[str] = None
         self._tmpdir = tempfile.TemporaryDirectory(prefix="idex_quicklook_")
+        self._fit_cache: Dict[Tuple[str, str], FitData] = {}
+        self._fit_param_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
+        self._show_fit: Dict[str, bool] = {name: False for name in FIT_ELIGIBLE_CHANNELS}
+        self.selected_channels = set(CHANNEL_ORDER)
 
-        # Central widget/layout
         central = QWidget(self)
         self.vbox = QVBoxLayout(central)
+        self.vbox.setContentsMargins(10, 10, 10, 10)
+        self.vbox.setSpacing(12)
         self.setCentralWidget(central)
 
-        # ---- File/Actions toolbar ----
+        self._build_toolbar()
+        self._build_controls()
+
+        self.figure = Figure(figsize=(12, 8), constrained_layout=True)
+        self.canvas = FigureCanvas(self.figure)
+        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.nav_toolbar = NavigationToolbar(self.canvas, self)
+        self.nav_toolbar.setStyleSheet("font-size: 14px; padding: 6px;")
+        self.vbox.addWidget(self.nav_toolbar)
+        self.vbox.addWidget(self.canvas)
+
+        self.statusBar().showMessage("Select an HDF5 file to get started.")
+
+        if filename:
+            self.open_file(filename)
+        else:
+            chosen = non_native_open_dialog(self)
+            if not chosen:
+                self.close()
+                return
+            self.open_file(chosen)
+
+        if eventnumber is not None and self._events and 1 <= eventnumber <= len(self._events):
+            self.event_combo.setCurrentIndex(eventnumber - 1)
+
+    # ---- UI construction -------------------------------------------------
+    def _build_toolbar(self):
         tb = QToolBar("Main", self)
-        tb.setIconSize(QSize(18, 18))
+        tb.setIconSize(QSize(22, 22))
+        tb.setMovable(False)
         self.addToolBar(tb)
 
         act_open = QAction("Open HDF5…", self)
+        act_open.setShortcut("Ctrl+O")
         act_open.triggered.connect(self.action_open)
         tb.addAction(act_open)
 
         act_reload = QAction("Reload", self)
+        act_reload.setShortcut("Ctrl+R")
         act_reload.triggered.connect(self.reload_current)
         tb.addAction(act_reload)
 
@@ -193,108 +265,490 @@ class MainWindow(QMainWindow):
         act_quit.triggered.connect(self.close)
         tb.addAction(act_quit)
 
-        # Event selector
+        tb.addSeparator()
+        label = QLabel("Event:", self)
+        label.setStyleSheet("font-size: 15px; font-weight: bold; padding-right: 6px;")
+        tb.addWidget(label)
+
         self.event_combo = QComboBox(self)
         self.event_combo.setMinimumWidth(220)
+        self.event_combo.setStyleSheet("font-size: 15px; min-height: 36px;")
         self.event_combo.currentIndexChanged.connect(self.on_event_changed)
-        tb.addSeparator()
-        tb.addWidget(QLabel("Event:", self))
         tb.addWidget(self.event_combo)
 
-        # ---- Matplotlib canvas + Navigation toolbar ----
-        self.figure = Figure(figsize=(12, 8), layout="constrained")
-        self.axes = build_axes(self.figure)          # dict of TL/TR/ML/MR/LL/LR
-        self.canvas = FigureCanvas(self.figure)
-        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    def _build_controls(self):
+        panel = QWidget(self)
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(0, 0, 0, 0)
+        panel_layout.setSpacing(8)
+        panel_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self.nav_toolbar = NavigationToolbar(self.canvas, self)
+        heading = QLabel("Display Controls", self)
+        heading.setStyleSheet("font-size: 18px; font-weight: bold;")
+        panel_layout.addWidget(heading)
 
-        self.vbox.addWidget(self.nav_toolbar)
-        self.vbox.addWidget(self.canvas)
+        sub_label = QLabel("Choose which channels and overlays are shown:", self)
+        sub_label.setStyleSheet("font-size: 15px;")
+        panel_layout.addWidget(sub_label)
 
-        # Open file from CLI or prompt
-        if filename:
-            self.open_file(filename)
-        else:
-            chosen = non_native_open_dialog(self)
-            if not chosen:
-                self.close()
-                return
-            self.open_file(chosen)
+        channel_widget = QWidget(self)
+        grid = QGridLayout(channel_widget)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(10)
+        self.channel_buttons: Dict[str, QPushButton] = {}
 
-        # Pick event
-        if self._events:
-            if eventnumber is not None and 1 <= eventnumber <= len(self._events):
-                idx = eventnumber - 1
-            else:
-                idx = 0
-            self.event_combo.setCurrentIndex(idx)
-            self.plot_event(self._events[idx])
+        for idx, name in enumerate(CHANNEL_ORDER):
+            btn = QPushButton(name, self)
+            btn.setCheckable(True)
+            btn.setChecked(True)
+            btn.setMinimumHeight(50)
+            btn.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px 18px;")
+            btn.clicked.connect(lambda checked, channel=name: self.on_channel_toggled(channel, checked))
+            self.channel_buttons[name] = btn
+            grid.addWidget(btn, idx // 3, idx % 3)
 
-    # --- Actions ---
+        panel_layout.addWidget(channel_widget)
+
+        toggle_row = QHBoxLayout()
+        toggle_row.setSpacing(10)
+
+        self.overlay_button = QPushButton("Overlay same time axis", self)
+        self.overlay_button.setCheckable(True)
+        self.overlay_button.setMinimumHeight(50)
+        self.overlay_button.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px 18px;")
+        self.overlay_button.setToolTip("When enabled, channels with the same time base are drawn together.")
+        self.overlay_button.clicked.connect(self.on_overlay_toggled)
+        toggle_row.addWidget(self.overlay_button)
+
+        self.fit_buttons: Dict[str, QPushButton] = {}
+        for channel in sorted(FIT_ELIGIBLE_CHANNELS):
+            btn = QPushButton(f"Show {channel} Fit", self)
+            btn.setCheckable(True)
+            btn.setMinimumHeight(50)
+            btn.setStyleSheet("font-size: 16px; padding: 10px 18px;")
+            btn.setToolTip("Overlay fit curves when available.")
+            btn.clicked.connect(lambda checked, chan=channel: self.on_fit_toggled(chan, checked))
+            toggle_row.addWidget(btn)
+            self.fit_buttons[channel] = btn
+
+        self.edit_params_button = QPushButton("Edit Fit Parameters", self)
+        self.edit_params_button.setMinimumHeight(50)
+        self.edit_params_button.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px 18px;")
+        self.edit_params_button.clicked.connect(self.open_fit_parameter_dialog)
+        toggle_row.addWidget(self.edit_params_button)
+
+        toggle_row.addStretch(1)
+        panel_layout.addLayout(toggle_row)
+
+        self.vbox.addWidget(panel)
+
+    # ---- Actions ---------------------------------------------------------
     def action_open(self):
         chosen = non_native_open_dialog(self)
         if chosen:
             self.open_file(chosen)
 
-    def open_file(self, path: str):
-        # Close previous file
+    def open_file(self, path: str, preferred_event: Optional[str] = None):
         try:
             if self._h5 is not None:
                 self._h5.close()
         except Exception:
             pass
+
         self._h5 = None
         self._events = []
-               # reset filename
+        self._current_event = None
         self._filename = None
+        self._fit_cache.clear()
+        self._fit_param_overrides.clear()
 
         try:
             self._h5 = h5py.File(path, "r")
             self._filename = path
-        except Exception as e:
-            QMessageBox.critical(self, "Open Error", f"Failed to open file:\n{path}\n\n{e}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Open Error", f"Failed to open file:\n{path}\n\n{exc}")
+            self.plot_event(None)
             return
 
-        ev = list_event_groups(self._h5)
-        if not ev:
-            QMessageBox.warning(self, "No Events", "No top-level event groups found.")
-        self._events = ev
+        events = list_event_groups(self._h5)
+        if not events:
+            QMessageBox.warning(self, "No Events", "No top-level event groups found in this file.")
+        self._events = events
+
         self.event_combo.blockSignals(True)
         self.event_combo.clear()
         self.event_combo.addItems(self._events)
         self.event_combo.blockSignals(False)
-        self._current_event = self._events[0] if self._events else None
-        self.plot_event(self._current_event)
+
+        target_event = None
+        if preferred_event and preferred_event in self._events:
+            target_event = preferred_event
+        elif self._events:
+            target_event = self._events[0]
+
+        if target_event:
+            idx = self._events.index(target_event)
+            self.event_combo.blockSignals(True)
+            self.event_combo.setCurrentIndex(idx)
+            self.event_combo.blockSignals(False)
+            self.plot_event(target_event)
+        else:
+            self.plot_event(None)
 
     def reload_current(self):
         if self._filename:
-            self.open_file(self._filename)
+            self.open_file(self._filename, preferred_event=self._current_event)
 
     def on_event_changed(self, idx: int):
         if 0 <= idx < len(self._events):
             self.plot_event(self._events[idx])
 
-    # --- Rendering ---
-    def plot_event(self, event_name: str | None):
-        if not self._h5 or not event_name:
+    def on_channel_toggled(self, channel: str, checked: bool):
+        if checked:
+            self.selected_channels.add(channel)
+        else:
+            self.selected_channels.discard(channel)
+        self.plot_event(self._current_event)
+
+    def on_overlay_toggled(self, checked: bool):
+        self.plot_event(self._current_event)
+
+    def on_fit_toggled(self, channel: str, checked: bool):
+        if not self._current_event or not self._h5:
+            self._show_fit[channel] = False
+            if channel in self.fit_buttons:
+                self.fit_buttons[channel].setChecked(False)
             return
-        self._current_event = event_name
-        try:
-            # Rebuild axes if needed (e.g., after reload)
-            if not isinstance(self.axes, dict) or set(self.axes.keys()) != {"TL","TR","ML","MR","LL","LR"}:
-                self.figure.clear()
-                self.axes = build_axes(self.figure)
-            plot_event_on_axes(self._h5, event_name, self.figure, self.axes)
-            self.canvas.draw_idle()
-        except Exception as e:
-            self.figure.clear()
+
+        data = self.get_fit_data(self._current_event, channel)
+        if checked and not data.has_overlay():
+            QMessageBox.information(self, "No Fit", f"No fit curves were found for {channel} in this event.")
+            self._show_fit[channel] = False
+            if channel in self.fit_buttons:
+                self.fit_buttons[channel].setChecked(False)
+            return
+
+        self._show_fit[channel] = checked
+        self.plot_event(self._current_event)
+
+    # ---- Plotting --------------------------------------------------------
+    def plot_event(self, event_name: Optional[str]):
+        self.figure.clear()
+        self.figure.set_constrained_layout(True)
+
+        if not self._h5 or not event_name:
+            self._current_event = None
             ax = self.figure.add_subplot(111)
-            ax.text(0.5, 0.5, f"Plot error:\n{e}", ha="center", va="center", transform=ax.transAxes)
+            ax.text(
+                0.5,
+                0.5,
+                "Open an HDF5 file and choose an event to visualize.",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+                fontsize=18,
+            )
             ax.axis("off")
             self.canvas.draw_idle()
+            self.refresh_fit_controls()
+            self.update_status_text()
+            return
 
-    # --- Cleanup ---
+        self._current_event = event_name
+        self.refresh_fit_controls()
+
+        selected = [name for name in CHANNEL_ORDER if self.channel_buttons.get(name) and self.channel_buttons[name].isChecked()]
+        missing: List[str] = []
+
+        self.figure.suptitle(
+            f"{os.path.basename(self._filename or '')} — Event {event_name}",
+            fontsize=20,
+            fontweight="bold",
+        )
+
+        if not selected:
+            ax = self.figure.add_subplot(111)
+            ax.text(
+                0.5,
+                0.5,
+                "No channels selected.\nUse the buttons above to enable channels.",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+                fontsize=18,
+            )
+            ax.axis("off")
+            self.canvas.draw_idle()
+            self.update_status_text()
+            return
+
+        overlay_mode = self.overlay_button.isChecked()
+
+        try:
+            if overlay_mode:
+                families: List[Tuple[str, List[str]]] = []
+                high = [ch for ch in selected if CHANNEL_DEFS[ch].family == FAMILY_HIGH]
+                low = [ch for ch in selected if CHANNEL_DEFS[ch].family == FAMILY_LOW]
+                if high:
+                    families.append((FAMILY_HIGH, high))
+                if low:
+                    families.append((FAMILY_LOW, low))
+
+                if not families:
+                    ax = self.figure.add_subplot(111)
+                    ax.text(
+                        0.5,
+                        0.5,
+                        "No compatible channels selected for overlay.",
+                        ha="center",
+                        va="center",
+                        transform=ax.transAxes,
+                        fontsize=18,
+                    )
+                    ax.axis("off")
+                else:
+                    for idx, (family, channels) in enumerate(families, start=1):
+                        ax = self.figure.add_subplot(len(families), 1, idx)
+                        plotted_any = False
+                        for channel in channels:
+                            plotted_any |= self._plot_channel(ax, event_name, channel, overlay_mode=True, missing_channels=missing)
+                        self._style_overlay_axis(ax, family, bottom=(idx == len(families)))
+                        if plotted_any and (len(channels) > 1 or any(self._show_fit.get(ch, False) for ch in channels)):
+                            ax.legend(loc="best")
+            else:
+                ordered = [ch for ch in CHANNEL_ORDER if ch in selected]
+                if not ordered:
+                    ax = self.figure.add_subplot(111)
+                    ax.text(
+                        0.5,
+                        0.5,
+                        "No channels available to plot.",
+                        ha="center",
+                        va="center",
+                        transform=ax.transAxes,
+                        fontsize=18,
+                    )
+                    ax.axis("off")
+                else:
+                    grid = self.figure.add_gridspec(len(ordered), 1, hspace=0.42)
+                    for idx, channel in enumerate(ordered):
+                        ax = self.figure.add_subplot(grid[idx, 0])
+                        plotted_any = self._plot_channel(ax, event_name, channel, overlay_mode=False, missing_channels=missing)
+                        self._style_single_axis(ax, bottom=(idx == len(ordered) - 1))
+                        if plotted_any and self._show_fit.get(channel) and len(ax.lines) > 1:
+                            ax.legend(loc="best")
+        except Exception as exc:
+            self.figure.clear()
+            ax = self.figure.add_subplot(111)
+            ax.text(0.5, 0.5, f"Plot error:\n{exc}", ha="center", va="center", transform=ax.transAxes, fontsize=16)
+            ax.axis("off")
+
+        self.canvas.draw_idle()
+        self.update_status_text(missing)
+
+    def _plot_channel(self, ax, event_name: str, channel: str, overlay_mode: bool, missing_channels: List[str]) -> bool:
+        definition = CHANNEL_DEFS[channel]
+        time_data = dset(self._h5, f"/{event_name}/{definition.time_dataset}")
+        value_data = dset(self._h5, f"/{event_name}/{definition.dataset}")
+
+        base_plotted = False
+        reason: Optional[str] = None
+        if time_data is None or value_data is None:
+            reason = "Missing data"
+        else:
+            t = _to_1d(time_data)
+            y = _to_1d(value_data)
+            n = min(len(t), len(y))
+            if n == 0:
+                reason = "Empty dataset"
+            else:
+                label = channel if overlay_mode else None
+                ax.plot(t[:n], y[:n], label=label)
+                base_plotted = True
+
+        fit_plotted = self._plot_fit(ax, event_name, channel, overlay_mode)
+
+        if base_plotted or fit_plotted:
+            if not overlay_mode:
+                ax.set_title(channel, fontsize=17, fontweight="bold")
+                ax.set_ylabel(y_label_with_units(channel), fontsize=16)
+            return True
+
+        if reason:
+            if not overlay_mode:
+                self._draw_missing_message(ax, channel, reason)
+            missing_channels.append(channel)
+        return False
+
+    def _plot_fit(self, ax, event_name: str, channel: str, overlay_mode: bool) -> bool:
+        if not self._show_fit.get(channel):
+            return False
+
+        data = self.get_fit_data(event_name, channel)
+        plotted = False
+        for label, _, _, time_values, fit_values in data.iter_time_result_pairs():
+            n = min(len(time_values), len(fit_values))
+            if n == 0:
+                continue
+            legend_label = f"{channel} {label}" if overlay_mode else label
+            ax.plot(time_values[:n], fit_values[:n], linestyle="--", linewidth=2.2, label=legend_label)
+            plotted = True
+        return plotted
+
+    def _style_overlay_axis(self, ax, family: str, bottom: bool):
+        ax.set_facecolor("#f8f9fb")
+        ax.grid(True, alpha=0.35)
+        ax.tick_params(axis="both", labelsize=14, width=1.5, length=7)
+        ax.set_title(FAMILY_TITLES.get(family, "Channels"), fontsize=18, fontweight="bold")
+        ax.set_ylabel(FAMILY_YLABELS.get(family, "Channel"), fontsize=16)
+        if bottom:
+            ax.set_xlabel(TIME_AXIS_LABEL, fontsize=16)
+        else:
+            ax.set_xlabel("")
+
+    def _style_single_axis(self, ax, bottom: bool):
+        ax.set_facecolor("#f8f9fb")
+        ax.grid(True, alpha=0.35)
+        ax.tick_params(axis="both", labelsize=14, width=1.5, length=7)
+        if bottom:
+            ax.set_xlabel(TIME_AXIS_LABEL, fontsize=16)
+        else:
+            ax.set_xlabel("")
+
+    def _draw_missing_message(self, ax, channel: str, reason: str):
+        ax.set_facecolor("#f8f9fb")
+        ax.text(0.5, 0.5, f"{channel}\n{reason}", ha="center", va="center", transform=ax.transAxes, fontsize=16)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_frame_on(False)
+
+    def refresh_fit_controls(self):
+        if not self._h5 or not self._current_event:
+            for btn in self.fit_buttons.values():
+                btn.setEnabled(False)
+            return
+
+        for channel, btn in self.fit_buttons.items():
+            data = self.get_fit_data(self._current_event, channel)
+            available = data.has_overlay()
+            btn.setEnabled(available)
+            if not available:
+                btn.setChecked(False)
+                self._show_fit[channel] = False
+                btn.setToolTip("No fit curve found for this event.")
+            else:
+                btn.setToolTip("Overlay the available fit curve on the channel plot.")
+
+    def update_status_text(self, missing: Optional[List[str]] = None):
+        parts: List[str] = []
+        event_label = self._current_event or "–"
+        parts.append(f"Event {event_label}")
+
+        channels = [ch for ch in CHANNEL_ORDER if ch in self.selected_channels and self.channel_buttons.get(ch) and self.channel_buttons[ch].isChecked()]
+        parts.append("Channels: " + (", ".join(channels) if channels else "none"))
+        parts.append(f"Overlay: {'ON' if self.overlay_button.isChecked() else 'OFF'}")
+
+        fits_on = [ch for ch, state in self._show_fit.items() if state]
+        if fits_on:
+            parts.append("Fits: " + ", ".join(sorted(fits_on)))
+
+        if missing:
+            parts.append("Missing: " + ", ".join(sorted(set(missing))))
+
+        edited = sorted({ch for (evt, ch, _path) in self._fit_param_overrides.keys() if evt == self._current_event})
+        if edited:
+            parts.append("Edited params: " + ", ".join(edited))
+
+        self.statusBar().showMessage(" | ".join(parts))
+
+    # ---- Fit data helpers -----------------------------------------------
+    def get_fit_data(self, event_name: str, channel: str) -> FitData:
+        key = (event_name, channel)
+        if key in self._fit_cache:
+            return self._fit_cache[key]
+
+        data = FitData()
+        if not self._h5:
+            self._fit_cache[key] = data
+            return data
+
+        group = self._h5.get(event_name)
+        if not isinstance(group, h5py.Group):
+            self._fit_cache[key] = data
+            return data
+
+        base_norm = _normalize_name(channel)
+
+        def visitor(name: str, obj):
+            if not isinstance(obj, h5py.Dataset):
+                return
+            dataset_name = name.split("/")[-1]
+            norm = _normalize_name(dataset_name)
+            if "fit" not in norm or base_norm not in norm:
+                return
+            try:
+                arr = np.asarray(obj[()])
+            except Exception:
+                return
+            full_path = f"{group.name}/{name}"
+            if "time" in norm:
+                data.time_series[full_path] = arr
+            elif "result" in norm or "curve" in norm:
+                data.value_series[full_path] = arr
+            elif "param" in norm:
+                data.parameter_series[full_path] = arr
+            else:
+                data.extras[full_path] = arr
+
+        group.visititems(visitor)
+        self._fit_cache[key] = data
+        return data
+
+    def open_fit_parameter_dialog(self):
+        if not self._current_event or not self._h5:
+            QMessageBox.information(self, "No Event", "Open an event before editing fit parameters.")
+            return
+
+        available: Dict[str, FitData] = {}
+        for channel in FIT_ELIGIBLE_CHANNELS:
+            data = self.get_fit_data(self._current_event, channel)
+            if data.has_parameters():
+                available[channel] = data
+
+        if not available:
+            QMessageBox.information(self, "No Parameters", "No editable fit parameters were found for this event.")
+            return
+
+        dialog = FitParameterDialog(
+            parent=self,
+            event_name=self._current_event,
+            channel_data=available,
+            value_getter=self.get_parameter_values,
+            save_callback=self.update_fit_override,
+            reset_callback=self.clear_fit_override,
+        )
+        dialog.exec()
+
+    def get_parameter_values(self, event: str, channel: str, dataset_path: str, base_array: np.ndarray) -> np.ndarray:
+        key = (event, channel, dataset_path)
+        override = self._fit_param_overrides.get(key)
+        if override is not None:
+            return np.array(override, copy=True)
+        return np.array(base_array, copy=True)
+
+    def update_fit_override(self, event: str, channel: str, dataset_path: str, values: np.ndarray):
+        self._fit_param_overrides[(event, channel, dataset_path)] = np.array(values, copy=True)
+        self.statusBar().showMessage(f"Updated fit parameters for {channel} (in-memory only).", 6000)
+        self.plot_event(self._current_event)
+
+    def clear_fit_override(self, event: str, channel: str, dataset_path: str):
+        key = (event, channel, dataset_path)
+        if key in self._fit_param_overrides:
+            del self._fit_param_overrides[key]
+            self.statusBar().showMessage(f"Reverted fit parameters for {channel}.", 6000)
+            self.plot_event(self._current_event)
+
+    # --- Cleanup ---------------------------------------------------------
     def closeEvent(self, event):
         try:
             if self._h5 is not None:
@@ -307,6 +761,225 @@ class MainWindow(QMainWindow):
             pass
         event.accept()
 
+# --------- Fit parameter editor dialog ---------
+class FitParameterDialog(QDialog):
+    def __init__(
+        self,
+        parent: QWidget,
+        event_name: str,
+        channel_data: Dict[str, FitData],
+        value_getter: Callable[[str, str, str, np.ndarray], np.ndarray],
+        save_callback: Callable[[str, str, str, np.ndarray], None],
+        reset_callback: Callable[[str, str, str], None],
+    ):
+        super().__init__(parent)
+        self.setModal(True)
+        self.setWindowTitle(f"Fit Parameters — Event {event_name}")
+        self.setMinimumSize(580, 520)
+
+        self._event_name = event_name
+        self._channel_data = channel_data
+        self._value_getter = value_getter
+        self._save_callback = save_callback
+        self._reset_callback = reset_callback
+
+        self._param_arrays: Dict[Tuple[str, str], np.ndarray] = {}
+        for channel, data in channel_data.items():
+            for path, array in data.iter_parameter_items():
+                self._param_arrays[(channel, path)] = np.asarray(array)
+
+        self._current_channel: Optional[str] = None
+        self._current_dataset: Optional[str] = None
+        self._current_shape: Optional[Tuple[int, ...]] = None
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        header = QLabel(f"Editing parameters for event {event_name}", self)
+        header.setStyleSheet("font-size: 18px; font-weight: bold;")
+        layout.addWidget(header)
+
+        chooser_row = QHBoxLayout()
+        chooser_row.setSpacing(10)
+
+        self.channel_combo = QComboBox(self)
+        self.channel_combo.setStyleSheet("font-size: 15px; min-height: 36px;")
+        for channel in sorted(channel_data.keys()):
+            self.channel_combo.addItem(channel)
+        self.channel_combo.currentTextChanged.connect(self._on_channel_changed)
+        chooser_row.addWidget(QLabel("Channel:", self))
+        chooser_row.addWidget(self.channel_combo)
+
+        self.dataset_combo = QComboBox(self)
+        self.dataset_combo.setStyleSheet("font-size: 15px; min-height: 36px;")
+        self.dataset_combo.currentIndexChanged.connect(self._on_dataset_changed)
+        chooser_row.addWidget(QLabel("Dataset:", self))
+        chooser_row.addWidget(self.dataset_combo)
+        chooser_row.addStretch(1)
+        layout.addLayout(chooser_row)
+
+        self.table = QTableWidget(self)
+        self.table.setColumnCount(2)
+        self.table.setHorizontalHeaderLabels(["Index", "Value"])
+        header_view = self.table.horizontalHeader()
+        header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectItems)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(
+            QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.SelectedClicked
+        )
+        self.table.setStyleSheet("font-size: 15px;")
+        layout.addWidget(self.table)
+
+        self.info_label = QLabel("", self)
+        self.info_label.setStyleSheet("font-size: 14px; color: #555555;")
+        self.info_label.setWordWrap(True)
+        layout.addWidget(self.info_label)
+
+        self.feedback_label = QLabel("", self)
+        self.feedback_label.setStyleSheet("font-size: 14px; color: #146c43;")
+        self.feedback_label.setWordWrap(True)
+        layout.addWidget(self.feedback_label)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
+        self.apply_button = QPushButton("Apply Changes", self)
+        self.apply_button.setStyleSheet("font-size: 15px; font-weight: bold; padding: 8px 18px;")
+        self.apply_button.clicked.connect(self.apply_changes)
+        buttons.addButton(self.apply_button, QDialogButtonBox.ButtonRole.ActionRole)
+
+        self.reset_button = QPushButton("Reset to File Values", self)
+        self.reset_button.setStyleSheet("font-size: 15px; padding: 8px 18px;")
+        self.reset_button.clicked.connect(self.reset_changes)
+        buttons.addButton(self.reset_button, QDialogButtonBox.ButtonRole.ResetRole)
+
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        if self.channel_combo.count() > 0:
+            self._on_channel_changed(self.channel_combo.currentText())
+
+    # ---- UI helpers -----------------------------------------------------
+    def _on_channel_changed(self, channel: str):
+        self.dataset_combo.blockSignals(True)
+        self.dataset_combo.clear()
+        entries = [path for (chan, path) in self._param_arrays.keys() if chan == channel]
+        for path in sorted(entries):
+            self.dataset_combo.addItem(os.path.basename(path), path)
+        self.dataset_combo.blockSignals(False)
+
+        if entries:
+            self.dataset_combo.setCurrentIndex(0)
+            self._display_dataset(channel, entries[0])
+        else:
+            self._display_dataset(channel, None)
+
+    def _on_dataset_changed(self, index: int):
+        channel = self.channel_combo.currentText()
+        dataset_path = self.dataset_combo.itemData(index)
+        self._display_dataset(channel, dataset_path)
+
+    def _display_dataset(self, channel: Optional[str], dataset_path: Optional[str]):
+        if not channel or dataset_path is None:
+            self._clear_table("No fit parameters are available for this channel.")
+            return
+
+        base_array = self._param_arrays.get((channel, dataset_path))
+        if base_array is None:
+            self._clear_table("No fit parameters are available for this channel.")
+            return
+
+        values = self._value_getter(self._event_name, channel, dataset_path, base_array)
+        array = np.asarray(values)
+        self._current_channel = channel
+        self._current_dataset = dataset_path
+        self._current_shape = array.shape
+
+        flat = array.ravel()
+        self.table.setRowCount(flat.size)
+        for idx, value in enumerate(flat):
+            idx_item = QTableWidgetItem(str(idx))
+            idx_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+            value_item = QTableWidgetItem(self._format_value(value))
+            value_item.setFlags(value_item.flags() | Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(idx, 0, idx_item)
+            self.table.setItem(idx, 1, value_item)
+
+        self.table.resizeColumnsToContents()
+        self.info_label.setText(f"{dataset_path} — shape {array.shape}")
+        self.feedback_label.clear()
+
+    def _clear_table(self, message: str = ""):
+        self.table.setRowCount(0)
+        self.info_label.setText(message)
+        self.feedback_label.clear()
+        self._current_channel = None
+        self._current_dataset = None
+        self._current_shape = None
+
+    def _format_value(self, value: object) -> str:
+        try:
+            if isinstance(value, (np.floating, float)):
+                return f"{float(value):.6g}"
+            if isinstance(value, (np.integer, int)):
+                return str(int(value))
+        except Exception:
+            pass
+        return str(value)
+
+    # ---- Actions --------------------------------------------------------
+    def apply_changes(self):
+        if not self._current_channel or not self._current_dataset:
+            QMessageBox.information(self, "No Selection", "Select a parameter set before applying changes.")
+            return
+
+        values: List[float] = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 1)
+            if item is None:
+                continue
+            text = item.text().strip()
+            if not text:
+                values.append(0.0)
+                continue
+            try:
+                values.append(float(text))
+            except ValueError:
+                QMessageBox.warning(self, "Invalid value", f"Row {row} contains a non-numeric value: {text}")
+                return
+
+        if self._current_shape:
+            expected = int(np.prod(self._current_shape))
+        else:
+            expected = len(values)
+
+        if len(values) != expected:
+            QMessageBox.warning(
+                self,
+                "Shape mismatch",
+                "The number of edited values does not match the original parameter shape.",
+            )
+            return
+
+        array = np.array(values, dtype=float)
+        if self._current_shape:
+            array = array.reshape(self._current_shape)
+
+        self._save_callback(self._event_name, self._current_channel, self._current_dataset, array)
+        self.feedback_label.setStyleSheet("font-size: 14px; color: #146c43;")
+        self.feedback_label.setText("Changes stored in-memory for this session.")
+
+    def reset_changes(self):
+        if not self._current_channel or not self._current_dataset:
+            return
+        self._reset_callback(self._event_name, self._current_channel, self._current_dataset)
+        self.feedback_label.setStyleSheet("font-size: 14px; color: #b02a37;")
+        self.feedback_label.setText("Reverted to values from the file.")
+        self._display_dataset(self._current_channel, self._current_dataset)
+
 # --------- CLI / main ---------
 def main():
     parser = argparse.ArgumentParser(description="Run the IDEX Quicklook (QtAgg + Matplotlib toolbar).")
@@ -315,6 +988,15 @@ def main():
     args = parser.parse_args()
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    base_font = QFont(app.font())
+    size = base_font.pointSize()
+    if size <= 0:
+        size = 12
+    else:
+        size = max(size, 12)
+    base_font.setPointSize(size)
+    app.setFont(base_font)
+
     w = MainWindow(filename=args.filename, eventnumber=args.eventnumber)
     w.show()
     sys.exit(app.exec())
