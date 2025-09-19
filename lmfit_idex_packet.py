@@ -200,12 +200,20 @@ def FitTargetSignal(time, targetAmp):
 
     # Create the model function for the ion grid
     def ion_grid_model(params, x):
-        t0 = params['t0']
-        c = params['c']
-        A = params['A']
-        t1 = params['t1']
-        t2 = params['t2']
-        return c + A * (1 - np.exp(-(x - t0) / t1)) * np.exp(-(x - t0) / t2)
+        """Evaluate the ion grid model using lmfit Parameters."""
+
+        def _value(item):
+            try:
+                return float(item.value)
+            except AttributeError:
+                return float(item)
+
+        t0 = _value(params['t0'])
+        c = _value(params['c'])
+        A = _value(params['A'])
+        t1 = _value(params['t1'])
+        t2 = _value(params['t2'])
+        return IDEXIonGrid(x, t0, c, A, t1, t2)
 
     # Define parameters for lmfit
     ion_params = lmfit.Parameters()
@@ -238,7 +246,14 @@ def FitTargetSignal(time, targetAmp):
 
         sig_amp = max(result) - yBaseline.mean()
 
-        return param, param_cov, sig_amp, chi_squared, reduced_chi_squared, result, ionTime 
+        ordered = ['t0', 'c', 'A', 't1', 't2']
+        param_values = []
+        for name in ordered:
+            value = param[name].value
+            param_values.append(np.nan if value is None else float(value))
+        param_values = np.array(param_values, dtype=float)
+
+        return param_values, param_cov, sig_amp, chi_squared, reduced_chi_squared, result, ionTime
     except Exception as e:
         print(f"Target signal failed due to exception {e}")
         return [0,0,0,0,0], 0, 0, 0, 0
@@ -992,8 +1007,8 @@ class IDEXEvent:
 
 
                 if k[1] in ['Target L', 'Target H', 'Ion Grid']:  # Fit target and ion grid signals
-                    param, param_cov, sig_amp, chi_s, r_chi_s, ion_result, ion_time = FitTargetSignal(self.lstime, v)
-                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}FitParams", data=np.array(param))
+                    param_values, param_cov, sig_amp, chi_s, r_chi_s, ion_result, ion_time = FitTargetSignal(self.lstime, v)
+                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}FitParams", data=np.array(param_values))
                     create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}MassEstimate", data=sig_amp)
                     create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}ImpactCharge", data=sig_amp)
                     create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}ChiSquared", data=chi_s)

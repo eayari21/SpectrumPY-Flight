@@ -105,6 +105,90 @@ def _friendly_label(path: str) -> str:
         base = base.replace(needle, repl)
     return base
 
+
+def _label_from_param_path(path: str) -> str:
+    base = os.path.basename(path)
+    replacements = (
+        ("FitParameters", "Fit"),
+        ("FitParams", "Fit"),
+        ("fitparameters", "Fit"),
+        ("fitparams", "Fit"),
+        ("Parameters", "Fit"),
+        ("Params", "Fit"),
+    )
+    for needle, repl in replacements:
+        if needle in base:
+            base = base.replace(needle, repl)
+    if "Fit" in base and " Fit" not in base:
+        base = base.replace("Fit", " Fit")
+    base = " ".join(base.split()).strip()
+    if not base:
+        base = "Fit"
+    if "Fit" not in base:
+        base = f"{base} Fit"
+    return f"{base} (calc)"
+
+
+def _coerce_parameter_values(values: np.ndarray) -> Optional[np.ndarray]:
+    try:
+        arr = np.asarray(values)
+    except Exception:
+        return None
+
+    if arr.size == 0:
+        return None
+
+    if arr.dtype.names:  # structured array
+        for field in ("value", "values", "val"):
+            if field in arr.dtype.names:
+                arr = np.asarray(arr[field])
+                break
+        else:
+            pieces = []
+            for name in arr.dtype.names:
+                try:
+                    pieces.append(np.asarray(arr[name]).ravel())
+                except Exception:
+                    return None
+            if not pieces:
+                return None
+            arr = np.concatenate(pieces)
+    elif arr.dtype == object:
+        coerced: List[float] = []
+        for item in arr.ravel():
+            if item is None:
+                coerced.append(np.nan)
+                continue
+            if isinstance(item, (float, int, np.floating, np.integer)):
+                coerced.append(float(item))
+                continue
+            if hasattr(item, "value"):
+                try:
+                    coerced.append(float(item.value))
+                    continue
+                except Exception:
+                    pass
+            if isinstance(item, (list, tuple, np.ndarray)):
+                sub = np.asarray(item).ravel()
+                if sub.size:
+                    try:
+                        coerced.append(float(sub[0]))
+                        continue
+                    except Exception:
+                        pass
+            try:
+                coerced.append(float(item))
+            except Exception:
+                return None
+        arr = np.asarray(coerced, dtype=float)
+    else:
+        arr = np.asarray(arr, dtype=float)
+
+    arr = np.asarray(arr, dtype=float).ravel()
+    if arr.size == 0:
+        return None
+    return arr
+
 def _to_1d(array: np.ndarray) -> np.ndarray:
     arr = np.asarray(array)
     if arr.ndim == 0:
@@ -176,11 +260,15 @@ def _evaluate_fit_curve(channel: str, time_values: np.ndarray, params: np.ndarra
     if channel not in FIT_ELIGIBLE_CHANNELS:
         return None
 
-    param_array = np.asarray(params, dtype=float).ravel()
-    if param_array.size < 5 or not np.all(np.isfinite(param_array[:5])):
+    param_array = _coerce_parameter_values(params)
+    if param_array is None or param_array.size < 5:
         return None
 
-    return _idex_ion_grid_model(time_values, *param_array[:5])
+    first = np.asarray(param_array[:5], dtype=float)
+    if not np.all(np.isfinite(first)):
+        return None
+
+    return _idex_ion_grid_model(time_values, *first)
 
 
 def _fit_paths_from_param(dataset_path: str) -> Optional[Tuple[str, str]]:
@@ -206,7 +294,9 @@ class FitData:
     extras: Dict[str, np.ndarray] = field(default_factory=dict)
 
     def has_overlay(self) -> bool:
-        return any(True for _ in self.iter_time_result_pairs())
+        if any(True for _ in self.iter_time_result_pairs()):
+            return True
+        return bool(self.parameter_series)
 
     def has_parameters(self) -> bool:
         return bool(self.parameter_series)
@@ -634,17 +724,70 @@ class MainWindow(QMainWindow):
             missing_channels.append(channel)
         return False
 
+    def _iter_fit_curves(self, event_name: str, channel: str, data: FitData):
+        yielded = False
+        for label, _time_path, _value_path, time_values, fit_values in data.iter_time_result_pairs():
+            n = min(len(time_values), len(fit_values))
+            if n == 0:
+                continue
+            yield label, time_values[:n], fit_values[:n]
+            yielded = True
+
+        if yielded or not data.parameter_series or not self._h5:
+            return
+
+        definition = CHANNEL_DEFS.get(channel)
+        if not definition:
+            return
+        base_time_data = dset(self._h5, f"/{event_name}/{definition.time_dataset}")
+        if base_time_data is None:
+            return
+        base_time = _to_1d(base_time_data)
+        if base_time.size == 0:
+            return
+
+        scale = FIT_SCALE_MULTIPLIERS.get(channel, 1.0)
+        for path, raw_params in data.iter_parameter_items():
+            if "/Masses/" in path:
+                continue
+
+            derived = _fit_paths_from_param(path)
+            if derived:
+                result_path, time_path = derived
+                if result_path in data.value_series and time_path in data.time_series:
+                    continue
+
+            param_array = _coerce_parameter_values(raw_params)
+            if param_array is None or param_array.size < 5:
+                continue
+
+            first = np.asarray(param_array[:5], dtype=float)
+            if not np.all(np.isfinite(first)):
+                continue
+
+            curve = _idex_ion_grid_model(base_time, *first)
+            fit_values = np.asarray(curve, dtype=float)
+            if fit_values.size != base_time.size:
+                continue
+            if scale != 1.0:
+                fit_values = fit_values * scale
+
+            label = _label_from_param_path(path)
+            yield label, base_time, fit_values
+
     def _plot_fit(self, ax, event_name: str, channel: str, overlay_mode: bool) -> bool:
         if not self._show_fit.get(channel):
             return False
 
         data = self.get_fit_data(event_name, channel)
         plotted = False
-        for label, _, _, time_values, fit_values in data.iter_time_result_pairs():
+        for label, time_values, fit_values in self._iter_fit_curves(event_name, channel, data):
             n = min(len(time_values), len(fit_values))
             if n == 0:
                 continue
-            legend_label = f"{channel} {label}" if overlay_mode else label
+            legend_label = label
+            if overlay_mode and not label.lower().startswith(channel.lower()):
+                legend_label = f"{channel} {label}"
             ax.plot(time_values[:n], fit_values[:n], linestyle="--", linewidth=2.2, label=legend_label)
             plotted = True
         return plotted
@@ -684,7 +827,7 @@ class MainWindow(QMainWindow):
 
         for channel, btn in self.fit_buttons.items():
             data = self.get_fit_data(self._current_event, channel)
-            available = data.has_overlay()
+            available = any(True for _ in self._iter_fit_curves(self._current_event, channel, data))
             btn.setEnabled(available)
             if not available:
                 btn.setChecked(False)
@@ -844,8 +987,7 @@ class MainWindow(QMainWindow):
             return False
         time_array = np.array(time_data, copy=True)
         flat_time = np.asarray(time_array, dtype=float).ravel()
-        params_array = np.asarray(params, dtype=float)
-        curve = _evaluate_fit_curve(channel, flat_time, params_array)
+        curve = _evaluate_fit_curve(channel, flat_time, params)
         if curve is None:
             return False
         curve_array = np.array(curve, copy=True)
