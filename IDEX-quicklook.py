@@ -148,6 +148,48 @@ FAMILY_YLABELS = {
 TIME_AXIS_LABEL = r"Time [$\mu$s]"
 
 
+def _idex_ion_grid_model(x: np.ndarray, p0: float, p1: float, p4: float, p5: float, p6: float) -> np.ndarray:
+    """Evaluate the standard IDEX ion grid / target response model."""
+
+    arr = np.asarray(x, dtype=float)
+    shift = arr - p0
+    step = np.heaviside(shift, 0.0)
+    safe_p5 = p5 if abs(p5) > 1.0e-12 else 1.0e-12
+    safe_p6 = p6 if abs(p6) > 1.0e-12 else 1.0e-12
+    with np.errstate(over="ignore", under="ignore", divide="ignore", invalid="ignore"):
+        rise = 1.0 - np.exp(-shift / safe_p5)
+        decay = np.exp(-shift / safe_p6)
+    return p1 + step * (p4 * rise * decay)
+
+
+def _evaluate_fit_curve(channel: str, time_values: np.ndarray, params: np.ndarray) -> Optional[np.ndarray]:
+    """Evaluate a fit curve for the supplied channel using the stored parameters."""
+
+    if channel not in FIT_ELIGIBLE_CHANNELS:
+        return None
+
+    param_array = np.asarray(params, dtype=float).ravel()
+    if param_array.size < 5 or not np.all(np.isfinite(param_array[:5])):
+        return None
+
+    return _idex_ion_grid_model(time_values, *param_array[:5])
+
+
+def _fit_paths_from_param(dataset_path: str) -> Optional[Tuple[str, str]]:
+    """Return the fit result/time dataset paths corresponding to a parameter dataset."""
+
+    if not dataset_path:
+        return None
+
+    for needle in ("FitParams", "FitParameters", "FitParam"):
+        if needle in dataset_path:
+            result_path = dataset_path.replace(needle, "FitResult")
+            time_path = dataset_path.replace(needle, "FitTime")
+            return result_path, time_path
+
+    return None
+
+
 @dataclass
 class FitData:
     time_series: Dict[str, np.ndarray] = field(default_factory=dict)
@@ -206,7 +248,10 @@ class MainWindow(QMainWindow):
         self._filename: Optional[str] = None
         self._tmpdir = tempfile.TemporaryDirectory(prefix="idex_quicklook_")
         self._fit_cache: Dict[Tuple[str, str], FitData] = {}
+        self._fit_multiplier_cache: Dict[Tuple[str, str, str], float] = {}
         self._fit_param_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
+        self._fit_result_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
+        self._fit_time_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
         self._show_fit: Dict[str, bool] = {name: False for name in FIT_ELIGIBLE_CHANNELS}
         self.selected_channels = set(CHANNEL_ORDER)
 
@@ -360,7 +405,10 @@ class MainWindow(QMainWindow):
         self._current_event = None
         self._filename = None
         self._fit_cache.clear()
+        self._fit_multiplier_cache.clear()
         self._fit_param_overrides.clear()
+        self._fit_result_overrides.clear()
+        self._fit_time_overrides.clear()
 
         try:
             self._h5 = h5py.File(path, "r")
@@ -552,6 +600,8 @@ class MainWindow(QMainWindow):
         value_data = dset(self._h5, f"/{event_name}/{definition.dataset}")
 
         base_plotted = False
+        base_time: Optional[np.ndarray] = None
+        base_values: Optional[np.ndarray] = None
         reason: Optional[str] = None
         if time_data is None or value_data is None:
             reason = "Missing data"
@@ -562,11 +612,20 @@ class MainWindow(QMainWindow):
             if n == 0:
                 reason = "Empty dataset"
             else:
+                base_time = t[:n]
+                base_values = y[:n]
                 label = channel if overlay_mode else None
-                ax.plot(t[:n], y[:n], label=label)
+                ax.plot(base_time, base_values, label=label)
                 base_plotted = True
 
-        fit_plotted = self._plot_fit(ax, event_name, channel, overlay_mode)
+        fit_plotted = self._plot_fit(
+            ax,
+            event_name,
+            channel,
+            overlay_mode,
+            base_time=base_time,
+            base_values=base_values,
+        )
 
         if base_plotted or fit_plotted:
             if not overlay_mode:
@@ -580,20 +639,162 @@ class MainWindow(QMainWindow):
             missing_channels.append(channel)
         return False
 
-    def _plot_fit(self, ax, event_name: str, channel: str, overlay_mode: bool) -> bool:
+    def _plot_fit(
+        self,
+        ax,
+        event_name: str,
+        channel: str,
+        overlay_mode: bool,
+        base_time: Optional[np.ndarray] = None,
+        base_values: Optional[np.ndarray] = None,
+    ) -> bool:
         if not self._show_fit.get(channel):
             return False
 
         data = self.get_fit_data(event_name, channel)
         plotted = False
-        for label, _, _, time_values, fit_values in data.iter_time_result_pairs():
+        for label, time_path, value_path, time_values, fit_values in data.iter_time_result_pairs():
             n = min(len(time_values), len(fit_values))
             if n == 0:
                 continue
+            scaled_values = self._scale_fit_values(
+                event_name,
+                channel,
+                time_values[:n],
+                fit_values[:n],
+                value_path,
+                base_time=base_time,
+                base_values=base_values,
+            )
             legend_label = f"{channel} {label}" if overlay_mode else label
-            ax.plot(time_values[:n], fit_values[:n], linestyle="--", linewidth=2.2, label=legend_label)
+            ax.plot(time_values[:n], scaled_values, linestyle="--", linewidth=2.2, label=legend_label)
             plotted = True
         return plotted
+
+    def _scale_fit_values(
+        self,
+        event: str,
+        channel: str,
+        time_values: np.ndarray,
+        fit_values: np.ndarray,
+        value_path: str,
+        base_time: Optional[np.ndarray] = None,
+        base_values: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        array = np.asarray(fit_values, dtype=float)
+        if array.size == 0:
+            return array
+
+        key = (event, channel, value_path)
+        multiplier = self._fit_multiplier_cache.get(key)
+        if multiplier is None:
+            multiplier = self._infer_fit_multiplier(
+                event,
+                channel,
+                time_values,
+                array,
+                base_time=base_time,
+                base_values=base_values,
+            )
+            if multiplier is not None:
+                self._fit_multiplier_cache[key] = multiplier
+
+        if multiplier is None or not np.isfinite(multiplier) or multiplier <= 0.0:
+            return array
+        return array * multiplier
+
+    def _infer_fit_multiplier(
+        self,
+        event: str,
+        channel: str,
+        time_values: np.ndarray,
+        fit_values: np.ndarray,
+        base_time: Optional[np.ndarray] = None,
+        base_values: Optional[np.ndarray] = None,
+    ) -> Optional[float]:
+        times = np.asarray(time_values, dtype=float).ravel()
+        curve = np.asarray(fit_values, dtype=float).ravel()
+        if times.size == 0 or curve.size == 0:
+            return None
+
+        if base_time is None or base_values is None:
+            if not self._h5:
+                return None
+            definition = CHANNEL_DEFS.get(channel)
+            if not definition:
+                return None
+            base_time_data = dset(self._h5, f"/{event}/{definition.time_dataset}")
+            base_value_data = dset(self._h5, f"/{event}/{definition.dataset}")
+            if base_time_data is None or base_value_data is None:
+                return None
+            base_time = _to_1d(base_time_data)
+            base_values = _to_1d(base_value_data)
+        else:
+            base_time = _to_1d(base_time)
+            base_values = _to_1d(base_values)
+
+        n = min(base_time.size, base_values.size)
+        if n == 0:
+            return None
+        base_time = base_time[:n]
+        base_values = base_values[:n]
+        if base_time.size < 5 or curve.size < 5:
+            return None
+
+        order = np.argsort(base_time)
+        base_time = base_time[order]
+        base_values = base_values[order]
+        unique_time, unique_indices = np.unique(base_time, return_index=True)
+        base_time = unique_time
+        base_values = base_values[unique_indices]
+        if base_time.size < 5:
+            return None
+
+        interpolated = np.interp(times, base_time, base_values, left=np.nan, right=np.nan)
+        valid = np.isfinite(interpolated) & np.isfinite(curve)
+        if valid.sum() < max(8, curve.size // 4):
+            return None
+
+        target = interpolated[valid]
+        model = curve[valid]
+        target_center = target - np.median(target)
+        model_center = model - np.median(model)
+
+        signal_level = np.percentile(np.abs(model_center), 95)
+        if not np.isfinite(signal_level) or signal_level <= 0.0:
+            return None
+
+        signal_mask = np.abs(model_center) >= (0.2 * signal_level)
+        if signal_mask.sum() < 5:
+            signal_mask = np.abs(model_center) >= (0.1 * signal_level)
+        if signal_mask.sum() < 5:
+            signal_mask = np.ones_like(model_center, dtype=bool)
+
+        target_signal = target_center[signal_mask]
+        model_signal = model_center[signal_mask]
+        if model_signal.size < 3:
+            return None
+
+        amp_model = np.percentile(np.abs(model_signal), 90)
+        amp_target = np.percentile(np.abs(target_signal), 90)
+        if amp_model <= 0.0 or amp_target <= 0.0:
+            return None
+
+        scale = amp_target / amp_model
+        if not np.isfinite(scale) or scale <= 0.0:
+            return None
+        if scale < 1e-8 or scale > 1e8:
+            return None
+        return scale
+
+    def _clear_fit_multiplier_cache(self, event: str, channel: str, value_path: Optional[str] = None):
+        if value_path is not None:
+            self._fit_multiplier_cache.pop((event, channel, value_path), None)
+            return
+
+        keys_to_remove = [key for key in self._fit_multiplier_cache if key[0] == event and key[1] == channel]
+        for key in keys_to_remove:
+            self._fit_multiplier_cache.pop(key, None)
 
     def _style_overlay_axis(self, ax, family: str, bottom: bool):
         ax.set_facecolor("#f8f9fb")
@@ -687,7 +888,7 @@ class MainWindow(QMainWindow):
             if "fit" not in norm or base_norm not in norm:
                 return
             try:
-                arr = np.asarray(obj[()])
+                arr = np.array(obj[()], copy=True)
             except Exception:
                 return
             full_path = f"{group.name}/{name}"
@@ -701,6 +902,17 @@ class MainWindow(QMainWindow):
                 data.extras[full_path] = arr
 
         group.visititems(visitor)
+
+        for path in list(data.time_series.keys()):
+            override_time = self._fit_time_overrides.get((event_name, channel, path))
+            if override_time is not None:
+                data.time_series[path] = np.array(override_time, copy=True)
+
+        for path in list(data.value_series.keys()):
+            override_result = self._fit_result_overrides.get((event_name, channel, path))
+            if override_result is not None:
+                data.value_series[path] = np.array(override_result, copy=True)
+
         self._fit_cache[key] = data
         return data
 
@@ -737,16 +949,80 @@ class MainWindow(QMainWindow):
         return np.array(base_array, copy=True)
 
     def update_fit_override(self, event: str, channel: str, dataset_path: str, values: np.ndarray):
-        self._fit_param_overrides[(event, channel, dataset_path)] = np.array(values, copy=True)
-        self.statusBar().showMessage(f"Updated fit parameters for {channel} (in-memory only).", 6000)
+        array = np.array(values, copy=True)
+        self._fit_param_overrides[(event, channel, dataset_path)] = array
+        self._remove_fit_override(event, channel, dataset_path)
+        recomputed, result_path = self._recalculate_fit(event, channel, dataset_path, array)
+        if recomputed:
+            message = f"Updated fit parameters for {channel}; recomputed fit curve (in-memory only)."
+        else:
+            message = f"Updated fit parameters for {channel}; fit curve unchanged (missing data)."
+        self.statusBar().showMessage(message, 6000)
+        self._fit_cache.pop((event, channel), None)
+        if recomputed and result_path:
+            self._clear_fit_multiplier_cache(event, channel, result_path)
+        else:
+            self._clear_fit_multiplier_cache(event, channel)
         self.plot_event(self._current_event)
 
     def clear_fit_override(self, event: str, channel: str, dataset_path: str):
         key = (event, channel, dataset_path)
-        if key in self._fit_param_overrides:
-            del self._fit_param_overrides[key]
+        removed_param = self._fit_param_overrides.pop(key, None) is not None
+        removed_curve = self._remove_fit_override(event, channel, dataset_path)
+        if removed_param or removed_curve:
             self.statusBar().showMessage(f"Reverted fit parameters for {channel}.", 6000)
+            self._fit_cache.pop((event, channel), None)
+            self._clear_fit_multiplier_cache(event, channel)
             self.plot_event(self._current_event)
+
+    def _recalculate_fit(
+        self,
+        event: str,
+        channel: str,
+        dataset_path: str,
+        params: np.ndarray,
+    ) -> Tuple[bool, Optional[str]]:
+        if not self._h5:
+            return False, None
+        derived = _fit_paths_from_param(dataset_path)
+        if not derived:
+            return False, None
+        result_path, time_path = derived
+        time_data = dset(self._h5, time_path)
+        if time_data is None:
+            definition = CHANNEL_DEFS.get(channel)
+            if definition:
+                time_data = dset(self._h5, f"/{event}/{definition.time_dataset}")
+        if time_data is None:
+            return False, None
+        time_array = np.array(time_data, copy=True)
+        flat_time = np.asarray(time_array, dtype=float).ravel()
+        params_array = np.asarray(params, dtype=float)
+        curve = _evaluate_fit_curve(channel, flat_time, params_array)
+        if curve is None:
+            return False, None
+        curve_array = np.array(curve, copy=True)
+        if curve_array.size != time_array.size:
+            return False, None
+        curve_array = curve_array.reshape(time_array.shape)
+        self._fit_time_overrides[(event, channel, time_path)] = time_array
+        self._fit_result_overrides[(event, channel, result_path)] = curve_array
+        self._fit_cache.pop((event, channel), None)
+        return True, result_path
+
+    def _remove_fit_override(self, event: str, channel: str, dataset_path: str) -> bool:
+        removed = False
+        derived = _fit_paths_from_param(dataset_path)
+        if derived:
+            result_path, time_path = derived
+            if (event, channel, result_path) in self._fit_result_overrides:
+                del self._fit_result_overrides[(event, channel, result_path)]
+                removed = True
+            if (event, channel, time_path) in self._fit_time_overrides:
+                del self._fit_time_overrides[(event, channel, time_path)]
+                removed = True
+            self._clear_fit_multiplier_cache(event, channel, result_path)
+        return removed
 
     # --- Cleanup ---------------------------------------------------------
     def closeEvent(self, event):
