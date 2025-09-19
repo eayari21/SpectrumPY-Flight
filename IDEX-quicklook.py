@@ -1,5 +1,6 @@
 #!/opt/anaconda3/envs/idex/bin/python
 # -*- coding: utf-8 -*-
+from __future__ import annotations
 
 # =====================================================================
 # IDEX Quicklook — QtAgg canvas + Matplotlib Navigation Toolbar
