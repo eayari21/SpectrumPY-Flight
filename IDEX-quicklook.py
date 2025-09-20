@@ -220,6 +220,9 @@ CHANNEL_ORDER: List[str] = ["TOF L", "TOF M", "TOF H", "Ion Grid", "Target L", "
 
 FIT_ELIGIBLE_CHANNELS = {"Ion Grid", "Target L", "Target H"}
 
+BASELINE_PRIMARY_WINDOW = (-7.0, -5.0)
+BASELINE_FALLBACK_THRESHOLD = -2.0
+
 FAMILY_TITLES = {
     FAMILY_HIGH: "TOF Channels (High Sampling)",
     FAMILY_LOW: "Ion Grid / Target Channels (Low Sampling)",
@@ -269,6 +272,20 @@ def _evaluate_fit_curve(channel: str, time_values: np.ndarray, params: np.ndarra
         return None
 
     return _idex_ion_grid_model(time_values, *first)
+
+
+def _masked_mean(values: np.ndarray, mask: np.ndarray) -> Optional[float]:
+    values = np.asarray(values)
+    mask = np.asarray(mask, dtype=bool)
+    if values.size == 0 or mask.size != values.size:
+        return None
+    if not np.any(mask):
+        return None
+    subset = values[mask]
+    subset = subset[np.isfinite(subset)]
+    if subset.size == 0:
+        return None
+    return float(subset.mean())
 
 
 def _fit_paths_from_param(dataset_path: str) -> Optional[Tuple[str, str]]:
@@ -349,6 +366,7 @@ class MainWindow(QMainWindow):
         self._fit_param_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
         self._fit_result_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
         self._fit_time_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
+        self._baseline_cache: Dict[Tuple[str, str], float] = {}
         self._show_fit: Dict[str, bool] = {name: False for name in FIT_ELIGIBLE_CHANNELS}
         self.selected_channels = set(CHANNEL_ORDER)
 
@@ -505,6 +523,7 @@ class MainWindow(QMainWindow):
         self._fit_param_overrides.clear()
         self._fit_result_overrides.clear()
         self._fit_time_overrides.clear()
+        self._baseline_cache.clear()
 
         try:
             self._h5 = h5py.File(path, "r")
@@ -724,13 +743,82 @@ class MainWindow(QMainWindow):
             missing_channels.append(channel)
         return False
 
+    def _estimate_baseline(self, event_name: str, channel: str, reference_time: Optional[np.ndarray]) -> float:
+        key = (event_name, channel)
+        cached = self._baseline_cache.get(key)
+        if cached is not None:
+            return cached
+
+        baseline_value = 0.0
+        if not self._h5:
+            self._baseline_cache[key] = baseline_value
+            return baseline_value
+
+        definition = CHANNEL_DEFS.get(channel)
+        if not definition:
+            self._baseline_cache[key] = baseline_value
+            return baseline_value
+
+        raw_path = f"/{event_name}/{definition.dataset}"
+        raw_data = dset(self._h5, raw_path)
+        if raw_data is None:
+            self._baseline_cache[key] = baseline_value
+            return baseline_value
+
+        raw_values = _to_1d(raw_data)
+        if raw_values.size == 0:
+            self._baseline_cache[key] = baseline_value
+            return baseline_value
+
+        raw_values = np.asarray(raw_values, dtype=float)
+
+        times: Optional[np.ndarray] = None
+        if reference_time is not None:
+            ref = _to_1d(reference_time)
+            if ref.size == raw_values.size:
+                times = np.asarray(ref, dtype=float)
+
+        if times is None:
+            time_path = f"/{event_name}/{definition.time_dataset}"
+            stored_time = dset(self._h5, time_path)
+            if stored_time is not None:
+                stored = _to_1d(stored_time)
+                if stored.size == raw_values.size:
+                    times = np.asarray(stored, dtype=float)
+
+        candidate: Optional[float] = None
+        if times is not None and times.size == raw_values.size:
+            primary_mask = (times >= BASELINE_PRIMARY_WINDOW[0]) & (times <= BASELINE_PRIMARY_WINDOW[1])
+            candidate = _masked_mean(raw_values, primary_mask)
+            if candidate is None:
+                fallback_mask = times < BASELINE_FALLBACK_THRESHOLD
+                candidate = _masked_mean(raw_values, fallback_mask)
+
+        if candidate is None:
+            count = min(max(1, raw_values.size // 10), raw_values.size)
+            subset = raw_values[:count]
+            finite = subset[np.isfinite(subset)]
+            if finite.size:
+                candidate = float(finite.mean())
+            else:
+                candidate = 0.0
+
+        baseline_value = float(candidate if np.isfinite(candidate) else 0.0)
+        self._baseline_cache[key] = baseline_value
+        return baseline_value
+
     def _iter_fit_curves(self, event_name: str, channel: str, data: FitData):
         yielded = False
         for label, _time_path, _value_path, time_values, fit_values in data.iter_time_result_pairs():
-            n = min(len(time_values), len(fit_values))
+            times = np.asarray(time_values, dtype=float)
+            values = np.asarray(fit_values, dtype=float)
+            baseline_offset = self._estimate_baseline(event_name, channel, times)
+            if baseline_offset:
+                values = values + baseline_offset
+            n = min(len(times), len(values))
             if n == 0:
                 continue
-            yield label, time_values[:n], fit_values[:n]
+            yield label, times[:n], values[:n]
             yielded = True
 
         if yielded or not data.parameter_series or not self._h5:
@@ -742,7 +830,7 @@ class MainWindow(QMainWindow):
         base_time_data = dset(self._h5, f"/{event_name}/{definition.time_dataset}")
         if base_time_data is None:
             return
-        base_time = _to_1d(base_time_data)
+        base_time = np.asarray(_to_1d(base_time_data), dtype=float)
         if base_time.size == 0:
             return
 
@@ -771,6 +859,9 @@ class MainWindow(QMainWindow):
                 continue
             if scale != 1.0:
                 fit_values = fit_values * scale
+            baseline_offset = self._estimate_baseline(event_name, channel, base_time)
+            if baseline_offset:
+                fit_values = fit_values + baseline_offset
 
             label = _label_from_param_path(path)
             yield label, base_time, fit_values
