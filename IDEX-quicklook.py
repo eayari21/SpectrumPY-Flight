@@ -130,7 +130,7 @@ def _label_from_param_path(path: str) -> str:
     return f"{base} (calc)"
 
 
-_MATH_TEXT_PARSER = mathtext.MathTextParser("Bitmap")
+_MATH_TEXT_PARSER = mathtext.MathTextParser("Macosx")
 _LATEX_CACHE: Dict[str, Optional[QPixmap]] = {}
 
 
