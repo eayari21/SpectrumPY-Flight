@@ -1,0 +1,20 @@
+# build & caches
+__pycache__/
+.venv/
+.mypy_cache/
+.pytest_cache/
+build/
+dist/
+.DS_Store
+
+# data & outputs
+HDF5/
+images/*.png
+images/*.pdf
+*.h5
+*.hdf5
+*.ipynb_checkpoints/
+
+# node / misc
+node_modules/
+

@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Define the base directories
-directories=("../Pre_Env" "../Post_Env")
+# directories=("../Pre_Env" "../Post_Env")
+directories=("Data/")
 hdf5_output_dir="./HDF5"  # Directory where .h5 files are stored
 
 # Iterate through each directory
