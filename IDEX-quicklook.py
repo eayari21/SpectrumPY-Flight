@@ -19,6 +19,7 @@ import numpy as np
 
 # Qt-backed Matplotlib so NavigationToolbar works
 import matplotlib
+from matplotlib import mathtext
 matplotlib.use("QtAgg")
 
 from matplotlib.figure import Figure
@@ -29,7 +30,7 @@ from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as Navigation
 _QT = None
 try:
     from PySide6.QtCore import Qt, QSize
-    from PySide6.QtGui import QAction, QFont
+    from PySide6.QtGui import QAction, QFont, QPixmap, QImage
     from PySide6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
@@ -39,7 +40,7 @@ try:
     _QT = "PySide6"
 except Exception:
     from PyQt6.QtCore import Qt, QSize
-    from PyQt6.QtGui import QAction, QFont
+    from PyQt6.QtGui import QAction, QFont, QPixmap, QImage
     from PyQt6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
@@ -127,6 +128,54 @@ def _label_from_param_path(path: str) -> str:
     if "Fit" not in base:
         base = f"{base} Fit"
     return f"{base} (calc)"
+
+
+_MATH_TEXT_PARSER = mathtext.MathTextParser("Bitmap")
+_LATEX_CACHE: Dict[str, Optional[QPixmap]] = {}
+
+
+def _latex_to_pixmap(latex: str) -> Optional[QPixmap]:
+    if not latex:
+        return None
+    cached = _LATEX_CACHE.get(latex)
+    if cached is not None:
+        return cached
+    try:
+        ftimage, _ = _MATH_TEXT_PARSER.to_rgba(f"${latex}$", dpi=180)
+    except Exception:
+        _LATEX_CACHE[latex] = None
+        return None
+
+    buffer = np.ascontiguousarray(np.clip(ftimage * 255.0, 0, 255).astype(np.uint8))
+    height, width, _channels = buffer.shape
+    image = QImage(buffer.data, width, height, 4 * width, QImage.Format_RGBA8888)
+    pixmap = QPixmap.fromImage(image.copy())
+    _LATEX_CACHE[latex] = pixmap
+    return pixmap
+
+
+def _mass_identifier_from_path(path: str) -> Optional[str]:
+    if not path or "/Masses/" not in path:
+        return None
+    tail = path.split("/Masses/", 1)[-1]
+    segment = tail.split("/", 1)[0]
+    for suffix in ("FitParameters", "FitParams", "Parameters", "Params"):
+        if segment.endswith(suffix):
+            segment = segment[: -len(suffix)]
+            break
+    segment = segment.strip().strip("_-")
+    return segment or None
+
+
+def _dataset_sort_key(channel: str, dataset_path: str) -> Tuple[int, object]:
+    mass_label = _mass_identifier_from_path(dataset_path)
+    if mass_label is not None:
+        try:
+            mass_value: object = float(mass_label)
+        except ValueError:
+            mass_value = mass_label
+        return (0, mass_value)
+    return (1, os.path.basename(dataset_path))
 
 
 def _coerce_parameter_values(values: np.ndarray) -> Optional[np.ndarray]:
@@ -218,7 +267,7 @@ CHANNEL_DEFS: Dict[str, ChannelDefinition] = {
 
 CHANNEL_ORDER: List[str] = ["TOF L", "TOF M", "TOF H", "Ion Grid", "Target L", "Target H"]
 
-FIT_ELIGIBLE_CHANNELS = {"Ion Grid", "Target L", "Target H"}
+FIT_ELIGIBLE_CHANNELS = {"Ion Grid", "Target L", "Target H", "TOF H"}
 
 FAMILY_TITLES = {
     FAMILY_HIGH: "TOF Channels (High Sampling)",
@@ -240,6 +289,13 @@ FIT_SCALE_MULTIPLIERS: Dict[str, float] = {
 }
 
 
+@dataclass(frozen=True)
+class FitModelMeta:
+    parameter_labels: Tuple[str, ...]
+    latex: str
+    evaluator: Callable[..., np.ndarray]
+
+
 def _idex_ion_grid_model(x: np.ndarray, p0: float, p1: float, p4: float, p5: float, p6: float) -> np.ndarray:
     """Evaluate the standard IDEX ion grid / target response model."""
 
@@ -254,21 +310,69 @@ def _idex_ion_grid_model(x: np.ndarray, p0: float, p1: float, p4: float, p5: flo
     return p1 + step * (p4 * rise * decay)
 
 
+def _emg_model(x: np.ndarray, mu: float, sigma: float, lam: float) -> np.ndarray:
+    arr = np.asarray(x, dtype=float)
+    if arr.size == 0:
+        return arr
+    if abs(lam) < 1.0e-15:
+        return np.zeros_like(arr, dtype=float)
+    safe_sigma = sigma if abs(sigma) > 1.0e-15 else 1.0e-15
+    safe_lambda = lam
+    with np.errstate(over="ignore", under="ignore", divide="ignore", invalid="ignore"):
+        exponent = np.exp((safe_lambda / 2.0) * (2.0 * mu + safe_lambda * safe_sigma**2 - 2.0 * arr))
+    argument = (mu + safe_lambda * safe_sigma**2 - arr) / (np.sqrt(2.0) * safe_sigma)
+    return (safe_lambda / 2.0) * exponent * np.erfc(argument)
+
+
+ION_GRID_FIT = FitModelMeta(
+    parameter_labels=(
+        "t0 (impact time)",
+        "c (constant offset)",
+        "A (amplitude)",
+        "t1 (rise time)",
+        "t2 (discharge time)",
+    ),
+    latex=r"f(t) = c + H(t - t_0)\,A\,\left(1 - e^{-(t - t_0)/t_1}\right)e^{-(t - t_0)/t_2}",
+    evaluator=_idex_ion_grid_model,
+)
+
+EMG_FIT = FitModelMeta(
+    parameter_labels=(
+        "μ (location)",
+        "σ (width)",
+        "λ (decay)",
+    ),
+    latex=r"f(t) = \frac{\lambda}{2} \exp\left[\frac{\lambda}{2}(2\mu + \lambda\sigma^2 - 2t)\right] \operatorname{erfc}\left(\frac{\mu + \lambda\sigma^2 - t}{\sqrt{2}\,\sigma}\right)",
+    evaluator=_emg_model,
+)
+
+FIT_MODEL_BY_CHANNEL: Dict[str, FitModelMeta] = {
+    "Ion Grid": ION_GRID_FIT,
+    "Target L": ION_GRID_FIT,
+    "Target H": ION_GRID_FIT,
+    "TOF H": EMG_FIT,
+}
+
+
 def _evaluate_fit_curve(channel: str, time_values: np.ndarray, params: np.ndarray) -> Optional[np.ndarray]:
     """Evaluate a fit curve for the supplied channel using the stored parameters."""
 
-    if channel not in FIT_ELIGIBLE_CHANNELS:
+    model = FIT_MODEL_BY_CHANNEL.get(channel)
+    if not model:
         return None
 
     param_array = _coerce_parameter_values(params)
-    if param_array is None or param_array.size < 5:
+    if param_array is None or param_array.size < len(model.parameter_labels):
         return None
 
-    first = np.asarray(param_array[:5], dtype=float)
+    first = np.asarray(param_array[: len(model.parameter_labels)], dtype=float)
     if not np.all(np.isfinite(first)):
         return None
 
-    return _idex_ion_grid_model(time_values, *first)
+    try:
+        return model.evaluator(time_values, *first)
+    except Exception:
+        return None
 
 
 def _fit_paths_from_param(dataset_path: str) -> Optional[Tuple[str, str]]:
@@ -746,11 +850,12 @@ class MainWindow(QMainWindow):
         if base_time.size == 0:
             return
 
+        model = FIT_MODEL_BY_CHANNEL.get(channel)
+        if not model:
+            return
+
         scale = FIT_SCALE_MULTIPLIERS.get(channel, 1.0)
         for path, raw_params in data.iter_parameter_items():
-            if "/Masses/" in path:
-                continue
-
             derived = _fit_paths_from_param(path)
             if derived:
                 result_path, time_path = derived
@@ -758,14 +863,18 @@ class MainWindow(QMainWindow):
                     continue
 
             param_array = _coerce_parameter_values(raw_params)
-            if param_array is None or param_array.size < 5:
+            if param_array is None or param_array.size < len(model.parameter_labels):
                 continue
 
-            first = np.asarray(param_array[:5], dtype=float)
+            first = np.asarray(param_array[: len(model.parameter_labels)], dtype=float)
             if not np.all(np.isfinite(first)):
                 continue
 
-            curve = _idex_ion_grid_model(base_time, *first)
+            try:
+                curve = model.evaluator(base_time, *first)
+            except Exception:
+                continue
+
             fit_values = np.asarray(curve, dtype=float)
             if fit_values.size != base_time.size:
                 continue
@@ -1055,6 +1164,7 @@ class FitParameterDialog(QDialog):
         self._current_channel: Optional[str] = None
         self._current_dataset: Optional[str] = None
         self._current_shape: Optional[Tuple[int, ...]] = None
+        self._is_updating_table = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -1063,6 +1173,15 @@ class FitParameterDialog(QDialog):
         header = QLabel(f"Editing parameters for event {event_name}", self)
         header.setStyleSheet("font-size: 18px; font-weight: bold;")
         layout.addWidget(header)
+
+        self.formula_label = QLabel("", self)
+        self.formula_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.formula_label.setStyleSheet("font-size: 16px;")
+        self.formula_label.setWordWrap(True)
+        self.formula_label.setMinimumHeight(70)
+        self._default_formula_text = "Select a dataset to view its fit function."
+        self.formula_label.setText(self._default_formula_text)
+        layout.addWidget(self.formula_label)
 
         chooser_row = QHBoxLayout()
         chooser_row.setSpacing(10)
@@ -1085,7 +1204,7 @@ class FitParameterDialog(QDialog):
 
         self.table = QTableWidget(self)
         self.table.setColumnCount(2)
-        self.table.setHorizontalHeaderLabels(["Index", "Value"])
+        self.table.setHorizontalHeaderLabels(["Fit parameter", "Value"])
         header_view = self.table.horizontalHeader()
         header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -1097,6 +1216,7 @@ class FitParameterDialog(QDialog):
             QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.SelectedClicked
         )
         self.table.setStyleSheet("font-size: 15px;")
+        self.table.itemChanged.connect(self._on_table_item_changed)
         layout.addWidget(self.table)
 
         self.info_label = QLabel("", self)
@@ -1131,8 +1251,10 @@ class FitParameterDialog(QDialog):
         self.dataset_combo.blockSignals(True)
         self.dataset_combo.clear()
         entries = [path for (chan, path) in self._param_arrays.keys() if chan == channel]
-        for path in sorted(entries):
-            self.dataset_combo.addItem(os.path.basename(path), path)
+        entries.sort(key=lambda value: _dataset_sort_key(channel, value))
+        for path in entries:
+            label = self._dataset_display_name(channel, path)
+            self.dataset_combo.addItem(label, path)
         self.dataset_combo.blockSignals(False)
 
         if entries:
@@ -1146,15 +1268,25 @@ class FitParameterDialog(QDialog):
         dataset_path = self.dataset_combo.itemData(index)
         self._display_dataset(channel, dataset_path)
 
-    def _display_dataset(self, channel: Optional[str], dataset_path: Optional[str]):
+    def _display_dataset(
+        self,
+        channel: Optional[str],
+        dataset_path: Optional[str],
+        *,
+        preserve_feedback: bool = False,
+    ):
         if not channel or dataset_path is None:
+            self._update_formula_display(None)
             self._clear_table("No fit parameters are available for this channel.")
             return
 
         base_array = self._param_arrays.get((channel, dataset_path))
         if base_array is None:
+            self._update_formula_display(None)
             self._clear_table("No fit parameters are available for this channel.")
             return
+
+        self._update_formula_display(channel)
 
         values = self._value_getter(self._event_name, channel, dataset_path, base_array)
         array = np.asarray(values)
@@ -1163,18 +1295,130 @@ class FitParameterDialog(QDialog):
         self._current_shape = array.shape
 
         flat = array.ravel()
-        self.table.setRowCount(flat.size)
-        for idx, value in enumerate(flat):
-            idx_item = QTableWidgetItem(str(idx))
-            idx_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-            value_item = QTableWidgetItem(self._format_value(value))
-            value_item.setFlags(value_item.flags() | Qt.ItemFlag.ItemIsEditable)
-            self.table.setItem(idx, 0, idx_item)
-            self.table.setItem(idx, 1, value_item)
+        labels = self._parameter_labels(channel, dataset_path, flat.size)
+
+        self._is_updating_table = True
+        try:
+            self.table.setRowCount(flat.size)
+            for idx, value in enumerate(flat):
+                label = labels[idx] if idx < len(labels) else f"p{idx + 1}"
+                idx_item = QTableWidgetItem(label)
+                idx_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+                value_item = QTableWidgetItem(self._format_value(value))
+                value_item.setFlags(value_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                self.table.setItem(idx, 0, idx_item)
+                self.table.setItem(idx, 1, value_item)
+        finally:
+            self._is_updating_table = False
 
         self.table.resizeColumnsToContents()
-        self.info_label.setText(f"{dataset_path} — shape {array.shape}")
-        self.feedback_label.clear()
+        display_name = self._dataset_display_name(channel, dataset_path)
+        self.info_label.setText(f"{channel} — {display_name}\n{dataset_path} — shape {array.shape}")
+        if not preserve_feedback:
+            self.feedback_label.clear()
+
+    def _dataset_display_name(self, channel: str, dataset_path: str) -> str:
+        mass_label = _mass_identifier_from_path(dataset_path)
+        if mass_label:
+            return f"Mass {mass_label}"
+        base = os.path.basename(dataset_path)
+        return base or dataset_path
+
+    def _parameter_labels(self, channel: str, dataset_path: str, count: int) -> List[str]:
+        model = FIT_MODEL_BY_CHANNEL.get(channel)
+        if not model:
+            return [f"p{i + 1}" for i in range(count)]
+        labels = list(model.parameter_labels)
+        if len(labels) >= count:
+            return labels[:count]
+        extras = [f"p{i + 1}" for i in range(len(labels), count)]
+        return labels + extras
+
+    def _update_formula_display(self, channel: Optional[str]):
+        self.formula_label.setPixmap(QPixmap())
+        self.formula_label.setToolTip("")
+        if not channel:
+            self.formula_label.setText(self._default_formula_text)
+            return
+
+        model = FIT_MODEL_BY_CHANNEL.get(channel)
+        if not model or not model.latex:
+            self.formula_label.setText("Fit function preview unavailable for this selection.")
+            return
+
+        pixmap = _latex_to_pixmap(model.latex)
+        if pixmap:
+            self.formula_label.setText("")
+            self.formula_label.setPixmap(pixmap)
+        else:
+            self.formula_label.setText(model.latex)
+        self.formula_label.setToolTip(model.latex)
+
+    def _set_feedback(self, text: str, *, success: bool):
+        if not text:
+            self.feedback_label.clear()
+            return
+        color = "#146c43" if success else "#b02a37"
+        self.feedback_label.setStyleSheet(f"font-size: 14px; color: {color};")
+        self.feedback_label.setText(text)
+
+    def _apply_current_values(self, *, auto: bool) -> bool:
+        if not self._current_channel or not self._current_dataset:
+            if not auto:
+                QMessageBox.information(
+                    self,
+                    "No Selection",
+                    "Select a parameter set before applying changes.",
+                )
+            return False
+
+        values: List[float] = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 1)
+            text = item.text().strip() if item else ""
+            if not text:
+                values.append(0.0)
+                continue
+            try:
+                values.append(float(text))
+            except ValueError:
+                message = f"Row {row + 1} contains a non-numeric value: {text}"
+                if auto:
+                    self._set_feedback(message, success=False)
+                else:
+                    QMessageBox.warning(self, "Invalid value", message)
+                return False
+
+        if self._current_shape:
+            expected = int(np.prod(self._current_shape))
+        else:
+            expected = len(values)
+
+        if len(values) != expected:
+            message = "The number of edited values does not match the original parameter shape."
+            if auto:
+                self._set_feedback(message, success=False)
+            else:
+                QMessageBox.warning(self, "Shape mismatch", message)
+            return False
+
+        array = np.array(values, dtype=float)
+        if self._current_shape:
+            array = array.reshape(self._current_shape)
+
+        self._save_callback(self._event_name, self._current_channel, self._current_dataset, array)
+        self._display_dataset(self._current_channel, self._current_dataset, preserve_feedback=True)
+
+        if auto:
+            self._set_feedback("Fit updated with latest parameters.", success=True)
+        else:
+            self._set_feedback("Changes stored in-memory and fit recomputed.", success=True)
+        return True
+
+    def _on_table_item_changed(self, item: QTableWidgetItem):
+        if self._is_updating_table or item is None or item.column() != 1:
+            return
+        self._apply_current_values(auto=True)
 
     def _clear_table(self, message: str = ""):
         self.table.setRowCount(0)
@@ -1183,6 +1427,7 @@ class FitParameterDialog(QDialog):
         self._current_channel = None
         self._current_dataset = None
         self._current_shape = None
+        self._is_updating_table = False
 
     def _format_value(self, value: object) -> str:
         try:
@@ -1196,53 +1441,14 @@ class FitParameterDialog(QDialog):
 
     # ---- Actions --------------------------------------------------------
     def apply_changes(self):
-        if not self._current_channel or not self._current_dataset:
-            QMessageBox.information(self, "No Selection", "Select a parameter set before applying changes.")
-            return
-
-        values: List[float] = []
-        for row in range(self.table.rowCount()):
-            item = self.table.item(row, 1)
-            if item is None:
-                continue
-            text = item.text().strip()
-            if not text:
-                values.append(0.0)
-                continue
-            try:
-                values.append(float(text))
-            except ValueError:
-                QMessageBox.warning(self, "Invalid value", f"Row {row} contains a non-numeric value: {text}")
-                return
-
-        if self._current_shape:
-            expected = int(np.prod(self._current_shape))
-        else:
-            expected = len(values)
-
-        if len(values) != expected:
-            QMessageBox.warning(
-                self,
-                "Shape mismatch",
-                "The number of edited values does not match the original parameter shape.",
-            )
-            return
-
-        array = np.array(values, dtype=float)
-        if self._current_shape:
-            array = array.reshape(self._current_shape)
-
-        self._save_callback(self._event_name, self._current_channel, self._current_dataset, array)
-        self.feedback_label.setStyleSheet("font-size: 14px; color: #146c43;")
-        self.feedback_label.setText("Changes stored in-memory for this session.")
+        self._apply_current_values(auto=False)
 
     def reset_changes(self):
         if not self._current_channel or not self._current_dataset:
             return
         self._reset_callback(self._event_name, self._current_channel, self._current_dataset)
-        self.feedback_label.setStyleSheet("font-size: 14px; color: #b02a37;")
-        self.feedback_label.setText("Reverted to values from the file.")
-        self._display_dataset(self._current_channel, self._current_dataset)
+        self._display_dataset(self._current_channel, self._current_dataset, preserve_feedback=True)
+        self._set_feedback("Reverted to values from the file.", success=False)
 
 # --------- CLI / main ---------
 def main():
