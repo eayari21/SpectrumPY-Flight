@@ -17,6 +17,8 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple
 import h5py
 import numpy as np
 
+from HDF_View import launch_hdf_viewer
+
 # Qt-backed Matplotlib so NavigationToolbar works
 import matplotlib
 from matplotlib import mathtext
@@ -473,6 +475,7 @@ class MainWindow(QMainWindow):
         self._baseline_cache: Dict[Tuple[str, str], float] = {}
         self._show_fit: Dict[str, bool] = {name: False for name in FIT_ELIGIBLE_CHANNELS}
         self.selected_channels = set(CHANNEL_ORDER)
+        self._child_windows: List[QWidget] = []
 
         central = QWidget(self)
         self.vbox = QVBoxLayout(central)
@@ -516,6 +519,12 @@ class MainWindow(QMainWindow):
         act_open.setShortcut("Ctrl+O")
         act_open.triggered.connect(self.action_open)
         tb.addAction(act_open)
+
+        act_view = QAction("View HDF Contents", self)
+        act_view.setShortcut("Ctrl+Shift+H")
+        act_view.setToolTip("Inspect the currently loaded HDF5 file in a tree viewer.")
+        act_view.triggered.connect(self.action_view_hdf_contents)
+        tb.addAction(act_view)
 
         act_reload = QAction("Reload", self)
         act_reload.setShortcut("Ctrl+R")
@@ -611,6 +620,37 @@ class MainWindow(QMainWindow):
         chosen = non_native_open_dialog(self)
         if chosen:
             self.open_file(chosen)
+
+    def action_view_hdf_contents(self):
+        if not self._filename:
+            QMessageBox.information(
+                self,
+                "No File Loaded",
+                "Open an HDF5 file to browse its contents.",
+            )
+            return
+
+        try:
+            viewer = launch_hdf_viewer(self._filename, parent=self)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Viewer Error",
+                f"Unable to launch the HDF viewer:\n{exc}",
+            )
+            return
+
+        viewer.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        viewer.raise_()
+        viewer.activateWindow()
+
+        self._child_windows.append(viewer)
+
+        def _cleanup(*_args):
+            if viewer in self._child_windows:
+                self._child_windows.remove(viewer)
+
+        viewer.destroyed.connect(_cleanup)
 
     def open_file(self, path: str, preferred_event: Optional[str] = None):
         try:
