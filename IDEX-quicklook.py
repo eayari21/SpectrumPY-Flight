@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import textwrap
 
@@ -1035,6 +1035,7 @@ class MainWindow(QMainWindow):
         self._events: List[str] = []
         self._current_event: Optional[str] = None
         self._filename: Optional[str] = None
+        self._h5: Optional[Any] = None
         self._tmpdir = tempfile.TemporaryDirectory(prefix="idex_quicklook_")
         self._fit_cache: Dict[Tuple[str, str], FitData] = {}
         self._fit_param_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
@@ -1516,7 +1517,6 @@ class MainWindow(QMainWindow):
 
         window.destroyed.connect(_cleanup)
 
-    def open_file(self, path: str, preferred_event: Optional[str] = None):
     def close_current_file(self):
         if not self._filename and not self._data_source:
             return
@@ -1585,6 +1585,12 @@ class MainWindow(QMainWindow):
 
     # ---- Data helpers -----------------------------------------------------
     def _reset_state(self):
+        if self._h5 is not None:
+            try:
+                self._h5.close()
+            except Exception:
+                pass
+        self._h5 = None
         if self._data_source is not None:
             try:
                 self._data_source.close()
@@ -1627,14 +1633,35 @@ class MainWindow(QMainWindow):
     def open_file(self, path: str, preferred_event: Optional[str] = None):
         self._reset_state()
 
+        suffix = Path(path).suffix.lower()
+        h5_handle = None
+
         try:
-            try:
-                self._h5 = h5py.File(path, "r+")
-            except OSError:
-                self._h5 = h5py.File(path, "r")
-            self._filename = path
+            if h5py is not None and suffix in {".h5", ".hdf5"}:
+                try:
+                    h5_handle = h5py.File(path, "r+")
+                except OSError:
+                    h5_handle = h5py.File(path, "r")
             source = create_data_source(path)
+        except ImportError as exc:
+            QMessageBox.critical(
+                self,
+                "Open Error",
+                f"Failed to open file:\n{path}\n\n{exc}",
+            )
+            if h5_handle is not None:
+                try:
+                    h5_handle.close()
+                except Exception:
+                    pass
+            self.plot_event(None)
+            return
         except Exception as exc:
+            if h5_handle is not None:
+                try:
+                    h5_handle.close()
+                except Exception:
+                    pass
             QMessageBox.critical(
                 self,
                 "Open Error",
@@ -1643,6 +1670,16 @@ class MainWindow(QMainWindow):
             self.plot_event(None)
             return
 
+        if h5_handle is None and h5py is not None and isinstance(source, HDF5DataSource):
+            try:
+                h5_handle = h5py.File(path, "r+")
+            except OSError:
+                try:
+                    h5_handle = h5py.File(path, "r")
+                except Exception:
+                    h5_handle = None
+
+        self._h5 = h5_handle
         self._data_source = source
         self._filename = path
 
