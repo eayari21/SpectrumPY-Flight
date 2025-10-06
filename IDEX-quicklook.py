@@ -18,6 +18,7 @@ import h5py
 import numpy as np
 
 from HDF_View import launch_hdf_viewer
+from dust_composition import launch_dust_composition_window
 
 # Qt-backed Matplotlib so NavigationToolbar works
 import matplotlib
@@ -526,6 +527,12 @@ class MainWindow(QMainWindow):
         act_view.triggered.connect(self.action_view_hdf_contents)
         tb.addAction(act_view)
 
+        act_dust = QAction("Dust Composition…", self)
+        act_dust.setShortcut("Ctrl+D")
+        act_dust.setToolTip("Open the dust composition analysis window for the current event.")
+        act_dust.triggered.connect(self.action_open_dust_composition)
+        tb.addAction(act_dust)
+
         act_reload = QAction("Reload", self)
         act_reload.setShortcut("Ctrl+R")
         act_reload.triggered.connect(self.reload_current)
@@ -652,6 +659,36 @@ class MainWindow(QMainWindow):
 
         viewer.destroyed.connect(_cleanup)
 
+    def action_open_dust_composition(self):
+        if not self._h5 or not self._current_event:
+            QMessageBox.information(
+                self,
+                "No Event",
+                "Open an HDF5 file and select an event before analysing dust composition.",
+            )
+            return
+
+        try:
+            window = launch_dust_composition_window(self._h5, self._current_event, parent=self)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Dust Composition Error",
+                f"Unable to launch the dust composition window:\n{exc}",
+            )
+            return
+
+        window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        window.show()
+
+        self._child_windows.append(window)
+
+        def _cleanup(*_args):
+            if window in self._child_windows:
+                self._child_windows.remove(window)
+
+        window.destroyed.connect(_cleanup)
+
     def open_file(self, path: str, preferred_event: Optional[str] = None):
         try:
             if self._h5 is not None:
@@ -670,7 +707,10 @@ class MainWindow(QMainWindow):
         self._baseline_cache.clear()
 
         try:
-            self._h5 = h5py.File(path, "r")
+            try:
+                self._h5 = h5py.File(path, "r+")
+            except OSError:
+                self._h5 = h5py.File(path, "r")
             self._filename = path
         except Exception as exc:
             QMessageBox.critical(self, "Open Error", f"Failed to open file:\n{path}\n\n{exc}")
