@@ -26,6 +26,8 @@ except Exception:  # pragma: no cover - optional dependency for environments wit
 
 import numpy as np
 
+from HDF_View import launch_hdf_viewer
+from dust_composition import launch_dust_composition_window
 try:  # pragma: no cover - optional dependency, loaded lazily
     from HDF_View import launch_hdf_viewer
 except Exception:  # pragma: no cover
@@ -1263,6 +1265,16 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
 
+        act_dust = QAction("Dust Composition…", self)
+        act_dust.setShortcut("Ctrl+D")
+        act_dust.setToolTip("Open the dust composition analysis window for the current event.")
+        act_dust.triggered.connect(self.action_open_dust_composition)
+        tb.addAction(act_dust)
+
+        act_reload = QAction("Reload", self)
+        act_reload.setShortcut("Ctrl+R")
+        act_reload.triggered.connect(self.reload_current)
+        tb.addAction(act_reload)
         tb.addAction(self.view_structure_action)
         tb.addSeparator()
 
@@ -1474,6 +1486,37 @@ class MainWindow(QMainWindow):
 
         viewer.destroyed.connect(_cleanup)
 
+    def action_open_dust_composition(self):
+        if not self._h5 or not self._current_event:
+            QMessageBox.information(
+                self,
+                "No Event",
+                "Open an HDF5 file and select an event before analysing dust composition.",
+            )
+            return
+
+        try:
+            window = launch_dust_composition_window(self._h5, self._current_event, parent=self)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Dust Composition Error",
+                f"Unable to launch the dust composition window:\n{exc}",
+            )
+            return
+
+        window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        window.show()
+
+        self._child_windows.append(window)
+
+        def _cleanup(*_args):
+            if window in self._child_windows:
+                self._child_windows.remove(window)
+
+        window.destroyed.connect(_cleanup)
+
+    def open_file(self, path: str, preferred_event: Optional[str] = None):
     def close_current_file(self):
         if not self._filename and not self._data_source:
             return
@@ -1585,6 +1628,11 @@ class MainWindow(QMainWindow):
         self._reset_state()
 
         try:
+            try:
+                self._h5 = h5py.File(path, "r+")
+            except OSError:
+                self._h5 = h5py.File(path, "r")
+            self._filename = path
             source = create_data_source(path)
         except Exception as exc:
             QMessageBox.critical(
