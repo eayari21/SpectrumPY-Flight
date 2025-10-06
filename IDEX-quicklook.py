@@ -17,6 +17,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
+import textwrap
+
 try:
     import h5py  # type: ignore
 except Exception:  # pragma: no cover - optional dependency for environments without h5py
@@ -47,22 +49,24 @@ from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as Navigation
 _QT = None
 try:
     from PySide6.QtCore import Qt, QSize
-    from PySide6.QtGui import QAction, QFont, QPixmap, QImage
+    from PySide6.QtGui import QAction, QFont, QPixmap, QImage, QTextCursor, QTextDocument
     from PySide6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
         QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
-        QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton
+        QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton, QTextBrowser,
+        QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter
     )
     _QT = "PySide6"
 except Exception:
     from PyQt6.QtCore import Qt, QSize
-    from PyQt6.QtGui import QAction, QFont, QPixmap, QImage
+    from PyQt6.QtGui import QAction, QFont, QPixmap, QImage, QTextCursor, QTextDocument
     from PyQt6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
         QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
-        QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton
+        QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton, QTextBrowser,
+        QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter
     )
     _QT = "PyQt6"
 
@@ -88,9 +92,18 @@ def prompt_for_data_file(
     """Show a non-native file dialog that accepts HDF5 and CDF payloads."""
 
     if start_dir is None:
-        # Prefer the HDF5 directory but fall back to repository root when absent.
-        default_dir = Path(os.getcwd()) / "HDF5"
-        start_dir = str(default_dir if default_dir.exists() else Path.cwd())
+        repo_root = Path(__file__).resolve().parent
+        preferred_map = {
+            "cdf": repo_root / "CDF",
+            "hdf5": repo_root / "HDF5",
+        }
+        if preferred and (target_dir := preferred_map.get(preferred.lower())) and target_dir.exists():
+            start_dir = str(target_dir)
+        else:
+            default_dir = repo_root / "HDF5"
+            if not default_dir.exists():
+                default_dir = repo_root
+            start_dir = str(default_dir)
 
     options = QFileDialog.Option.DontUseNativeDialog | QFileDialog.Option.ReadOnly
 
@@ -157,6 +170,252 @@ def _label_from_param_path(path: str) -> str:
     if "Fit" not in base:
         base = f"{base} Fit"
     return f"{base} (calc)"
+
+
+@dataclass(frozen=True)
+class DocumentationEntry:
+    path: Path
+    title: str
+    text: str
+    lines: List[str]
+
+    @property
+    def display_name(self) -> str:
+        return self.title or self.path.stem.replace("_", " ").title()
+
+    @property
+    def relative_path(self) -> str:
+        try:
+            return str(self.path.relative_to(Path(__file__).resolve().parent))
+        except ValueError:
+            return str(self.path)
+
+
+def _iter_document_paths() -> List[Path]:
+    root = Path(__file__).resolve().parent
+    candidates: List[Path] = []
+    readme = root / "README.md"
+    if readme.exists():
+        candidates.append(readme)
+    docs_dir = root / "docs"
+    if docs_dir.exists():
+        candidates.extend(sorted(docs_dir.rglob("*.md")))
+    return candidates
+
+
+def _derive_title(path: Path, text: str) -> str:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            return stripped.lstrip("# ").strip()
+    return path.stem.replace("_", " ").title()
+
+
+def _load_documentation_entries() -> List[DocumentationEntry]:
+    entries: List[DocumentationEntry] = []
+    for path in _iter_document_paths():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        lines = text.splitlines()
+        title = _derive_title(path, text)
+        entries.append(DocumentationEntry(path=path, title=title, text=text, lines=lines))
+    return entries
+
+
+_DOCUMENTATION_ENTRIES: List[DocumentationEntry] = _load_documentation_entries()
+
+
+class DocumentationCenter(QDialog):
+    """A lightweight reader with full-text search across project documentation."""
+
+    def __init__(self, parent: Optional[QWidget] = None, *, initial_query: str = "") -> None:
+        super().__init__(parent)
+        self.setWindowTitle("SpectrumPY Flight Documentation Center")
+        self.resize(960, 640)
+        self.setModal(False)
+        self._documents = _DOCUMENTATION_ENTRIES
+        self._current_entry: Optional[DocumentationEntry] = None
+        self._current_query: str = ""
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        heading = QLabel("SpectrumPY Documentation & Tutorials", self)
+        heading.setObjectName("docHeading")
+        heading.setStyleSheet("font-size: 22px; font-weight: 600;")
+        layout.addWidget(heading)
+
+        description = QLabel(
+            "Search the bundled README and guides, or browse tutorials with a single click.",
+            self,
+        )
+        description.setStyleSheet("font-size: 14px; color: #4a5568;")
+        layout.addWidget(description)
+
+        search_row = QHBoxLayout()
+        search_row.setSpacing(10)
+
+        self.search_field = QLineEdit(self)
+        self.search_field.setPlaceholderText("Search documentation…")
+        self.search_field.setClearButtonEnabled(True)
+        self.search_field.setMinimumWidth(280)
+        self.search_field.returnPressed.connect(self.perform_search)
+        search_row.addWidget(self.search_field, stretch=1)
+
+        search_button = QPushButton("Search", self)
+        search_button.setMinimumHeight(32)
+        search_button.clicked.connect(self.perform_search)
+        search_row.addWidget(search_button)
+
+        show_all_button = QPushButton("Show All", self)
+        show_all_button.setMinimumHeight(32)
+        show_all_button.clicked.connect(self.show_all_documents)
+        search_row.addWidget(show_all_button)
+
+        layout.addLayout(search_row)
+
+        self.result_label = QLabel("Browse documentation", self)
+        self.result_label.setStyleSheet("font-size: 13px; color: #4a5568;")
+        layout.addWidget(self.result_label)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        splitter.setChildrenCollapsible(False)
+        layout.addWidget(splitter, stretch=1)
+
+        self.results = QListWidget(splitter)
+        self.results.setAlternatingRowColors(True)
+        self.results.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.results.setMinimumWidth(280)
+        self.results.itemSelectionChanged.connect(self._on_result_selected)
+        self.results.itemActivated.connect(self._on_result_activated)
+
+        self.viewer = QTextBrowser(splitter)
+        self.viewer.setOpenExternalLinks(True)
+        self.viewer.setStyleSheet("font-size: 14px; line-height: 1.5em; background: #fefefe; padding: 12px; border-radius: 12px;")
+
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+
+        self.show_all_documents()
+
+        if initial_query:
+            self.search_field.setText(initial_query)
+            self.perform_search()
+
+    # ------------------------------------------------------------------
+    def focus_search(self) -> None:
+        self.search_field.setFocus()
+        self.search_field.selectAll()
+
+    def set_query(self, value: str) -> None:
+        self.search_field.setText(value)
+        if value:
+            self.perform_search()
+        else:
+            self.show_all_documents()
+
+    def _entry_for_path(self, path_str: str) -> Optional[DocumentationEntry]:
+        path = Path(path_str).resolve()
+        for entry in self._documents:
+            if entry.path.resolve() == path:
+                return entry
+        return None
+
+    def show_all_documents(self) -> None:
+        self.results.clear()
+        self._current_query = ""
+        for entry in self._documents:
+            item = QListWidgetItem(f"{entry.display_name}")
+            item.setData(Qt.ItemDataRole.UserRole, (str(entry.path), 0, ""))
+            self.results.addItem(item)
+        self.result_label.setText("Browse documentation")
+        if self._documents:
+            self.results.setCurrentRow(0)
+
+    def perform_search(self) -> None:
+        query = self.search_field.text().strip()
+        self.results.clear()
+        if not query:
+            self.show_all_documents()
+            return
+
+        lowered = query.lower()
+        matches: List[Tuple[DocumentationEntry, int, str]] = []
+        for entry in self._documents:
+            for idx, line in enumerate(entry.lines, start=1):
+                if lowered in line.lower():
+                    snippet = textwrap.shorten(line.strip(), width=100, placeholder="…")
+                    matches.append((entry, idx, snippet))
+
+        if not matches:
+            item = QListWidgetItem("No matches found")
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.results.addItem(item)
+            self.result_label.setText(f"No results for '{query}'.")
+            self.viewer.setPlainText("")
+            return
+
+        self._current_query = query
+        for entry, line_no, snippet in matches:
+            display = f"{entry.display_name} — L{line_no}: {snippet}"
+            item = QListWidgetItem(display)
+            item.setData(Qt.ItemDataRole.UserRole, (str(entry.path), line_no, query))
+            self.results.addItem(item)
+        self.result_label.setText(f"{len(matches)} match(es) for '{query}'.")
+        self.results.setCurrentRow(0)
+
+    def _display_entry(self, entry: DocumentationEntry, *, line_no: int = 0, highlight: str = "") -> None:
+        self._current_entry = entry
+        header = f"{entry.display_name}\n{entry.relative_path}"
+        self.viewer.setPlainText(f"{header}\n\n{entry.text}")
+        if line_no > 0:
+            cursor = self.viewer.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.Start)
+            for _ in range(line_no + 2):
+                cursor.movePosition(QTextCursor.MoveOperation.Down)
+            self.viewer.setTextCursor(cursor)
+            self.viewer.ensureCursorVisible()
+        if highlight:
+            cursor = self.viewer.document().find(
+                highlight,
+                self.viewer.textCursor(),
+                QTextDocument.FindFlag.FindCaseSensitively,
+            )
+            if cursor.isNull():
+                cursor = self.viewer.document().find(
+                    highlight,
+                    0,
+                    QTextDocument.FindFlag.FindCaseSensitively,
+                )
+            if cursor.isNull():
+                cursor = self.viewer.document().find(highlight)
+            if not cursor.isNull():
+                self.viewer.setTextCursor(cursor)
+                self.viewer.ensureCursorVisible()
+
+    def _on_result_selected(self) -> None:
+        item = self.results.currentItem()
+        if item is None:
+            return
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        path_str, line_no, highlight = data
+        entry = self._entry_for_path(path_str)
+        if entry:
+            self._display_entry(entry, line_no=line_no, highlight=highlight)
+
+    def _on_result_activated(self, item: QListWidgetItem) -> None:
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        path_str, line_no, highlight = data
+        entry = self._entry_for_path(path_str)
+        if entry:
+            self._display_entry(entry, line_no=line_no, highlight=highlight)
 
 
 _MATH_TEXT_PARSER = mathtext.MathTextParser("agg")
@@ -783,8 +1042,11 @@ class MainWindow(QMainWindow):
         self._show_fit: Dict[str, bool] = {name: False for name in FIT_ELIGIBLE_CHANNELS}
         self.selected_channels = set(CHANNEL_ORDER)
         self._child_windows: List[QWidget] = []
+        self._documentation_center: Optional[DocumentationCenter] = None
 
         self._create_actions()
+
+        self._apply_modern_palette()
 
         central = QWidget(self)
         self.vbox = QVBoxLayout(central)
@@ -819,6 +1081,41 @@ class MainWindow(QMainWindow):
             self.event_combo.setCurrentIndex(eventnumber - 1)
 
     # ---- UI construction -------------------------------------------------
+    def _apply_modern_palette(self) -> None:
+        self.setStyleSheet(
+            """
+            QMainWindow {
+                background-color: #edf1fb;
+            }
+            QMenuBar {
+                background-color: #ffffff;
+                font-size: 14px;
+            }
+            QMenu {
+                font-size: 14px;
+                padding: 6px 10px;
+            }
+            QToolBar {
+                background-color: #ffffff;
+                padding: 6px;
+                border: none;
+            }
+            QStatusBar {
+                background-color: #f4f6fb;
+                font-size: 13px;
+            }
+            QListWidget {
+                font-size: 14px;
+            }
+            QTextBrowser {
+                font-size: 14px;
+            }
+            """
+        )
+        status = self.statusBar()
+        status.setStyleSheet("background-color: #f4f6fb; font-size: 13px; padding: 4px 8px;")
+        status.setContentsMargins(6, 0, 6, 0)
+
     def _create_actions(self):
         self.open_any_action = QAction("Open…", self)
         self.open_any_action.setShortcut("Ctrl+O")
@@ -861,6 +1158,19 @@ class MainWindow(QMainWindow):
         self.reset_fit_action = QAction("Reset Fit Overrides", self)
         self.reset_fit_action.triggered.connect(self.reset_all_overrides)
 
+        help_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DialogHelpButton)
+        self.help_action = QAction(help_icon, "Documentation Center", self)
+        self.help_action.setShortcut("F1")
+        self.help_action.setToolTip("Open the documentation center (F1)")
+        self.help_action.setStatusTip("Open the searchable documentation center")
+        self.help_action.setIconText("?")
+        self.help_action.triggered.connect(self.open_documentation_center)
+
+        self.search_docs_action = QAction("Search Documentation…", self)
+        self.search_docs_action.setShortcut("Ctrl+F1")
+        self.search_docs_action.setStatusTip("Jump straight to the documentation search panel")
+        self.search_docs_action.triggered.connect(lambda: self.open_documentation_center(show_search=True))
+
     def _build_menubar(self):
         menubar = self.menuBar()
         if menubar is None:
@@ -868,6 +1178,7 @@ class MainWindow(QMainWindow):
             self.setMenuBar(menubar)
 
         menubar.clear()
+        menubar.setStyleSheet("font-size: 14px; background-color: #ffffff; padding: 4px;")
 
         file_menu = menubar.addMenu("&File")
         file_menu.addAction(self.open_any_action)
@@ -894,10 +1205,29 @@ class MainWindow(QMainWindow):
         view_menu = menubar.addMenu("&View")
         view_menu.addAction(self.view_structure_action)
 
+        help_menu = menubar.addMenu("&Help")
+        help_menu.addAction(self.help_action)
+        help_menu.addAction(self.search_docs_action)
+        help_menu.addSeparator()
+
+        self.menu_search_field = QLineEdit(self)
+        self.menu_search_field.setPlaceholderText("Search documentation…")
+        self.menu_search_field.setClearButtonEnabled(True)
+        self.menu_search_field.returnPressed.connect(self._trigger_menu_search)
+
+        search_widget = QWidgetAction(self)
+        search_widget.setDefaultWidget(self.menu_search_field)
+        help_menu.addAction(search_widget)
+
+    def _trigger_menu_search(self) -> None:
+        query = self.menu_search_field.text().strip()
+        self.open_documentation_center(initial_query=query, show_search=True)
+
     def _build_toolbar(self):
         tb = QToolBar("Main", self)
         tb.setIconSize(QSize(22, 22))
         tb.setMovable(False)
+        tb.setStyleSheet("QToolBar { background-color: #ffffff; border: none; padding: 8px; spacing: 8px; }")
         self.addToolBar(tb)
 
         tb.addAction(self.open_any_action)
@@ -914,6 +1244,21 @@ class MainWindow(QMainWindow):
         export_menu.addAction(self.save_pdf_action)
         export_menu.addAction(self.save_svg_action)
         export_button.setMenu(export_menu)
+        export_button.setStyleSheet(
+            """
+            QToolButton {
+                font-size: 15px;
+                font-weight: 600;
+                padding: 6px 14px;
+                border-radius: 12px;
+                background-color: #4263eb;
+                color: #ffffff;
+            }
+            QToolButton:hover {
+                background-color: #3b5bdb;
+            }
+            """
+        )
         tb.addWidget(export_button)
 
         tb.addSeparator()
@@ -925,6 +1270,9 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
 
         tb.addAction(self.quit_action)
+        tb.addSeparator()
+
+        tb.addAction(self.help_action)
         tb.addSeparator()
         label = QLabel("Event:", self)
         label.setStyleSheet("font-size: 15px; font-weight: bold; padding-right: 6px;")
@@ -938,17 +1286,29 @@ class MainWindow(QMainWindow):
 
     def _build_controls(self):
         panel = QWidget(self)
+        panel.setObjectName("controlPanel")
+        panel.setStyleSheet(
+            """
+            QWidget#controlPanel {
+                background-color: #ffffff;
+                border-radius: 16px;
+                border: 1px solid #d6dfee;
+                padding: 16px;
+            }
+            """
+        )
         panel_layout = QVBoxLayout(panel)
         panel_layout.setContentsMargins(0, 0, 0, 0)
         panel_layout.setSpacing(8)
         panel_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         heading = QLabel("Display Controls", self)
-        heading.setStyleSheet("font-size: 18px; font-weight: bold;")
+        heading.setObjectName("controlHeading")
+        heading.setStyleSheet("font-size: 19px; font-weight: 600;")
         panel_layout.addWidget(heading)
 
         sub_label = QLabel("Choose which channels and overlays are shown:", self)
-        sub_label.setStyleSheet("font-size: 15px;")
+        sub_label.setStyleSheet("font-size: 15px; color: #4a5568;")
         panel_layout.addWidget(sub_label)
 
         channel_widget = QWidget(self)
@@ -957,12 +1317,48 @@ class MainWindow(QMainWindow):
         grid.setSpacing(10)
         self.channel_buttons: Dict[str, QPushButton] = {}
 
+        toggle_style = (
+            """
+            QPushButton {
+                font-size: 16px;
+                font-weight: 600;
+                padding: 10px 18px;
+                border-radius: 12px;
+                background-color: #e8f0ff;
+                border: 1px solid #c3d0ff;
+            }
+            QPushButton:hover {
+                background-color: #dbe4ff;
+            }
+            QPushButton:checked {
+                background-color: #4c6ef5;
+                color: #ffffff;
+                border: 1px solid #364fc7;
+            }
+            """
+        )
+        primary_style = (
+            """
+            QPushButton {
+                font-size: 16px;
+                font-weight: 600;
+                padding: 10px 18px;
+                border-radius: 12px;
+                background-color: #4263eb;
+                color: #ffffff;
+            }
+            QPushButton:hover {
+                background-color: #3b5bdb;
+            }
+            """
+        )
+
         for idx, name in enumerate(CHANNEL_ORDER):
             btn = QPushButton(name, self)
             btn.setCheckable(True)
             btn.setChecked(True)
             btn.setMinimumHeight(50)
-            btn.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px 18px;")
+            btn.setStyleSheet(toggle_style)
             btn.clicked.connect(lambda checked, channel=name: self.on_channel_toggled(channel, checked))
             self.channel_buttons[name] = btn
             grid.addWidget(btn, idx // 3, idx % 3)
@@ -975,7 +1371,7 @@ class MainWindow(QMainWindow):
         self.overlay_button = QPushButton("Overlay same time axis", self)
         self.overlay_button.setCheckable(True)
         self.overlay_button.setMinimumHeight(50)
-        self.overlay_button.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px 18px;")
+        self.overlay_button.setStyleSheet(toggle_style)
         self.overlay_button.setToolTip("When enabled, channels with the same time base are drawn together.")
         self.overlay_button.clicked.connect(self.on_overlay_toggled)
         toggle_row.addWidget(self.overlay_button)
@@ -985,7 +1381,7 @@ class MainWindow(QMainWindow):
             btn = QPushButton(f"Show {channel} Fit", self)
             btn.setCheckable(True)
             btn.setMinimumHeight(50)
-            btn.setStyleSheet("font-size: 16px; padding: 10px 18px;")
+            btn.setStyleSheet(toggle_style)
             btn.setToolTip("Overlay fit curves when available.")
             btn.clicked.connect(lambda checked, chan=channel: self.on_fit_toggled(chan, checked))
             toggle_row.addWidget(btn)
@@ -993,7 +1389,7 @@ class MainWindow(QMainWindow):
 
         self.edit_params_button = QPushButton("Edit Fit Parameters", self)
         self.edit_params_button.setMinimumHeight(50)
-        self.edit_params_button.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px 18px;")
+        self.edit_params_button.setStyleSheet(primary_style)
         self.edit_params_button.clicked.connect(self.open_fit_parameter_dialog)
         toggle_row.addWidget(self.edit_params_button)
 
@@ -1001,6 +1397,37 @@ class MainWindow(QMainWindow):
         panel_layout.addLayout(toggle_row)
 
         self.vbox.addWidget(panel)
+
+    def open_documentation_center(
+        self,
+        initial_query: Optional[str] = None,
+        *,
+        show_search: bool = False,
+    ) -> None:
+        query = initial_query or ""
+        if self._documentation_center is None:
+            self._documentation_center = DocumentationCenter(self, initial_query=query)
+            self._documentation_center.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
+            def _clear_reference(_object=None) -> None:
+                self._documentation_center = None
+
+            self._documentation_center.destroyed.connect(_clear_reference)
+        else:
+            if query:
+                self._documentation_center.set_query(query)
+            elif not self._documentation_center.isVisible():
+                self._documentation_center.set_query("")
+
+        if self._documentation_center is None:
+            return
+
+        self._documentation_center.show()
+        self._documentation_center.raise_()
+        self._documentation_center.activateWindow()
+
+        if show_search:
+            self._documentation_center.focus_search()
 
     # ---- Actions ---------------------------------------------------------
     def action_open(self, preferred: Optional[str] = None):
