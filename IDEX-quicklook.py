@@ -11,14 +11,32 @@ import os
 import sys
 import argparse
 import tempfile
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
-import h5py
+import textwrap
+
+try:
+    import h5py  # type: ignore
+except Exception:  # pragma: no cover - optional dependency for environments without h5py
+    h5py = None
+
 import numpy as np
 
 from HDF_View import launch_hdf_viewer
 from dust_composition import launch_dust_composition_window
+try:  # pragma: no cover - optional dependency, loaded lazily
+    from HDF_View import launch_hdf_viewer
+except Exception:  # pragma: no cover
+    launch_hdf_viewer = None
+
+try:  # pragma: no cover - optional dependency, loaded lazily
+    from CDF_View import launch_cdf_viewer
+except Exception:  # pragma: no cover
+    launch_cdf_viewer = None
 
 # Qt-backed Matplotlib so NavigationToolbar works
 import matplotlib
@@ -33,22 +51,24 @@ from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as Navigation
 _QT = None
 try:
     from PySide6.QtCore import Qt, QSize
-    from PySide6.QtGui import QAction, QFont, QPixmap, QImage
+    from PySide6.QtGui import QAction, QFont, QPixmap, QImage, QTextCursor, QTextDocument
     from PySide6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
         QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
-        QCheckBox, QDialogButtonBox
+        QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton, QTextBrowser,
+        QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter
     )
     _QT = "PySide6"
 except Exception:
     from PyQt6.QtCore import Qt, QSize
-    from PyQt6.QtGui import QAction, QFont, QPixmap, QImage
+    from PyQt6.QtGui import QAction, QFont, QPixmap, QImage, QTextCursor, QTextDocument
     from PyQt6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
         QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
-        QCheckBox, QDialogButtonBox
+        QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton, QTextBrowser,
+        QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter
     )
     _QT = "PyQt6"
 
@@ -65,29 +85,50 @@ matplotlib.rcParams.update({
 })
 
 # --------- Small utils ---------
-def non_native_open_dialog(parent: QWidget, start_dir: str | None = None) -> str | None:
+def prompt_for_data_file(
+    parent: QWidget,
+    start_dir: str | None = None,
+    *,
+    preferred: Optional[str] = None,
+) -> Optional[str]:
+    """Show a non-native file dialog that accepts HDF5 and CDF payloads."""
+
     if start_dir is None:
-        start_dir = os.path.join(os.getcwd(), "HDF5")
+        repo_root = Path(__file__).resolve().parent
+        preferred_map = {
+            "cdf": repo_root / "CDF",
+            "hdf5": repo_root / "HDF5",
+        }
+        if preferred and (target_dir := preferred_map.get(preferred.lower())) and target_dir.exists():
+            start_dir = str(target_dir)
+        else:
+            default_dir = repo_root / "HDF5"
+            if not default_dir.exists():
+                default_dir = repo_root
+            start_dir = str(default_dir)
+
     options = QFileDialog.Option.DontUseNativeDialog | QFileDialog.Option.ReadOnly
+
+    filters = [
+        "Data Files (*.h5 *.hdf5 *.cdf)",
+        "HDF5 Files (*.h5 *.hdf5)",
+        "CDF Files (*.cdf)",
+        "All files (*)",
+    ]
+
+    if preferred == "hdf5":
+        filters = [filters[1], filters[0], filters[2], filters[3]]
+    elif preferred == "cdf":
+        filters = [filters[2], filters[0], filters[1], filters[3]]
+
     filename, _ = QFileDialog.getOpenFileName(
-        parent, "Open HDF5", start_dir,
-        "HDF5 Files (*.h5 *.hdf5);;All files (*)", options=options
+        parent,
+        "Open Data File",
+        start_dir,
+        ";;".join(filters),
+        options=options,
     )
     return filename or None
-
-def list_event_groups(h5: h5py.File) -> list[str]:
-    ev = [k for k, v in h5.items() if isinstance(v, h5py.Group)]
-    try:
-        return sorted(ev, key=lambda s: int(str(s)))
-    except Exception:
-        return sorted(ev)
-
-def dset(h5: h5py.File, path: str):
-    try:
-        obj = h5[path]
-        return obj[()] if isinstance(obj, h5py.Dataset) else None
-    except Exception:
-        return None
 
 def _normalize_name(value: str) -> str:
     return "".join(ch.lower() for ch in value if ch.isalnum())
@@ -133,7 +174,253 @@ def _label_from_param_path(path: str) -> str:
     return f"{base} (calc)"
 
 
-_MATH_TEXT_PARSER = mathtext.MathTextParser("Macosx")
+@dataclass(frozen=True)
+class DocumentationEntry:
+    path: Path
+    title: str
+    text: str
+    lines: List[str]
+
+    @property
+    def display_name(self) -> str:
+        return self.title or self.path.stem.replace("_", " ").title()
+
+    @property
+    def relative_path(self) -> str:
+        try:
+            return str(self.path.relative_to(Path(__file__).resolve().parent))
+        except ValueError:
+            return str(self.path)
+
+
+def _iter_document_paths() -> List[Path]:
+    root = Path(__file__).resolve().parent
+    candidates: List[Path] = []
+    readme = root / "README.md"
+    if readme.exists():
+        candidates.append(readme)
+    docs_dir = root / "docs"
+    if docs_dir.exists():
+        candidates.extend(sorted(docs_dir.rglob("*.md")))
+    return candidates
+
+
+def _derive_title(path: Path, text: str) -> str:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            return stripped.lstrip("# ").strip()
+    return path.stem.replace("_", " ").title()
+
+
+def _load_documentation_entries() -> List[DocumentationEntry]:
+    entries: List[DocumentationEntry] = []
+    for path in _iter_document_paths():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        lines = text.splitlines()
+        title = _derive_title(path, text)
+        entries.append(DocumentationEntry(path=path, title=title, text=text, lines=lines))
+    return entries
+
+
+_DOCUMENTATION_ENTRIES: List[DocumentationEntry] = _load_documentation_entries()
+
+
+class DocumentationCenter(QDialog):
+    """A lightweight reader with full-text search across project documentation."""
+
+    def __init__(self, parent: Optional[QWidget] = None, *, initial_query: str = "") -> None:
+        super().__init__(parent)
+        self.setWindowTitle("SpectrumPY Flight Documentation Center")
+        self.resize(960, 640)
+        self.setModal(False)
+        self._documents = _DOCUMENTATION_ENTRIES
+        self._current_entry: Optional[DocumentationEntry] = None
+        self._current_query: str = ""
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        heading = QLabel("SpectrumPY Documentation & Tutorials", self)
+        heading.setObjectName("docHeading")
+        heading.setStyleSheet("font-size: 22px; font-weight: 600;")
+        layout.addWidget(heading)
+
+        description = QLabel(
+            "Search the bundled README and guides, or browse tutorials with a single click.",
+            self,
+        )
+        description.setStyleSheet("font-size: 14px; color: #4a5568;")
+        layout.addWidget(description)
+
+        search_row = QHBoxLayout()
+        search_row.setSpacing(10)
+
+        self.search_field = QLineEdit(self)
+        self.search_field.setPlaceholderText("Search documentation…")
+        self.search_field.setClearButtonEnabled(True)
+        self.search_field.setMinimumWidth(280)
+        self.search_field.returnPressed.connect(self.perform_search)
+        search_row.addWidget(self.search_field, stretch=1)
+
+        search_button = QPushButton("Search", self)
+        search_button.setMinimumHeight(32)
+        search_button.clicked.connect(self.perform_search)
+        search_row.addWidget(search_button)
+
+        show_all_button = QPushButton("Show All", self)
+        show_all_button.setMinimumHeight(32)
+        show_all_button.clicked.connect(self.show_all_documents)
+        search_row.addWidget(show_all_button)
+
+        layout.addLayout(search_row)
+
+        self.result_label = QLabel("Browse documentation", self)
+        self.result_label.setStyleSheet("font-size: 13px; color: #4a5568;")
+        layout.addWidget(self.result_label)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        splitter.setChildrenCollapsible(False)
+        layout.addWidget(splitter, stretch=1)
+
+        self.results = QListWidget(splitter)
+        self.results.setAlternatingRowColors(True)
+        self.results.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.results.setMinimumWidth(280)
+        self.results.itemSelectionChanged.connect(self._on_result_selected)
+        self.results.itemActivated.connect(self._on_result_activated)
+
+        self.viewer = QTextBrowser(splitter)
+        self.viewer.setOpenExternalLinks(True)
+        self.viewer.setStyleSheet("font-size: 14px; line-height: 1.5em; background: #fefefe; padding: 12px; border-radius: 12px;")
+
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+
+        self.show_all_documents()
+
+        if initial_query:
+            self.search_field.setText(initial_query)
+            self.perform_search()
+
+    # ------------------------------------------------------------------
+    def focus_search(self) -> None:
+        self.search_field.setFocus()
+        self.search_field.selectAll()
+
+    def set_query(self, value: str) -> None:
+        self.search_field.setText(value)
+        if value:
+            self.perform_search()
+        else:
+            self.show_all_documents()
+
+    def _entry_for_path(self, path_str: str) -> Optional[DocumentationEntry]:
+        path = Path(path_str).resolve()
+        for entry in self._documents:
+            if entry.path.resolve() == path:
+                return entry
+        return None
+
+    def show_all_documents(self) -> None:
+        self.results.clear()
+        self._current_query = ""
+        for entry in self._documents:
+            item = QListWidgetItem(f"{entry.display_name}")
+            item.setData(Qt.ItemDataRole.UserRole, (str(entry.path), 0, ""))
+            self.results.addItem(item)
+        self.result_label.setText("Browse documentation")
+        if self._documents:
+            self.results.setCurrentRow(0)
+
+    def perform_search(self) -> None:
+        query = self.search_field.text().strip()
+        self.results.clear()
+        if not query:
+            self.show_all_documents()
+            return
+
+        lowered = query.lower()
+        matches: List[Tuple[DocumentationEntry, int, str]] = []
+        for entry in self._documents:
+            for idx, line in enumerate(entry.lines, start=1):
+                if lowered in line.lower():
+                    snippet = textwrap.shorten(line.strip(), width=100, placeholder="…")
+                    matches.append((entry, idx, snippet))
+
+        if not matches:
+            item = QListWidgetItem("No matches found")
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.results.addItem(item)
+            self.result_label.setText(f"No results for '{query}'.")
+            self.viewer.setPlainText("")
+            return
+
+        self._current_query = query
+        for entry, line_no, snippet in matches:
+            display = f"{entry.display_name} — L{line_no}: {snippet}"
+            item = QListWidgetItem(display)
+            item.setData(Qt.ItemDataRole.UserRole, (str(entry.path), line_no, query))
+            self.results.addItem(item)
+        self.result_label.setText(f"{len(matches)} match(es) for '{query}'.")
+        self.results.setCurrentRow(0)
+
+    def _display_entry(self, entry: DocumentationEntry, *, line_no: int = 0, highlight: str = "") -> None:
+        self._current_entry = entry
+        header = f"{entry.display_name}\n{entry.relative_path}"
+        self.viewer.setPlainText(f"{header}\n\n{entry.text}")
+        if line_no > 0:
+            cursor = self.viewer.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.Start)
+            for _ in range(line_no + 2):
+                cursor.movePosition(QTextCursor.MoveOperation.Down)
+            self.viewer.setTextCursor(cursor)
+            self.viewer.ensureCursorVisible()
+        if highlight:
+            cursor = self.viewer.document().find(
+                highlight,
+                self.viewer.textCursor(),
+                QTextDocument.FindFlag.FindCaseSensitively,
+            )
+            if cursor.isNull():
+                cursor = self.viewer.document().find(
+                    highlight,
+                    0,
+                    QTextDocument.FindFlag.FindCaseSensitively,
+                )
+            if cursor.isNull():
+                cursor = self.viewer.document().find(highlight)
+            if not cursor.isNull():
+                self.viewer.setTextCursor(cursor)
+                self.viewer.ensureCursorVisible()
+
+    def _on_result_selected(self) -> None:
+        item = self.results.currentItem()
+        if item is None:
+            return
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        path_str, line_no, highlight = data
+        entry = self._entry_for_path(path_str)
+        if entry:
+            self._display_entry(entry, line_no=line_no, highlight=highlight)
+
+    def _on_result_activated(self, item: QListWidgetItem) -> None:
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        path_str, line_no, highlight = data
+        entry = self._entry_for_path(path_str)
+        if entry:
+            self._display_entry(entry, line_no=line_no, highlight=highlight)
+
+
+_MATH_TEXT_PARSER = mathtext.MathTextParser("agg")
 _LATEX_CACHE: Dict[str, Optional[QPixmap]] = {}
 
 
@@ -451,6 +738,286 @@ class FitData:
             yield path, np.asarray(values)
 
 
+class BaseDataSource(ABC):
+    """Abstract data provider used by the quicklook controller."""
+
+    def __init__(self, filename: str):
+        self.filename = filename
+
+    # ------------------------------------------------------------------
+    # Lifecycle helpers
+    # ------------------------------------------------------------------
+    def close(self) -> None:
+        """Close any open resources (default: no-op)."""
+
+    # ------------------------------------------------------------------
+    # Introspection
+    # ------------------------------------------------------------------
+    @abstractmethod
+    def list_events(self) -> List[str]:
+        """Return the ordered list of events contained in the file."""
+
+    @abstractmethod
+    def get_dataset(self, event: str, dataset_name: str) -> Optional[np.ndarray]:
+        """Return the dataset for ``/{event}/{dataset_name}`` or ``None``."""
+
+    @abstractmethod
+    def gather_fit_data(self, event: str, channel: str) -> FitData:
+        """Collect fit products for ``channel`` within ``event``."""
+
+    def describe(self) -> str:
+        return os.path.basename(self.filename)
+
+    def supports_structure_viewer(self) -> bool:
+        return False
+
+    def launch_structure_viewer(self, parent: QWidget | None = None) -> QWidget:
+        raise NotImplementedError("Structure viewer not implemented for this source")
+
+
+class HDF5DataSource(BaseDataSource):
+    """Adapter that exposes an HDF5 file via the quicklook datasource API."""
+
+    def __init__(self, filename: str):
+        if h5py is None:  # pragma: no cover - handled in runtime environment
+            raise ImportError("h5py is required to open HDF5 files but is not installed.")
+        super().__init__(filename)
+        self._file = h5py.File(filename, "r")
+
+    def close(self) -> None:
+        try:
+            self._file.close()
+        except Exception:
+            pass
+
+    def list_events(self) -> List[str]:
+        events: List[str] = []
+        for key, value in self._file.items():
+            if isinstance(value, h5py.Group):
+                events.append(str(key))
+        try:
+            return sorted(events, key=lambda token: int(str(token)))
+        except Exception:
+            return sorted(events)
+
+    def get_dataset(self, event: str, dataset_name: str) -> Optional[np.ndarray]:
+        path = f"/{event}/{dataset_name}"
+        try:
+            obj = self._file[path]
+        except Exception:
+            return None
+        if isinstance(obj, h5py.Dataset):
+            try:
+                return np.array(obj[()], copy=True)
+            except Exception:
+                return None
+        return None
+
+    def gather_fit_data(self, event: str, channel: str) -> FitData:
+        data = FitData()
+        group = self._file.get(event)
+        if not isinstance(group, h5py.Group):
+            return data
+
+        base_norm = _normalize_name(channel)
+
+        def visitor(name: str, obj):
+            if not isinstance(obj, h5py.Dataset):
+                return
+            dataset_name = name.split("/")[-1]
+            norm = _normalize_name(dataset_name)
+            if "fit" not in norm or base_norm not in norm:
+                return
+            try:
+                arr = np.array(obj[()], copy=True)
+            except Exception:
+                return
+            full_path = f"{group.name}/{name}"
+            if "time" in norm:
+                data.time_series[full_path] = arr
+            elif "result" in norm or "curve" in norm:
+                data.value_series[full_path] = arr
+            elif "param" in norm:
+                data.parameter_series[full_path] = arr
+            else:
+                data.extras[full_path] = arr
+
+        group.visititems(visitor)
+        return data
+
+    def supports_structure_viewer(self) -> bool:
+        return True
+
+    def launch_structure_viewer(self, parent: QWidget | None = None) -> QWidget:
+        if launch_hdf_viewer is None:
+            raise RuntimeError("HDF viewer is unavailable in this environment.")
+        return launch_hdf_viewer(self.filename, parent=parent)
+
+
+class CDFDataSource(BaseDataSource):
+    """Adapter around ``cdflib`` to serve CDF content to the viewer."""
+
+    #: Mapping from quicklook dataset names to CDF variable identifiers.
+    DATASET_MAP: Dict[str, str] = {
+        "Time (high sampling)": "time_high_sample_rate",
+        "Time (low sampling)": "time_low_sample_rate",
+        "TOF L": "tof_low",
+        "TOF M": "tof_mid",
+        "TOF H": "tof_high",
+        "Ion Grid": "ion_grid",
+        "Target L": "target_low",
+        "Target H": "target_high",
+    }
+
+    #: Fit metadata required for quicklook overlays.
+    FIT_VARIABLES: Dict[str, Dict[str, str]] = {
+        "Ion Grid": {
+            "result": "ion_grid_fit_results",
+            "params": "ion_grid_fit_parameters",
+        },
+        "Target L": {
+            "result": "target_low_fit_results",
+            "params": "target_low_fit_parameters",
+        },
+        "Target H": {
+            "result": "target_high_fit_results",
+            "params": "target_high_fit_parameters",
+        },
+        "TOF H": {
+            "params": "tof_peak_fit_parameters",
+        },
+    }
+
+    def __init__(self, filename: str):
+        try:
+            import cdflib  # type: ignore
+        except Exception as exc:  # pragma: no cover - dependency not installed
+            raise ImportError(
+                "cdflib is required to open CDF files but is not installed."
+            ) from exc
+
+        super().__init__(filename)
+        self._cdflib = cdflib
+        self._cdf = cdflib.CDF(filename)
+        self._cache: Dict[str, np.ndarray] = {}
+        self._event_count = self._resolve_event_count()
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+    def close(self) -> None:
+        try:
+            self._cdf.close()
+        except Exception:
+            pass
+
+    def _resolve_event_count(self) -> int:
+        try:
+            epoch = self._cdf.varget("epoch")
+            return int(np.asarray(epoch).shape[0])
+        except Exception:
+            # Fallback: inspect a known waveform variable.
+            for varname in ("tof_low", "tof_mid", "ion_grid"):
+                try:
+                    candidate = self._cdf.varget(varname)
+                    return int(np.asarray(candidate).shape[0])
+                except Exception:
+                    continue
+        return 0
+
+    def _event_index(self, event: str) -> int:
+        try:
+            return max(0, int(str(event)) - 1)
+        except Exception:
+            return 0
+
+    @lru_cache(maxsize=None)
+    def _cached_variable(self, varname: str) -> np.ndarray:
+        try:
+            return np.asarray(self._cdf.varget(varname))
+        except Exception:
+            return np.asarray([])
+
+    def list_events(self) -> List[str]:
+        return [str(idx + 1) for idx in range(self._event_count)]
+
+    def get_dataset(self, event: str, dataset_name: str) -> Optional[np.ndarray]:
+        varname = self.DATASET_MAP.get(dataset_name)
+        if not varname:
+            return None
+        data = self._cached_variable(varname)
+        if data.size == 0:
+            return None
+        index = self._event_index(event)
+        if index >= data.shape[0]:
+            return None
+        try:
+            slice_data = data[index]
+        except Exception:
+            return None
+        return np.array(slice_data, copy=True)
+
+    def gather_fit_data(self, event: str, channel: str) -> FitData:
+        data = FitData()
+        mapping = self.FIT_VARIABLES.get(channel)
+        if not mapping:
+            return data
+
+        index = self._event_index(event)
+        event_prefix = f"/{event}/Analysis"
+
+        # Time bases reuse the shared sampling axes.
+        if channel in ("Ion Grid", "Target L", "Target H"):
+            time_name = "Time (low sampling)"
+        else:
+            time_name = "Time (high sampling)"
+
+        base_time = self.get_dataset(event, time_name)
+        if base_time is not None:
+            time_key = f"{event_prefix}/{channel} Fit Time"
+            data.time_series[time_key] = np.array(base_time, copy=True)
+
+        result_var = mapping.get("result")
+        if result_var:
+            result_data = self._cached_variable(result_var)
+            if result_data.size and index < result_data.shape[0]:
+                result_key = f"{event_prefix}/{channel} Fit Result"
+                data.value_series[result_key] = np.array(result_data[index], copy=True)
+
+        params_var = mapping.get("params")
+        if params_var:
+            params_data = self._cached_variable(params_var)
+            if params_data.size and index < params_data.shape[0]:
+                params_key = f"{event_prefix}/{channel} Fit Parameters"
+                data.parameter_series[params_key] = np.array(params_data[index], copy=True)
+
+        return data
+
+    def supports_structure_viewer(self) -> bool:
+        return launch_cdf_viewer is not None
+
+    def launch_structure_viewer(self, parent: QWidget | None = None) -> QWidget:
+        if launch_cdf_viewer is None:
+            raise RuntimeError("CDF viewer is not available. Install optional GUI components.")
+        return launch_cdf_viewer(self.filename, parent=parent)
+
+
+def create_data_source(filename: str) -> BaseDataSource:
+    """Instantiate the appropriate data source for ``filename``."""
+
+    suffix = Path(filename).suffix.lower()
+    if suffix in {".h5", ".hdf5"}:
+        return HDF5DataSource(filename)
+    if suffix == ".cdf":
+        return CDFDataSource(filename)
+
+    # Fallback: attempt HDF5 first, then CDF.
+    try:
+        return HDF5DataSource(filename)
+    except Exception:
+        return CDFDataSource(filename)
+
+
 def y_label_with_units(channel_name: str) -> str:
     if channel_name.startswith("TOF"):
         return rf"{channel_name} [pC/$\Delta t$]"
@@ -464,7 +1031,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1250, 820)
         self.setStatusBar(QStatusBar(self))
 
-        self._h5: Optional[h5py.File] = None
+        self._data_source: Optional[BaseDataSource] = None
         self._events: List[str] = []
         self._current_event: Optional[str] = None
         self._filename: Optional[str] = None
@@ -477,6 +1044,11 @@ class MainWindow(QMainWindow):
         self._show_fit: Dict[str, bool] = {name: False for name in FIT_ELIGIBLE_CHANNELS}
         self.selected_channels = set(CHANNEL_ORDER)
         self._child_windows: List[QWidget] = []
+        self._documentation_center: Optional[DocumentationCenter] = None
+
+        self._create_actions()
+
+        self._apply_modern_palette()
 
         central = QWidget(self)
         self.vbox = QVBoxLayout(central)
@@ -484,6 +1056,7 @@ class MainWindow(QMainWindow):
         self.vbox.setSpacing(12)
         self.setCentralWidget(central)
 
+        self._build_menubar()
         self._build_toolbar()
         self._build_controls()
 
@@ -495,12 +1068,12 @@ class MainWindow(QMainWindow):
         self.vbox.addWidget(self.nav_toolbar)
         self.vbox.addWidget(self.canvas)
 
-        self.statusBar().showMessage("Select an HDF5 file to get started.")
+        self.statusBar().showMessage("Select a data file (HDF5 or CDF) to get started.")
 
         if filename:
             self.open_file(filename)
         else:
-            chosen = non_native_open_dialog(self)
+            chosen = prompt_for_data_file(self)
             if not chosen:
                 self.close()
                 return
@@ -510,22 +1083,187 @@ class MainWindow(QMainWindow):
             self.event_combo.setCurrentIndex(eventnumber - 1)
 
     # ---- UI construction -------------------------------------------------
+    def _apply_modern_palette(self) -> None:
+        self.setStyleSheet(
+            """
+            QMainWindow {
+                background-color: #edf1fb;
+            }
+            QMenuBar {
+                background-color: #ffffff;
+                font-size: 14px;
+            }
+            QMenu {
+                font-size: 14px;
+                padding: 6px 10px;
+            }
+            QToolBar {
+                background-color: #ffffff;
+                padding: 6px;
+                border: none;
+            }
+            QStatusBar {
+                background-color: #f4f6fb;
+                font-size: 13px;
+            }
+            QListWidget {
+                font-size: 14px;
+            }
+            QTextBrowser {
+                font-size: 14px;
+            }
+            """
+        )
+        status = self.statusBar()
+        status.setStyleSheet("background-color: #f4f6fb; font-size: 13px; padding: 4px 8px;")
+        status.setContentsMargins(6, 0, 6, 0)
+
+    def _create_actions(self):
+        self.open_any_action = QAction("Open…", self)
+        self.open_any_action.setShortcut("Ctrl+O")
+        self.open_any_action.triggered.connect(self.action_open)
+
+        self.open_hdf5_action = QAction("Open HDF5…", self)
+        self.open_hdf5_action.triggered.connect(lambda: self.action_open(preferred="hdf5"))
+
+        self.open_cdf_action = QAction("Open CDF…", self)
+        self.open_cdf_action.triggered.connect(lambda: self.action_open(preferred="cdf"))
+
+        self.view_structure_action = QAction("Open Data Browser", self)
+        self.view_structure_action.setShortcut("Ctrl+B")
+        self.view_structure_action.triggered.connect(self.action_view_structure)
+
+        self.reload_action = QAction("Reload", self)
+        self.reload_action.setShortcut("Ctrl+R")
+        self.reload_action.triggered.connect(self.reload_current)
+
+        self.close_file_action = QAction("Close File", self)
+        self.close_file_action.triggered.connect(self.close_current_file)
+
+        self.quit_action = QAction("Quit", self)
+        self.quit_action.setShortcut("Ctrl+Q")
+        self.quit_action.triggered.connect(self.close)
+
+        self.save_png_action = QAction("Save Plot as PNG…", self)
+        self.save_png_action.triggered.connect(lambda: self.save_plot("png"))
+
+        self.save_pdf_action = QAction("Save Plot as PDF…", self)
+        self.save_pdf_action.triggered.connect(lambda: self.save_plot("pdf"))
+
+        self.save_svg_action = QAction("Save Plot as SVG…", self)
+        self.save_svg_action.triggered.connect(lambda: self.save_plot("svg"))
+
+        self.edit_fit_action = QAction("Edit Fit Parameters", self)
+        self.edit_fit_action.setShortcut("Ctrl+E")
+        self.edit_fit_action.triggered.connect(self.open_fit_parameter_dialog)
+
+        self.reset_fit_action = QAction("Reset Fit Overrides", self)
+        self.reset_fit_action.triggered.connect(self.reset_all_overrides)
+
+        help_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DialogHelpButton)
+        self.help_action = QAction(help_icon, "Documentation Center", self)
+        self.help_action.setShortcut("F1")
+        self.help_action.setToolTip("Open the documentation center (F1)")
+        self.help_action.setStatusTip("Open the searchable documentation center")
+        self.help_action.setIconText("?")
+        self.help_action.triggered.connect(self.open_documentation_center)
+
+        self.search_docs_action = QAction("Search Documentation…", self)
+        self.search_docs_action.setShortcut("Ctrl+F1")
+        self.search_docs_action.setStatusTip("Jump straight to the documentation search panel")
+        self.search_docs_action.triggered.connect(lambda: self.open_documentation_center(show_search=True))
+
+    def _build_menubar(self):
+        menubar = self.menuBar()
+        if menubar is None:
+            menubar = QMenuBar(self)
+            self.setMenuBar(menubar)
+
+        menubar.clear()
+        menubar.setStyleSheet("font-size: 14px; background-color: #ffffff; padding: 4px;")
+
+        file_menu = menubar.addMenu("&File")
+        file_menu.addAction(self.open_any_action)
+        file_menu.addAction(self.open_hdf5_action)
+        file_menu.addAction(self.open_cdf_action)
+        file_menu.addSeparator()
+
+        save_menu = QMenu("Export Plot", self)
+        save_menu.addAction(self.save_png_action)
+        save_menu.addAction(self.save_pdf_action)
+        save_menu.addAction(self.save_svg_action)
+        file_menu.addMenu(save_menu)
+
+        file_menu.addSeparator()
+        file_menu.addAction(self.reload_action)
+        file_menu.addAction(self.close_file_action)
+        file_menu.addSeparator()
+        file_menu.addAction(self.quit_action)
+
+        edit_menu = menubar.addMenu("&Edit")
+        edit_menu.addAction(self.edit_fit_action)
+        edit_menu.addAction(self.reset_fit_action)
+
+        view_menu = menubar.addMenu("&View")
+        view_menu.addAction(self.view_structure_action)
+
+        help_menu = menubar.addMenu("&Help")
+        help_menu.addAction(self.help_action)
+        help_menu.addAction(self.search_docs_action)
+        help_menu.addSeparator()
+
+        self.menu_search_field = QLineEdit(self)
+        self.menu_search_field.setPlaceholderText("Search documentation…")
+        self.menu_search_field.setClearButtonEnabled(True)
+        self.menu_search_field.returnPressed.connect(self._trigger_menu_search)
+
+        search_widget = QWidgetAction(self)
+        search_widget.setDefaultWidget(self.menu_search_field)
+        help_menu.addAction(search_widget)
+
+    def _trigger_menu_search(self) -> None:
+        query = self.menu_search_field.text().strip()
+        self.open_documentation_center(initial_query=query, show_search=True)
+
     def _build_toolbar(self):
         tb = QToolBar("Main", self)
         tb.setIconSize(QSize(22, 22))
         tb.setMovable(False)
+        tb.setStyleSheet("QToolBar { background-color: #ffffff; border: none; padding: 8px; spacing: 8px; }")
         self.addToolBar(tb)
 
-        act_open = QAction("Open HDF5…", self)
-        act_open.setShortcut("Ctrl+O")
-        act_open.triggered.connect(self.action_open)
-        tb.addAction(act_open)
+        tb.addAction(self.open_any_action)
+        tb.addAction(self.open_hdf5_action)
+        tb.addAction(self.open_cdf_action)
+        tb.addSeparator()
+        tb.addAction(self.reload_action)
 
-        act_view = QAction("View HDF Contents", self)
-        act_view.setShortcut("Ctrl+Shift+H")
-        act_view.setToolTip("Inspect the currently loaded HDF5 file in a tree viewer.")
-        act_view.triggered.connect(self.action_view_hdf_contents)
-        tb.addAction(act_view)
+        export_button = QToolButton(self)
+        export_button.setText("Export Plot")
+        export_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        export_menu = QMenu(export_button)
+        export_menu.addAction(self.save_png_action)
+        export_menu.addAction(self.save_pdf_action)
+        export_menu.addAction(self.save_svg_action)
+        export_button.setMenu(export_menu)
+        export_button.setStyleSheet(
+            """
+            QToolButton {
+                font-size: 15px;
+                font-weight: 600;
+                padding: 6px 14px;
+                border-radius: 12px;
+                background-color: #4263eb;
+                color: #ffffff;
+            }
+            QToolButton:hover {
+                background-color: #3b5bdb;
+            }
+            """
+        )
+        tb.addWidget(export_button)
+
+        tb.addSeparator()
 
         act_dust = QAction("Dust Composition…", self)
         act_dust.setShortcut("Ctrl+D")
@@ -537,14 +1275,16 @@ class MainWindow(QMainWindow):
         act_reload.setShortcut("Ctrl+R")
         act_reload.triggered.connect(self.reload_current)
         tb.addAction(act_reload)
-
+        tb.addAction(self.view_structure_action)
         tb.addSeparator()
 
-        act_quit = QAction("Quit", self)
-        act_quit.setShortcut("Ctrl+Q")
-        act_quit.triggered.connect(self.close)
-        tb.addAction(act_quit)
+        tb.addAction(self.close_file_action)
+        tb.addSeparator()
 
+        tb.addAction(self.quit_action)
+        tb.addSeparator()
+
+        tb.addAction(self.help_action)
         tb.addSeparator()
         label = QLabel("Event:", self)
         label.setStyleSheet("font-size: 15px; font-weight: bold; padding-right: 6px;")
@@ -558,17 +1298,29 @@ class MainWindow(QMainWindow):
 
     def _build_controls(self):
         panel = QWidget(self)
+        panel.setObjectName("controlPanel")
+        panel.setStyleSheet(
+            """
+            QWidget#controlPanel {
+                background-color: #ffffff;
+                border-radius: 16px;
+                border: 1px solid #d6dfee;
+                padding: 16px;
+            }
+            """
+        )
         panel_layout = QVBoxLayout(panel)
         panel_layout.setContentsMargins(0, 0, 0, 0)
         panel_layout.setSpacing(8)
         panel_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         heading = QLabel("Display Controls", self)
-        heading.setStyleSheet("font-size: 18px; font-weight: bold;")
+        heading.setObjectName("controlHeading")
+        heading.setStyleSheet("font-size: 19px; font-weight: 600;")
         panel_layout.addWidget(heading)
 
         sub_label = QLabel("Choose which channels and overlays are shown:", self)
-        sub_label.setStyleSheet("font-size: 15px;")
+        sub_label.setStyleSheet("font-size: 15px; color: #4a5568;")
         panel_layout.addWidget(sub_label)
 
         channel_widget = QWidget(self)
@@ -577,12 +1329,48 @@ class MainWindow(QMainWindow):
         grid.setSpacing(10)
         self.channel_buttons: Dict[str, QPushButton] = {}
 
+        toggle_style = (
+            """
+            QPushButton {
+                font-size: 16px;
+                font-weight: 600;
+                padding: 10px 18px;
+                border-radius: 12px;
+                background-color: #e8f0ff;
+                border: 1px solid #c3d0ff;
+            }
+            QPushButton:hover {
+                background-color: #dbe4ff;
+            }
+            QPushButton:checked {
+                background-color: #4c6ef5;
+                color: #ffffff;
+                border: 1px solid #364fc7;
+            }
+            """
+        )
+        primary_style = (
+            """
+            QPushButton {
+                font-size: 16px;
+                font-weight: 600;
+                padding: 10px 18px;
+                border-radius: 12px;
+                background-color: #4263eb;
+                color: #ffffff;
+            }
+            QPushButton:hover {
+                background-color: #3b5bdb;
+            }
+            """
+        )
+
         for idx, name in enumerate(CHANNEL_ORDER):
             btn = QPushButton(name, self)
             btn.setCheckable(True)
             btn.setChecked(True)
             btn.setMinimumHeight(50)
-            btn.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px 18px;")
+            btn.setStyleSheet(toggle_style)
             btn.clicked.connect(lambda checked, channel=name: self.on_channel_toggled(channel, checked))
             self.channel_buttons[name] = btn
             grid.addWidget(btn, idx // 3, idx % 3)
@@ -595,7 +1383,7 @@ class MainWindow(QMainWindow):
         self.overlay_button = QPushButton("Overlay same time axis", self)
         self.overlay_button.setCheckable(True)
         self.overlay_button.setMinimumHeight(50)
-        self.overlay_button.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px 18px;")
+        self.overlay_button.setStyleSheet(toggle_style)
         self.overlay_button.setToolTip("When enabled, channels with the same time base are drawn together.")
         self.overlay_button.clicked.connect(self.on_overlay_toggled)
         toggle_row.addWidget(self.overlay_button)
@@ -605,7 +1393,7 @@ class MainWindow(QMainWindow):
             btn = QPushButton(f"Show {channel} Fit", self)
             btn.setCheckable(True)
             btn.setMinimumHeight(50)
-            btn.setStyleSheet("font-size: 16px; padding: 10px 18px;")
+            btn.setStyleSheet(toggle_style)
             btn.setToolTip("Overlay fit curves when available.")
             btn.clicked.connect(lambda checked, chan=channel: self.on_fit_toggled(chan, checked))
             toggle_row.addWidget(btn)
@@ -613,7 +1401,7 @@ class MainWindow(QMainWindow):
 
         self.edit_params_button = QPushButton("Edit Fit Parameters", self)
         self.edit_params_button.setMinimumHeight(50)
-        self.edit_params_button.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px 18px;")
+        self.edit_params_button.setStyleSheet(primary_style)
         self.edit_params_button.clicked.connect(self.open_fit_parameter_dialog)
         toggle_row.addWidget(self.edit_params_button)
 
@@ -622,28 +1410,67 @@ class MainWindow(QMainWindow):
 
         self.vbox.addWidget(panel)
 
+    def open_documentation_center(
+        self,
+        initial_query: Optional[str] = None,
+        *,
+        show_search: bool = False,
+    ) -> None:
+        query = initial_query or ""
+        if self._documentation_center is None:
+            self._documentation_center = DocumentationCenter(self, initial_query=query)
+            self._documentation_center.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
+            def _clear_reference(_object=None) -> None:
+                self._documentation_center = None
+
+            self._documentation_center.destroyed.connect(_clear_reference)
+        else:
+            if query:
+                self._documentation_center.set_query(query)
+            elif not self._documentation_center.isVisible():
+                self._documentation_center.set_query("")
+
+        if self._documentation_center is None:
+            return
+
+        self._documentation_center.show()
+        self._documentation_center.raise_()
+        self._documentation_center.activateWindow()
+
+        if show_search:
+            self._documentation_center.focus_search()
+
     # ---- Actions ---------------------------------------------------------
-    def action_open(self):
-        chosen = non_native_open_dialog(self)
+    def action_open(self, preferred: Optional[str] = None):
+        chosen = prompt_for_data_file(self, preferred=preferred)
         if chosen:
             self.open_file(chosen)
 
-    def action_view_hdf_contents(self):
-        if not self._filename:
+    def action_view_structure(self):
+        if not self._filename or not self._data_source:
             QMessageBox.information(
                 self,
                 "No File Loaded",
-                "Open an HDF5 file to browse its contents.",
+                "Open a data file to browse its structure.",
+            )
+            return
+
+        if not self._data_source.supports_structure_viewer():
+            QMessageBox.information(
+                self,
+                "Viewer Unavailable",
+                "A structure viewer is not available for this data source.",
             )
             return
 
         try:
-            viewer = launch_hdf_viewer(self._filename, parent=self)
+            viewer = self._data_source.launch_structure_viewer(parent=self)
         except Exception as exc:
             QMessageBox.critical(
                 self,
                 "Viewer Error",
-                f"Unable to launch the HDF viewer:\n{exc}",
+                f"Unable to launch the data browser:\n{exc}",
             )
             return
 
@@ -690,21 +1517,115 @@ class MainWindow(QMainWindow):
         window.destroyed.connect(_cleanup)
 
     def open_file(self, path: str, preferred_event: Optional[str] = None):
-        try:
-            if self._h5 is not None:
-                self._h5.close()
-        except Exception:
-            pass
+    def close_current_file(self):
+        if not self._filename and not self._data_source:
+            return
+        self._reset_state()
+        self.plot_event(None)
+        self.statusBar().showMessage("No data file loaded.")
 
-        self._h5 = None
+    def reset_all_overrides(self):
+        if not (self._fit_param_overrides or self._fit_result_overrides or self._fit_time_overrides):
+            QMessageBox.information(
+                self,
+                "No Overrides",
+                "No in-memory fit overrides are currently applied.",
+            )
+            return
+
+        self._fit_param_overrides.clear()
+        self._fit_result_overrides.clear()
+        self._fit_time_overrides.clear()
+        self._fit_cache.clear()
+        self._baseline_cache.clear()
+        self.plot_event(self._current_event)
+        self.statusBar().showMessage("Cleared all in-memory fit edits.", 6000)
+
+    def save_plot(self, fmt: str):
+        fmt = fmt.lower()
+        if fmt not in {"png", "pdf", "svg"}:
+            raise ValueError(f"Unsupported export format: {fmt}")
+
+        if self.figure is None:
+            return
+
+        base_name = "idex_quicklook"
+        if self._filename:
+            base_name = Path(self._filename).stem
+        if self._current_event:
+            base_name += f"_event_{self._current_event}"
+
+        suggested = Path(self._tmpdir.name) / f"{base_name}.{fmt}"
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            f"Export Plot ({fmt.upper()})",
+            str(suggested),
+            f"{fmt.upper()} files (*.{fmt});;All files (*)",
+        )
+
+        if not path:
+            return
+
+        export_path = Path(path)
+        if export_path.suffix.lower() != f".{fmt}":
+            export_path = export_path.with_suffix(f".{fmt}")
+
+        try:
+            self.figure.savefig(str(export_path), format=fmt, bbox_inches="tight")
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Export Failed",
+                f"Could not export the plot:\n{exc}",
+            )
+            return
+
+        self.statusBar().showMessage(f"Saved plot to {export_path}", 6000)
+
+    # ---- Data helpers -----------------------------------------------------
+    def _reset_state(self):
+        if self._data_source is not None:
+            try:
+                self._data_source.close()
+            except Exception:
+                pass
+        self._data_source = None
+        self._filename = None
         self._events = []
         self._current_event = None
-        self._filename = None
         self._fit_cache.clear()
         self._fit_param_overrides.clear()
         self._fit_result_overrides.clear()
         self._fit_time_overrides.clear()
         self._baseline_cache.clear()
+        self._show_fit = {name: False for name in FIT_ELIGIBLE_CHANNELS}
+
+        self.event_combo.blockSignals(True)
+        self.event_combo.clear()
+        self.event_combo.blockSignals(False)
+
+    def _get_dataset(self, event: str, dataset: str) -> Optional[np.ndarray]:
+        if not self._data_source:
+            return None
+        return self._data_source.get_dataset(event, dataset)
+
+    def _get_dataset_by_path(self, path: str) -> Optional[np.ndarray]:
+        if not self._data_source:
+            return None
+        cleaned = path.strip("/")
+        if not cleaned:
+            return None
+        parts = cleaned.split("/", 1)
+        if len(parts) == 1:
+            if not self._current_event:
+                return None
+            return self._data_source.get_dataset(self._current_event, parts[0])
+        event, dataset = parts
+        return self._data_source.get_dataset(event, dataset)
+
+    def open_file(self, path: str, preferred_event: Optional[str] = None):
+        self._reset_state()
 
         try:
             try:
@@ -712,12 +1633,20 @@ class MainWindow(QMainWindow):
             except OSError:
                 self._h5 = h5py.File(path, "r")
             self._filename = path
+            source = create_data_source(path)
         except Exception as exc:
-            QMessageBox.critical(self, "Open Error", f"Failed to open file:\n{path}\n\n{exc}")
+            QMessageBox.critical(
+                self,
+                "Open Error",
+                f"Failed to open file:\n{path}\n\n{exc}",
+            )
             self.plot_event(None)
             return
 
-        events = list_event_groups(self._h5)
+        self._data_source = source
+        self._filename = path
+
+        events = source.list_events()
         if not events:
             QMessageBox.warning(self, "No Events", "No top-level event groups found in this file.")
         self._events = events
@@ -761,7 +1690,7 @@ class MainWindow(QMainWindow):
         self.plot_event(self._current_event)
 
     def on_fit_toggled(self, channel: str, checked: bool):
-        if not self._current_event or not self._h5:
+        if not self._current_event or not self._data_source:
             self._show_fit[channel] = False
             if channel in self.fit_buttons:
                 self.fit_buttons[channel].setChecked(False)
@@ -783,13 +1712,13 @@ class MainWindow(QMainWindow):
         self.figure.clear()
         self.figure.set_constrained_layout(True)
 
-        if not self._h5 or not event_name:
+        if not self._data_source or not event_name:
             self._current_event = None
             ax = self.figure.add_subplot(111)
             ax.text(
                 0.5,
                 0.5,
-                "Open an HDF5 file and choose an event to visualize.",
+                "Open a data file and choose an event to visualize.",
                 ha="center",
                 va="center",
                 transform=ax.transAxes,
@@ -895,8 +1824,8 @@ class MainWindow(QMainWindow):
 
     def _plot_channel(self, ax, event_name: str, channel: str, overlay_mode: bool, missing_channels: List[str]) -> bool:
         definition = CHANNEL_DEFS[channel]
-        time_data = dset(self._h5, f"/{event_name}/{definition.time_dataset}")
-        value_data = dset(self._h5, f"/{event_name}/{definition.dataset}")
+        time_data = self._get_dataset(event_name, definition.time_dataset)
+        value_data = self._get_dataset(event_name, definition.dataset)
 
         base_plotted = False
         reason: Optional[str] = None
@@ -934,7 +1863,7 @@ class MainWindow(QMainWindow):
             return cached
 
         baseline_value = 0.0
-        if not self._h5:
+        if not self._data_source:
             self._baseline_cache[key] = baseline_value
             return baseline_value
 
@@ -943,8 +1872,7 @@ class MainWindow(QMainWindow):
             self._baseline_cache[key] = baseline_value
             return baseline_value
 
-        raw_path = f"/{event_name}/{definition.dataset}"
-        raw_data = dset(self._h5, raw_path)
+        raw_data = self._get_dataset(event_name, definition.dataset)
         if raw_data is None:
             self._baseline_cache[key] = baseline_value
             return baseline_value
@@ -963,8 +1891,7 @@ class MainWindow(QMainWindow):
                 times = np.asarray(ref, dtype=float)
 
         if times is None:
-            time_path = f"/{event_name}/{definition.time_dataset}"
-            stored_time = dset(self._h5, time_path)
+            stored_time = self._get_dataset(event_name, definition.time_dataset)
             if stored_time is not None:
                 stored = _to_1d(stored_time)
                 if stored.size == raw_values.size:
@@ -1005,13 +1932,13 @@ class MainWindow(QMainWindow):
             yield label, times[:n], values[:n]
             yielded = True
 
-        if yielded or not data.parameter_series or not self._h5:
+        if yielded or not data.parameter_series or not self._data_source:
             return
 
         definition = CHANNEL_DEFS.get(channel)
         if not definition:
             return
-        base_time_data = dset(self._h5, f"/{event_name}/{definition.time_dataset}")
+        base_time_data = self._get_dataset(event_name, definition.time_dataset)
         if base_time_data is None:
             return
         base_time = np.asarray(_to_1d(base_time_data), dtype=float)
@@ -1100,7 +2027,7 @@ class MainWindow(QMainWindow):
         ax.set_frame_on(False)
 
     def refresh_fit_controls(self):
-        if not self._h5 or not self._current_event:
+        if not self._data_source or not self._current_event:
             for btn in self.fit_buttons.values():
                 btn.setEnabled(False)
             return
@@ -1145,39 +2072,15 @@ class MainWindow(QMainWindow):
             return self._fit_cache[key]
 
         data = FitData()
-        if not self._h5:
+        if not self._data_source:
             self._fit_cache[key] = data
             return data
 
-        group = self._h5.get(event_name)
-        if not isinstance(group, h5py.Group):
-            self._fit_cache[key] = data
-            return data
-
-        base_norm = _normalize_name(channel)
-
-        def visitor(name: str, obj):
-            if not isinstance(obj, h5py.Dataset):
-                return
-            dataset_name = name.split("/")[-1]
-            norm = _normalize_name(dataset_name)
-            if "fit" not in norm or base_norm not in norm:
-                return
-            try:
-                arr = np.array(obj[()], copy=True)
-            except Exception:
-                return
-            full_path = f"{group.name}/{name}"
-            if "time" in norm:
-                data.time_series[full_path] = arr
-            elif "result" in norm or "curve" in norm:
-                data.value_series[full_path] = arr
-            elif "param" in norm:
-                data.parameter_series[full_path] = arr
-            else:
-                data.extras[full_path] = arr
-
-        group.visititems(visitor)
+        base = self._data_source.gather_fit_data(event_name, channel)
+        data.time_series = {path: np.array(values, copy=True) for path, values in base.time_series.items()}
+        data.value_series = {path: np.array(values, copy=True) for path, values in base.value_series.items()}
+        data.parameter_series = {path: np.array(values, copy=True) for path, values in base.parameter_series.items()}
+        data.extras = {path: np.array(values, copy=True) for path, values in base.extras.items()}
 
         for path in list(data.time_series.keys()):
             override_time = self._fit_time_overrides.get((event_name, channel, path))
@@ -1198,7 +2101,7 @@ class MainWindow(QMainWindow):
         return data
 
     def open_fit_parameter_dialog(self):
-        if not self._current_event or not self._h5:
+        if not self._current_event or not self._data_source:
             QMessageBox.information(self, "No Event", "Open an event before editing fit parameters.")
             return
 
@@ -1252,17 +2155,17 @@ class MainWindow(QMainWindow):
             self.plot_event(self._current_event)
 
     def _recalculate_fit(self, event: str, channel: str, dataset_path: str, params: np.ndarray) -> bool:
-        if not self._h5:
+        if not self._data_source:
             return False
         derived = _fit_paths_from_param(dataset_path)
         if not derived:
             return False
         result_path, time_path = derived
-        time_data = dset(self._h5, time_path)
+        time_data = self._get_dataset_by_path(time_path)
         if time_data is None:
             definition = CHANNEL_DEFS.get(channel)
             if definition:
-                time_data = dset(self._h5, f"/{event}/{definition.time_dataset}")
+                time_data = self._get_dataset(event, definition.time_dataset)
         if time_data is None:
             return False
         time_array = np.array(time_data, copy=True)
@@ -1294,11 +2197,11 @@ class MainWindow(QMainWindow):
 
     # --- Cleanup ---------------------------------------------------------
     def closeEvent(self, event):
-        try:
-            if self._h5 is not None:
-                self._h5.close()
-        except Exception:
-            pass
+        if self._data_source is not None:
+            try:
+                self._data_source.close()
+            except Exception:
+                pass
         try:
             self._tmpdir.cleanup()
         except Exception:
@@ -1624,7 +2527,7 @@ class FitParameterDialog(QDialog):
 # --------- CLI / main ---------
 def main():
     parser = argparse.ArgumentParser(description="Run the IDEX Quicklook (QtAgg + Matplotlib toolbar).")
-    parser.add_argument("--filename", nargs="?", default=None, help="Path to the HDF5 file.")
+    parser.add_argument("--filename", nargs="?", default=None, help="Path to the data file (HDF5 or CDF).")
     parser.add_argument("--eventnumber", nargs="?", type=int, default=None, help="1-based event index.")
     args = parser.parse_args()
     app = QApplication(sys.argv)

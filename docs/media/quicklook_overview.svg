@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720">
+  <defs>
+    <style>
+      .title { font: 700 38px 'Helvetica Neue', Arial, sans-serif; fill: #1c2753; }
+      .subtitle { font: 400 20px 'Helvetica Neue', Arial, sans-serif; fill: #4a5568; }
+      .card-title { font: 700 22px 'Helvetica Neue', Arial, sans-serif; }
+      .card-body { font: 400 18px 'Helvetica Neue', Arial, sans-serif; }
+      .card { rx: 22; ry: 22; fill: #ffffff; stroke-width: 3; }
+    </style>
+  </defs>
+  <rect x="0" y="0" width="1200" height="720" fill="#f5f7ff" rx="26" ry="26"/>
+  <text x="600" y="80" text-anchor="middle" class="title">IDEX Quicklook UI Map</text>
+  <text x="600" y="120" text-anchor="middle" class="subtitle">A guided tour of the refreshed SpectrumPY viewer</text>
+  <g transform="translate(80,160)">
+    <rect class="card" stroke="#4c6ef5" x="0" y="0" width="460" height="190"/>
+    <text x="28" y="50" class="card-title" fill="#4c6ef5">Channel Toggles</text>
+    <foreignObject x="28" y="72" width="404" height="110">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body" style="color:#2d3748; line-height:1.4;">
+        Click any detector to show or hide it. Checked buttons glow indigo to match
+        the overlay colours for each channel.
+      </div>
+    </foreignObject>
+  </g>
+  <g transform="translate(660,160)">
+    <rect class="card" stroke="#845ef7" x="0" y="0" width="420" height="190"/>
+    <text x="28" y="50" class="card-title" fill="#845ef7">Fit Controls</text>
+    <foreignObject x="28" y="72" width="364" height="110">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body" style="color:#2d3748; line-height:1.4;">
+        Enable EMG or Ion Grid fits, then tweak parameters inline. Updated curves stream
+        straight to the canvas so you can fine tune every overlay.
+      </div>
+    </foreignObject>
+  </g>
+  <g transform="translate(80,380)">
+    <rect class="card" stroke="#3b5bdb" x="0" y="0" width="1000" height="180"/>
+    <text x="28" y="50" class="card-title" fill="#3b5bdb">Navigation Toolbar</text>
+    <foreignObject x="28" y="72" width="944" height="90">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body" style="color:#2d3748; line-height:1.4;">
+        Open, reload, export plots, and launch the built-in help center. The event selector
+        lives here too so you can jump across captured shots without leaving the keyboard.
+      </div>
+    </foreignObject>
+  </g>
+  <g transform="translate(80,580)">
+    <rect class="card" stroke="#22b8cf" x="0" y="0" width="1000" height="120"/>
+    <text x="28" y="44" class="card-title" fill="#22b8cf">Matplotlib Canvas</text>
+    <foreignObject x="28" y="66" width="944" height="44">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body" style="color:#2d3748; line-height:1.4;">
+        Preview raw channels, overlays, and fit curves with synchronized axes and polished styling.
+      </div>
+    </foreignObject>
+  </g>
+</svg>
