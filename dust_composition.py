@@ -568,11 +568,17 @@ class DustCompositionWindow(QMainWindow):
             if self._combined is None:
                 self._combined = self._combine_waveforms()
             self._refresh_plot()
+        self._set_span_selector_active(checked)
+        if checked and self._span_selector is not None:
+            self.statusBar().showMessage("Select a region to fit an EMG mass line.", 6000)
+        else:
+            self.statusBar().clearMessage()
+
+    def _set_span_selector_active(self, active: bool) -> None:
         if self._span_selector is not None:
             self._span_selector.disconnect_events()
             self._span_selector = None
-        if checked and self._combined_axis is not None:
-            self.statusBar().showMessage("Select a region to fit an EMG mass line.", 6000)
+        if active and self._combined_axis is not None:
             self._span_selector = SpanSelector(
                 self._combined_axis,
                 self._on_mass_region_selected,
@@ -580,8 +586,6 @@ class DustCompositionWindow(QMainWindow):
                 useblit=True,
                 props=dict(alpha=0.3, facecolor="#ffdd55"),
             )
-        else:
-            self.statusBar().clearMessage()
 
     def _on_canvas_click(self, event) -> None:
         if not self._in_baseline_mode:
@@ -664,6 +668,12 @@ class DustCompositionWindow(QMainWindow):
         else:
             self._plot_individual_axes()
         self.canvas.draw_idle()
+        # Recreate the interactive span selector after the axes are rebuilt so
+        # that click-and-drag mass selections continue to function.
+        if hasattr(self, "add_mass_button"):
+            self._set_span_selector_active(self.add_mass_button.isChecked())
+        else:
+            self._set_span_selector_active(False)
         if initial and self._combined is not None:
             self.combine_button.setChecked(True)
             self._refresh_plot(show_combined=True)
@@ -762,15 +772,15 @@ class DustCompositionWindow(QMainWindow):
     # ---- Baseline + mass conversions -----------------------------------
     def _set_baseline(self, value: float, from_user: bool = False) -> None:
         self._baseline = float(value)
-        if not from_user:
+        if hasattr(self, "baseline_spin"):
             self.baseline_spin.blockSignals(True)
             self.baseline_spin.setValue(self._baseline)
             self.baseline_spin.blockSignals(False)
-        if self._baseline_artist is not None:
-            self._baseline_artist.set_ydata([self._baseline, self._baseline])
         self._update_mass_line_abundances()
         self._update_tables()
         self._update_summary()
+        if from_user and hasattr(self, "baseline_button"):
+            self.baseline_button.setChecked(False)
         self._refresh_plot()
 
     def _combined_mass_axis(self) -> np.ndarray:
