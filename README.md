@@ -53,6 +53,7 @@ SpectrumPY-Flight bundles every tool the IDEX team used during the flight-model 
 
 ## Launching the Quicklook GUI
 
+* Launch the new welcome screen with `python spectrum_launcher.py` to choose a data file, start mode, and jump into either the HDF Plotter or the full IDEX Quicklook interface.【F:spectrum_launcher.py†L21-L198】
 * Run `python IDEX-quicklook.py` from the repository root. Pass `--filename <file.h5>` (and optionally `--eventnumber N`) to pre-load a dataset.【F:IDEX-quicklook.py†L1585-L1595】
 * The universal Open dialog remembers the best starting folder: HDF5 files default to `HDF5/` while the **Open CDF…** shortcut jumps straight into the `CDF/` directory for exported products.【F:IDEX-quicklook.py†L82-L120】
 * Press `Ctrl+R` to reload a file after re-running fits; channel selections and overrides remain intact.【F:IDEX-quicklook.py†L1058-L1323】

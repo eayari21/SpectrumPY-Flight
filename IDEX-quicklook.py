@@ -51,7 +51,7 @@ from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as Navigation
 _QT = None
 try:
     from PySide6.QtCore import Qt, QSize
-    from PySide6.QtGui import QAction, QFont, QPixmap, QImage, QTextCursor, QTextDocument
+    from PySide6.QtGui import QAction, QFont, QIcon, QPixmap, QImage, QTextCursor, QTextDocument
     from PySide6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
@@ -62,7 +62,7 @@ try:
     _QT = "PySide6"
 except Exception:
     from PyQt6.QtCore import Qt, QSize
-    from PyQt6.QtGui import QAction, QFont, QPixmap, QImage, QTextCursor, QTextDocument
+    from PyQt6.QtGui import QAction, QFont, QIcon, QPixmap, QImage, QTextCursor, QTextDocument
     from PyQt6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
@@ -83,6 +83,40 @@ matplotlib.rcParams.update({
     "legend.fontsize": 14,
     "lines.linewidth": 1.8,
 })
+
+IMAGES_DIR = Path(__file__).resolve().parent / "Images"
+IMAP_LOGO_CANDIDATES = (
+    "IMAP_logo.png",
+    "IMAP_logo.jpg",
+    "IMAP_logo.jpeg",
+    "imap_logo.png",
+    "IMAP.png",
+    "IMAP.jpeg",
+)
+
+
+def _find_brand_logo() -> Optional[Path]:
+    for candidate in IMAP_LOGO_CANDIDATES:
+        logo_path = IMAGES_DIR / candidate
+        if logo_path.exists():
+            return logo_path
+    return None
+
+
+def _load_brand_pixmap(*, max_height: int = 72) -> Optional[QPixmap]:
+    logo_path = _find_brand_logo()
+    if logo_path is None:
+        return None
+
+    pixmap = QPixmap(str(logo_path))
+    if pixmap.isNull():
+        return None
+
+    return pixmap.scaledToHeight(
+        max_height,
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
 
 # --------- Small utils ---------
 def prompt_for_data_file(
@@ -1034,6 +1068,10 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1250, 820)
         self.setStatusBar(QStatusBar(self))
 
+        logo_path = _find_brand_logo()
+        if logo_path is not None:
+            self.setWindowIcon(QIcon(str(logo_path)))
+
         self._data_source: Optional[BaseDataSource] = None
         self._events: List[str] = []
         self._current_event: Optional[str] = None
@@ -1059,6 +1097,10 @@ class MainWindow(QMainWindow):
         self.vbox.setContentsMargins(10, 10, 10, 10)
         self.vbox.setSpacing(12)
         self.setCentralWidget(central)
+
+        branding_widget = self._build_branding_banner()
+        if branding_widget is not None:
+            self.vbox.addWidget(branding_widget)
 
         self._build_menubar()
         self._build_toolbar()
@@ -1368,6 +1410,29 @@ class MainWindow(QMainWindow):
             }
             """
         )
+
+    def _build_branding_banner(self) -> Optional[QWidget]:
+        pixmap = _load_brand_pixmap(max_height=64)
+        if pixmap is None:
+            return None
+
+        container = QWidget(self)
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        logo_label = QLabel()
+        logo_label.setPixmap(pixmap)
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(logo_label)
+
+        title_label = QLabel("SpectrumPY: Flight Addition")
+        title_label.setStyleSheet("font-size: 18px; font-weight: 600; color: #1f2937;")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(title_label)
+
+        layout.addStretch()
+        return container
 
         self._primary_channel_buttons: List[QPushButton] = []
         for idx, name in enumerate(CHANNEL_ORDER):

@@ -1,5 +1,6 @@
 import sys
 import os
+from pathlib import Path
 import subprocess
 import h5py
 import importlib.util
@@ -7,8 +8,11 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QComboBox, QPushButton, QSplitter, QLabel, QMessageBox
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton, QSplitter, QLabel,
+    QMessageBox
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
@@ -29,16 +33,67 @@ normal_size = 2.5
 last_hovered_point = None  # Track the last hovered point
 app = None
 
-class HDF5PlotterApp(QWidget):
-    def __init__(self, hdf5_folder):
-        super().__init__()
-        self.hdf5_folder = hdf5_folder
+IMAGES_DIR = Path(__file__).resolve().parent / "Images"
+IMAP_LOGO_CANDIDATES = (
+    "IMAP_logo.png",
+    "IMAP_logo.jpg",
+    "IMAP_logo.jpeg",
+    "imap_logo.png",
+    "IMAP.png",
+    "IMAP.jpeg",
+)
 
-        # Load datasets from HDF5 file
-        self.datasets, self.dataset_sources = self.load_datasets()
+
+def _find_logo_path() -> Path | None:
+    for candidate in IMAP_LOGO_CANDIDATES:
+        logo_path = IMAGES_DIR / candidate
+        if logo_path.exists():
+            return logo_path
+    return None
+
+class HDF5PlotterApp(QWidget):
+    def __init__(self, source_path: str | os.PathLike[str] = "HDF5"):
+        super().__init__()
+
+        self.setWindowTitle("SpectrumPY: Flight Addition — HDF Plotter")
+
+        logo_path = _find_logo_path()
+        if logo_path is not None:
+            self.setWindowIcon(QIcon(str(logo_path)))
+
+        resolved = Path(source_path)
+        if not resolved.is_absolute():
+            resolved = (Path(__file__).resolve().parent / resolved).resolve()
+        if resolved.is_file():
+            self.hdf5_folder = resolved.parent
+        else:
+            self.hdf5_folder = resolved
+
+        if not self.hdf5_folder.exists():
+            QMessageBox.critical(
+                self,
+                "Data location not found",
+                f"The selected data location '{self.hdf5_folder}' does not exist.",
+            )
+            self.datasets, self.dataset_sources = {}, {}
+        else:
+            # Load datasets from HDF5 file
+            self.datasets, self.dataset_sources = self.load_datasets()
 
         # Initialize UI
         self.init_ui()
+
+    def _load_logo_pixmap(self, *, max_height: int = 72) -> QPixmap | None:
+        logo_path = _find_logo_path()
+        if logo_path is not None:
+            pixmap = QPixmap(str(logo_path))
+            if not pixmap.isNull():
+                return pixmap.scaledToHeight(
+                    max_height,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+        return None
 
     def load_datasets(self):
         datasets = {}
@@ -49,9 +104,9 @@ class HDF5PlotterApp(QWidget):
             if not filename.endswith(".h5"):
                 continue  # Skip non-HDF5 files
 
-            file_path = os.path.join(self.hdf5_folder, filename)
+            file_path = self.hdf5_folder / filename
             print(f"Reading filepath {file_path}")
-            with h5py.File(file_path, "r") as file:
+            with h5py.File(str(file_path), "r") as file:
                 for group in file:
                     analysis_group = f"{group}/Analysis"
                     if analysis_group not in file:
@@ -83,6 +138,26 @@ class HDF5PlotterApp(QWidget):
     def init_ui(self):
         layout = QVBoxLayout()
 
+        header = QWidget()
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(12)
+
+        logo_pixmap = self._load_logo_pixmap()
+        if logo_pixmap is not None:
+            logo_label = QLabel()
+            logo_label.setPixmap(logo_pixmap)
+            logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            header_layout.addWidget(logo_label)
+
+        title_label = QLabel("SpectrumPY: Flight Addition — HDF5 Explorer")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        title_label.setStyleSheet("font-size: 18px; font-weight: 600;")
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+
+        layout.addWidget(header)
+
         # Create the splitter to divide the layout into control and plot sections
         splitter = QSplitter()
 
@@ -99,13 +174,26 @@ class HDF5PlotterApp(QWidget):
         self.y_dropdown2 = QComboBox()
         self.color_dropdown2 = QComboBox()
 
-        dataset_keys = list(self.datasets.keys())
-        self.x_dropdown1.addItems(dataset_keys)
-        self.y_dropdown1.addItems(dataset_keys)
-        self.color_dropdown1.addItems(dataset_keys)
-        self.x_dropdown2.addItems(dataset_keys)
-        self.y_dropdown2.addItems(dataset_keys)
-        self.color_dropdown2.addItems(dataset_keys)
+        dataset_keys = list(self.datasets.keys()) if self.datasets else []
+        if dataset_keys:
+            self.x_dropdown1.addItems(dataset_keys)
+            self.y_dropdown1.addItems(dataset_keys)
+            self.color_dropdown1.addItems(dataset_keys)
+            self.x_dropdown2.addItems(dataset_keys)
+            self.y_dropdown2.addItems(dataset_keys)
+            self.color_dropdown2.addItems(dataset_keys)
+        else:
+            placeholder = "No datasets available"
+            for dropdown in (
+                self.x_dropdown1,
+                self.y_dropdown1,
+                self.color_dropdown1,
+                self.x_dropdown2,
+                self.y_dropdown2,
+                self.color_dropdown2,
+            ):
+                dropdown.addItem(placeholder)
+                dropdown.setEnabled(False)
 
         control_layout.addWidget(QLabel("Select X-axis 1:"))
         control_layout.addWidget(self.x_dropdown1)
@@ -124,6 +212,7 @@ class HDF5PlotterApp(QWidget):
         # Plot button
         self.plot_button = QPushButton("Plot")
         self.plot_button.clicked.connect(self.plot_data)
+        self.plot_button.setEnabled(bool(dataset_keys))
         control_layout.addWidget(self.plot_button)
         control_panel.setLayout(control_layout)
 
@@ -157,6 +246,14 @@ class HDF5PlotterApp(QWidget):
 
     def plot_data(self):
         # Get selected keys for both plots
+        if not self.datasets:
+            QMessageBox.information(
+                self,
+                "No data available",
+                "No HDF5 datasets were found in the selected location.",
+            )
+            return
+
         x_key1 = self.x_dropdown1.currentText()
         y_key1 = self.y_dropdown1.currentText()
         color_key1 = self.color_dropdown1.currentText()
@@ -251,7 +348,8 @@ class HDF5PlotterApp(QWidget):
                     x, y, filename, i = closest_point
 
                     # Find the group name in the HDF5 file
-                    with h5py.File(self.hdf5_folder + filename, "r") as file:
+                    file_path = self.hdf5_folder / filename
+                    with h5py.File(str(file_path), "r") as file:
                         group_names = list(file.keys())
                         num_groups = len(group_names)
                         local_index = i % num_groups
@@ -262,7 +360,14 @@ class HDF5PlotterApp(QWidget):
                         eventnum = group_name
 
                         # Start a new window for each event
-                        subprocess.Popen(['python', 'IDEX-quicklook.py', "--filename", self.hdf5_folder+filename, "--eventnumber", str(eventnum)])
+                        subprocess.Popen([
+                            'python',
+                            'IDEX-quicklook.py',
+                            "--filename",
+                            str(file_path),
+                            "--eventnumber",
+                            str(eventnum)
+                        ])
 
 
 
@@ -284,7 +389,8 @@ class HDF5PlotterApp(QWidget):
                 if closest_point:
                     x, y, filename, i = closest_point
                     # Find the group name in the HDF5 file
-                    with h5py.File(self.hdf5_folder + filename, "r") as file:
+                    file_path = self.hdf5_folder / filename
+                    with h5py.File(str(file_path), "r") as file:
                         group_names = list(file.keys())
                         num_groups = len(group_names)
                         local_index = i % num_groups
@@ -295,7 +401,14 @@ class HDF5PlotterApp(QWidget):
                         print("Starting application")
                         
                         # Start a new window for each event
-                        subprocess.Popen(['python', 'IDEX-quicklook.py', "--filename", self.hdf5_folder+filename, "--eventnumber", str(eventnum)])
+                        subprocess.Popen([
+                            'python',
+                            'IDEX-quicklook.py',
+                            "--filename",
+                            str(file_path),
+                            "--eventnumber",
+                            str(eventnum)
+                        ])
         def on_hover(event):
             # print("Hovering")
             global last_hovered_point
@@ -398,12 +511,15 @@ class HDF5PlotterApp(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-   # Path to the folder containing HDF5 files
-    hdf5_folder = "HDF5/"
+    logo_path = _find_logo_path()
+    if logo_path is not None:
+        app.setWindowIcon(QIcon(str(logo_path)))
+
+    # Path to the folder containing HDF5 files
+    hdf5_folder = Path(__file__).resolve().parent / "HDF5"
 
     # Launch application
     main_window = HDF5PlotterApp(hdf5_folder)
-    main_window.setWindowTitle("HDF5 Data Plotter")
     main_window.resize(800, 1000)
     main_window.show()
 
