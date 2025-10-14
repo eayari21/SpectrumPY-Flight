@@ -718,6 +718,15 @@ class DustCompositionWindow(QMainWindow):
             ax_time = ax.twiny()
             ax_time.set_xlim(self._time_axis.min(), self._time_axis.max())
             ax_time.set_xlabel("Time [µs]", fontsize=13)
+            # Ensure the auxiliary time axis does not intercept mouse events that
+            # are intended for the mass axis.  When the twinned axis remains
+            # interactive Matplotlib reports the mouse events against it instead
+            # of ``ax``, preventing the ``SpanSelector`` from ever firing.  By
+            # disabling navigation and hiding the background patch we allow the
+            # events to fall through to the combined axis where the selector is
+            # attached.
+            ax_time.set_navigate(False)
+            ax_time.patch.set_visible(False)
         if self._baseline or self.baseline_spin.value() != 0.0:
             self._baseline_artist = ax.axhline(self._baseline, color="#aa3377", linestyle="--", linewidth=1.2, label="Baseline")
         for line in self._mass_lines:
