@@ -562,14 +562,9 @@ FIT_ELIGIBLE_CHANNELS = {"Ion Grid", "Target L", "Target H", "TOF H"}
 BASELINE_PRIMARY_WINDOW = (-7.0, -5.0)
 BASELINE_FALLBACK_THRESHOLD = -2.0
 
-FAMILY_TITLES = {
-    FAMILY_HIGH: "TOF Channels (High Sampling)",
-    FAMILY_LOW: "Ion Grid / Target Channels (Low Sampling)",
-}
-
 FAMILY_YLABELS = {
-    FAMILY_HIGH: r"TOF Channels [pC/$\Delta t$]",
-    FAMILY_LOW: r"Ion Grid / Target Channels [pC]",
+    FAMILY_HIGH: r"$TOF$ [pC/\Delta t]",
+    FAMILY_LOW: r"$Q$ [pC]",
 }
 
 TIME_AXIS_LABEL = r"Time [$\mu$s]"
@@ -1018,10 +1013,18 @@ def create_data_source(filename: str) -> BaseDataSource:
         return CDFDataSource(filename)
 
 
+Y_AXIS_LABELS: Dict[str, str] = {
+    "Target L": r"$Q_{TL}$ [pC]",
+    "Target H": r"$Q_{TH}$ [pC]",
+    "Ion Grid": r"$Q_{IG}$ [pC]",
+    "TOF L": r"$TOF_{L}$ [pC/\Delta t]",
+    "TOF M": r"$TOF_{M}$ [pC/\Delta t]",
+    "TOF H": r"$TOF_{H}$ [pC/\Delta t]",
+}
+
+
 def y_label_with_units(channel_name: str) -> str:
-    if channel_name.startswith("TOF"):
-        return rf"{channel_name} [pC/$\Delta t$]"
-    return rf"{channel_name} [pC]"
+    return Y_AXIS_LABELS.get(channel_name, channel_name)
 
 # --------- Main Window ---------
 class MainWindow(QMainWindow):
@@ -1366,15 +1369,18 @@ class MainWindow(QMainWindow):
             """
         )
 
+        self._primary_channel_buttons: List[QPushButton] = []
         for idx, name in enumerate(CHANNEL_ORDER):
             btn = QPushButton(name, self)
             btn.setCheckable(True)
             btn.setChecked(True)
             btn.setMinimumHeight(50)
             btn.setStyleSheet(toggle_style)
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             btn.clicked.connect(lambda checked, channel=name: self.on_channel_toggled(channel, checked))
             self.channel_buttons[name] = btn
             grid.addWidget(btn, idx // 3, idx % 3)
+            self._primary_channel_buttons.append(btn)
 
         panel_layout.addWidget(channel_widget)
 
@@ -1409,7 +1415,19 @@ class MainWindow(QMainWindow):
         toggle_row.addStretch(1)
         panel_layout.addLayout(toggle_row)
 
+        self._harmonize_primary_button_widths()
+
         self.vbox.addWidget(panel)
+
+    def _harmonize_primary_button_widths(self) -> None:
+        """Ensure channel toggles share the width of the primary action button."""
+
+        if not getattr(self, "_primary_channel_buttons", None):
+            return
+
+        reference_width = self.edit_params_button.sizeHint().width()
+        for btn in self._primary_channel_buttons:
+            btn.setMinimumWidth(reference_width)
 
     def open_documentation_center(
         self,
@@ -1847,7 +1865,15 @@ class MainWindow(QMainWindow):
                     for idx, channel in enumerate(ordered):
                         ax = self.figure.add_subplot(grid[idx, 0])
                         plotted_any = self._plot_channel(ax, event_name, channel, overlay_mode=False, missing_channels=missing)
-                        self._style_single_axis(ax, bottom=(idx == len(ordered) - 1))
+                        next_family = None
+                        if idx + 1 < len(ordered):
+                            next_family = CHANNEL_DEFS[ordered[idx + 1]].family
+                        self._style_single_axis(
+                            ax,
+                            channel=channel,
+                            bottom=(idx == len(ordered) - 1),
+                            next_family=next_family,
+                        )
                         if plotted_any and self._show_fit.get(channel) and len(ax.lines) > 1:
                             ax.legend(loc="best")
         except Exception as exc:
@@ -1883,7 +1909,6 @@ class MainWindow(QMainWindow):
 
         if base_plotted or fit_plotted:
             if not overlay_mode:
-                ax.set_title(channel, fontsize=17, fontweight="bold")
                 ax.set_ylabel(y_label_with_units(channel), fontsize=16)
             return True
 
@@ -2040,18 +2065,21 @@ class MainWindow(QMainWindow):
         ax.set_facecolor("#f8f9fb")
         ax.grid(True, alpha=0.35)
         ax.tick_params(axis="both", labelsize=14, width=1.5, length=7)
-        ax.set_title(FAMILY_TITLES.get(family, "Channels"), fontsize=18, fontweight="bold")
         ax.set_ylabel(FAMILY_YLABELS.get(family, "Channel"), fontsize=16)
-        if bottom:
+        show_x = bottom or family == FAMILY_HIGH
+        if show_x:
             ax.set_xlabel(TIME_AXIS_LABEL, fontsize=16)
         else:
             ax.set_xlabel("")
 
-    def _style_single_axis(self, ax, bottom: bool):
+    def _style_single_axis(self, ax, channel: str, bottom: bool, next_family: Optional[str]):
         ax.set_facecolor("#f8f9fb")
         ax.grid(True, alpha=0.35)
         ax.tick_params(axis="both", labelsize=14, width=1.5, length=7)
-        if bottom:
+        current_family = CHANNEL_DEFS.get(channel)
+        family_name = current_family.family if current_family else None
+        show_x = bottom or (next_family is not None and next_family != family_name)
+        if show_x:
             ax.set_xlabel(TIME_AXIS_LABEL, fontsize=16)
         else:
             ax.set_xlabel("")
