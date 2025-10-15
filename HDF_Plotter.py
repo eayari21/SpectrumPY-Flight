@@ -133,7 +133,7 @@ class HDF5PlotterApp(QWidget):
         plot_layout = QVBoxLayout()
 
         # Matplotlib canvas
-        self.figure, self.axes = plt.subplots(2, 1, figsize=(8, 10))
+        self.figure = plt.figure(figsize=(8, 10), constrained_layout=True)
         self.canvas = FigureCanvasQTAgg(self.figure)
         plot_layout.addWidget(self.canvas)
 
@@ -176,6 +176,7 @@ class HDF5PlotterApp(QWidget):
 
         # Clear previous plots
         self.figure.clear()
+        self.figure.set_constrained_layout(True)
 
         # Create gridspec for vertically stacked joint plots
         gs = self.figure.add_gridspec(
