@@ -1382,6 +1382,29 @@ class MainWindow(QMainWindow):
         self.event_combo.currentIndexChanged.connect(self.on_event_changed)
         tb.addWidget(self.event_combo)
 
+    def _build_branding_banner(self) -> Optional[QWidget]:
+        pixmap = _load_brand_pixmap(max_height=64)
+        if pixmap is None:
+            return None
+
+        container = QWidget(self)
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        logo_label = QLabel()
+        logo_label.setPixmap(pixmap)
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(logo_label)
+
+        title_label = QLabel("SpectrumPY: Flight Addition")
+        title_label.setStyleSheet("font-size: 18px; font-weight: 600; color: #1f2937;")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(title_label)
+
+        layout.addStretch()
+        return container
+
     def _build_controls(self):
         panel = QWidget(self)
         panel.setObjectName("controlPanel")
@@ -1450,29 +1473,6 @@ class MainWindow(QMainWindow):
             }
             """
         )
-
-    def _build_branding_banner(self) -> Optional[QWidget]:
-        pixmap = _load_brand_pixmap(max_height=64)
-        if pixmap is None:
-            return None
-
-        container = QWidget(self)
-        layout = QHBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
-
-        logo_label = QLabel()
-        logo_label.setPixmap(pixmap)
-        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(logo_label)
-
-        title_label = QLabel("SpectrumPY: Flight Addition")
-        title_label.setStyleSheet("font-size: 18px; font-weight: 600; color: #1f2937;")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(title_label)
-
-        layout.addStretch()
-        return container
 
         self._primary_channel_buttons: List[QPushButton] = []
         for idx, name in enumerate(CHANNEL_ORDER):
