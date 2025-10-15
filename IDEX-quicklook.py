@@ -1091,6 +1091,12 @@ class MainWindow(QMainWindow):
         self._fit_time_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
         self._baseline_cache: Dict[Tuple[str, str], float] = {}
         self._show_fit: Dict[str, bool] = {name: False for name in FIT_ELIGIBLE_CHANNELS}
+        # ``refresh_fit_controls`` is invoked as soon as data are loaded, so make
+        # sure ``fit_buttons`` always exists even before the control panel is
+        # constructed.  Some startup paths (for example early failures while
+        # building the control panel) were leaving the attribute undefined which
+        # caused an ``AttributeError`` when plotting the first event.
+        self.fit_buttons: Dict[str, QPushButton] = {}
         self.selected_channels = set(CHANNEL_ORDER)
         self._child_windows: List[QWidget] = []
         self._documentation_center: Optional[DocumentationCenter] = None
