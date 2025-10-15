@@ -116,9 +116,12 @@ def _load_brand_pixmap(*, max_height: int = 72) -> Optional[QPixmap]:
     if pixmap.isNull():
         return None
 
+    # ``scaledToHeight`` already preserves the aspect ratio; in PyQt6/PySide6 it only
+    # accepts the target height and an optional transformation mode.  Passing an
+    # aspect-ratio flag raises a ``TypeError`` under PyQt6, so we only supply the
+    # desired height and transformation mode here.
     return pixmap.scaledToHeight(
         max_height,
-        Qt.AspectRatioMode.KeepAspectRatio,
         Qt.TransformationMode.SmoothTransformation,
     )
 
