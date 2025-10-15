@@ -52,6 +52,8 @@ _QT = None
 try:
     from PySide6.QtCore import Qt, QSize
     from PySide6.QtGui import QAction, QFont, QIcon, QPixmap, QImage, QTextCursor, QTextDocument
+    from PySide6.QtCore import Qt, QSize, QTimer
+    from PySide6.QtGui import QAction, QFont, QPixmap, QImage, QTextCursor, QTextDocument
     from PySide6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
@@ -63,6 +65,8 @@ try:
 except Exception:
     from PyQt6.QtCore import Qt, QSize
     from PyQt6.QtGui import QAction, QFont, QIcon, QPixmap, QImage, QTextCursor, QTextDocument
+    from PyQt6.QtCore import Qt, QSize, QTimer
+    from PyQt6.QtGui import QAction, QFont, QPixmap, QImage, QTextCursor, QTextDocument
     from PyQt6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
@@ -1315,7 +1319,34 @@ class MainWindow(QMainWindow):
         act_dust.setShortcut("Ctrl+D")
         act_dust.setToolTip("Open the dust composition analysis window for the current event.")
         act_dust.triggered.connect(self.action_open_dust_composition)
-        tb.addAction(act_dust)
+        self.addAction(act_dust)
+
+        self.dust_button = QPushButton("Dust Composition", self)
+        self.dust_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.dust_button.setMinimumHeight(46)
+        self.dust_button.setStyleSheet(
+            """
+            QPushButton {
+                font-size: 16px;
+                font-weight: 700;
+                padding: 10px 22px;
+                border-radius: 14px;
+                background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                                 stop:0 #845ef7, stop:1 #5c7cfa);
+                color: #ffffff;
+                border: 1px solid #5f3dc4;
+            }
+            QPushButton:hover {
+                background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                                 stop:0 #7048e8, stop:1 #4c6ef5);
+            }
+            QPushButton:pressed {
+                background-color: #364fc7;
+            }
+            """
+        )
+        self.dust_button.clicked.connect(act_dust.trigger)
+        tb.addWidget(self.dust_button)
 
         act_reload = QAction("Reload", self)
         act_reload.setShortcut("Ctrl+R")
@@ -1481,6 +1512,7 @@ class MainWindow(QMainWindow):
         panel_layout.addLayout(toggle_row)
 
         self._harmonize_primary_button_widths()
+        QTimer.singleShot(0, self._harmonize_primary_button_widths)
 
         self.vbox.addWidget(panel)
 
@@ -1490,9 +1522,37 @@ class MainWindow(QMainWindow):
         if not getattr(self, "_primary_channel_buttons", None):
             return
 
-        reference_width = self.edit_params_button.sizeHint().width()
+        reference_widgets = [self.edit_params_button, self.overlay_button, *self.fit_buttons.values()]
+        reference_width = 0
+        for widget in reference_widgets:
+            if widget is None:
+                continue
+            reference_width = max(reference_width, widget.sizeHint().width())
+
+        if reference_width <= 0:
+            return
+
+        reference_height = 0
+        for widget in reference_widgets:
+            if widget is None:
+                continue
+            reference_height = max(reference_height, widget.sizeHint().height())
+
         for btn in self._primary_channel_buttons:
             btn.setMinimumWidth(reference_width)
+            if reference_height > 0:
+                btn.setMinimumHeight(max(btn.minimumHeight(), reference_height))
+
+    def _reset_layout_engine(self) -> None:
+        """Re-enable Matplotlib's constrained layout after clearing the figure."""
+
+        try:
+            self.figure.set_constrained_layout(True)
+        except Exception:
+            try:
+                self.figure.set_layout_engine("constrained")
+            except Exception:
+                pass
 
     def open_documentation_center(
         self,
@@ -1830,7 +1890,7 @@ class MainWindow(QMainWindow):
     # ---- Plotting --------------------------------------------------------
     def plot_event(self, event_name: Optional[str]):
         self.figure.clear()
-        self.figure.set_constrained_layout(True)
+        self._reset_layout_engine()
 
         if not self._data_source or not event_name:
             self._current_event = None
@@ -1926,7 +1986,7 @@ class MainWindow(QMainWindow):
                     )
                     ax.axis("off")
                 else:
-                    grid = self.figure.add_gridspec(len(ordered), 1, hspace=0.42)
+                    grid = self.figure.add_gridspec(len(ordered), 1)
                     for idx, channel in enumerate(ordered):
                         ax = self.figure.add_subplot(grid[idx, 0])
                         plotted_any = self._plot_channel(ax, event_name, channel, overlay_mode=False, missing_channels=missing)
@@ -1943,6 +2003,7 @@ class MainWindow(QMainWindow):
                             ax.legend(loc="best")
         except Exception as exc:
             self.figure.clear()
+            self._reset_layout_engine()
             ax = self.figure.add_subplot(111)
             ax.text(0.5, 0.5, f"Plot error:\n{exc}", ha="center", va="center", transform=ax.transAxes, fontsize=16)
             ax.axis("off")
