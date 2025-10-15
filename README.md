@@ -100,6 +100,7 @@ SpectrumPY-Flight bundles every tool the IDEX team used during the flight-model 
 * **Missing dependencies** – Install `h5py` and `cdflib` when the GUI reports missing optional modules. CLI decoders depend on `bitstring` and `lmfit` for waveform parsing and fits.【F:lmfit_idex_packet.py†L12-L200】【F:idex_packet.py†L34-L201】
 * **Headless systems** – Wrap GUI launches with `xvfb-run python IDEX-quicklook.py` to provide a virtual display server on CI or remote nodes.【F:IDEX-quicklook.py†L1585-L1595】
 * **Unexpected fit curves** – Use the fit parameter dialog to review overrides, then click `Reset Fit Overrides` or restart the viewer to reload on-disk parameters.【F:IDEX-quicklook.py†L1056-L1188】
+* **Scatter click tools not launching Quicklook** – Confirm matplotlib is emitting pick events and gather the diagnostics listed in [Debugging the interactive clicking tools](docs/clicking_tools_support.md) before filing an issue. The log lines printed inside `HDF_Plotter.py`'s `on_click` handler indicate whether the selection fired.【F:docs/clicking_tools_support.md†L1-L38】【F:HDF_Plotter.py†L232-L333】
 
 ## Documentation library
 
