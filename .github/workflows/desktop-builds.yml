@@ -1,0 +1,96 @@
+name: Build desktop bundles
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  packages: read
+
+jobs:
+  macos:
+    name: macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-13
+            arch: intel
+          - runner: macos-14
+            arch: apple
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r packaging/packaging-requirements.txt
+      - name: Build app bundle
+        run: |
+          pyinstaller --noconfirm packaging/idex_quicklook.spec
+      - name: Create DMG
+        run: |
+          chmod +x packaging/macos/create_dmg.sh
+          ./packaging/macos/create_dmg.sh dist/IDEX-Quicklook.app "IDEX-Quicklook-${{ github.ref_name }}-${{ matrix.arch }}.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IDEX-Quicklook-${{ github.ref_name }}-macos-${{ matrix.arch }}
+          path: |
+            IDEX-Quicklook-${{ github.ref_name }}-${{ matrix.arch }}.dmg
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r packaging/packaging-requirements.txt
+      - name: Build executable
+        run: |
+          pyinstaller --noconfirm packaging/idex_quicklook.spec
+      - name: Archive artifacts
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/IDEX-Quicklook -DestinationPath "IDEX-Quicklook-${{ github.ref_name }}-windows.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IDEX-Quicklook-${{ github.ref_name }}-windows
+          path: IDEX-Quicklook-${{ github.ref_name }}-windows.zip
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r packaging/packaging-requirements.txt
+      - name: Build executable
+        run: |
+          pyinstaller --noconfirm packaging/idex_quicklook.spec
+      - name: Create tarball
+        run: |
+          tar -C dist -czf "IDEX-Quicklook-${{ github.ref_name }}-linux.tar.gz" IDEX-Quicklook
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IDEX-Quicklook-${{ github.ref_name }}-linux
+          path: IDEX-Quicklook-${{ github.ref_name }}-linux.tar.gz

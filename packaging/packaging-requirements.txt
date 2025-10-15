@@ -1,0 +1,13 @@
+# Frozen-application build dependencies for SpectrumPY Quicklook bundles.
+pyinstaller>=6.0
+pyinstaller-hooks-contrib>=2023.8
+PySide6>=6.6
+numpy
+scipy
+matplotlib
+pandas
+seaborn
+h5py
+lmfit
+bitstring
+cdflib
