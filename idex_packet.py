@@ -1,12 +1,23 @@
 #!/opt/anaconda3/bin/python3
 # -*- coding: utf-8 -*-
 
-"""
-A Python object to store IDEX packets.
-__author__      = Ethan Ayari & Gavin Medley, 
-Institute for Modeling Plasmas, Atmospheres and Cosmic Dust
+"""IDEX packet tools for generating higher level data products.
 
-Works with Python 3.8.10
+This module ingests Level-0 (L0) telemetry packets stored in the
+``Data/`` directory and extracts waveform and housekeeping information for
+the Instrument for Dust Experiment (IDEX). The primary workflow is to
+transform raw telemetry into Level-1A (L1A) through Level-2C (L2C)
+products by decoding waveforms, fitting instrument responses, and writing
+standardized HDF5/CDF outputs. The original implementation targeted
+Python 3.8.10 and relies on the LASP packet definitions along with a
+collection of numerical utilities.
+
+The file retains extensive functionality that is used by several science
+pipelines. Documentation strings were refreshed to clarify intent without
+altering established behaviour.
+
+__author__ = "Ethan Ayari & Gavin Medley, Institute for Modeling Plasmas,\
+ Atmospheres and Cosmic Dust"
 """
 
 # || Python libraries
@@ -44,10 +55,32 @@ import cdflib.cdfread as cdfread
 
 # %%IDEX ION GRID FUNCTION DEFINITON
 def IDEXIonGrid(x, P0, P1, P4, P5, P6):
+    """Evaluate the analytic ion grid response model for the target signal.
+
+    Parameters
+    ----------
+    x
+        Time axis in microseconds.
+    P0, P1, P4, P5, P6
+        Model coefficients representing the impact time, offset, amplitude,
+        rise time, and decay time respectively.
+    """
+
     return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
 
 # Define the EMG function
 def EMG(x, mu, sigma, lam):
+    """Return the exponentially modified Gaussian evaluated at ``x``.
+
+    Parameters
+    ----------
+    x
+        Time coordinate.
+    mu, sigma, lam
+        Exponentially modified Gaussian parameters (mean, standard
+        deviation, and exponential decay rate).
+    """
+
     prefactor = lam / 2
     exponent = np.exp((lam / 2) * (2 * mu + lam * sigma**2 - 2 * x))
     erfc_part = erfc((mu + lam * sigma**2 - x) / (np.sqrt(2) * sigma))
@@ -55,24 +88,68 @@ def EMG(x, mu, sigma, lam):
 
 # Function to calculate the area under the EMG fit curve
 def calculate_area_under_emg(x_slice, param):
+    """Integrate the exponentially modified Gaussian across ``x_slice``.
+
+    Parameters
+    ----------
+    x_slice
+        Domain over which to integrate the fitted EMG profile.
+    param
+        Optimized EMG parameters. If the fit fails the value ``0`` is
+        returned and the integral is skipped.
+
+    Returns
+    -------
+    float
+        Estimated area under the curve for the selected slice.
+    """
+
     if(type(param) is not int):
         # Extract EMG fit parameters: mu, sigma, lam
         mu, sigma, lam = param
 
         # Perform numerical integration using scipy.integrate.quad
         area, error = quad(EMG, x_slice[0], x_slice[-1], args=(mu, sigma, lam))
-        
+
         return area
     else:
         return 0.0
 
 # Helper function to apply the polynomial transformation
 def apply_polynomial(coeffs, X):
+    """Evaluate a polynomial defined by ``coeffs`` at points ``X``.
+
+    Parameters
+    ----------
+    coeffs
+        Iterable of polynomial coefficients ordered from the constant term
+        upwards.
+    X
+        Sample locations where the polynomial should be evaluated.
+
+    Returns
+    -------
+    numpy.ndarray or float
+        The computed polynomial value(s) for ``X``.
+    """
+
     # Compute the value using the polynomial formula
     return sum(coeffs[i] * (X ** i) for i in range(len(coeffs)))
 
 # Helper function to create dataset if it doesn't exist
 def create_dataset_if_not_exists(hdf5_file, dataset_path, data):
+    """Create ``dataset_path`` within ``hdf5_file`` if it is not present.
+
+    Parameters
+    ----------
+    hdf5_file
+        Open :mod:`h5py` file handle where the dataset should be stored.
+    dataset_path
+        Full path of the dataset inside the HDF5 hierarchy.
+    data
+        Array-like object written to the dataset when it is created.
+    """
+
     if dataset_path in hdf5_file:
         print(f"Dataset '{dataset_path}' already exists. Skipping creation.")
     else:
@@ -80,6 +157,22 @@ def create_dataset_if_not_exists(hdf5_file, dataset_path, data):
 
 # Fit routine for EMG
 def FitEMG(time, amplitude):
+    """Fit an exponentially modified Gaussian to the provided waveform.
+
+    Parameters
+    ----------
+    time
+        Sample axis for the waveform.
+    amplitude
+        Measured detector response in data numbers.
+
+    Returns
+    -------
+    tuple
+        The fitted parameters, covariance matrix, peak amplitude estimate,
+        and the evaluated model at the original ``time`` points.
+    """
+
     x = np.asarray(time)
     y = np.asarray(amplitude)
 
@@ -110,6 +203,21 @@ def FitEMG(time, amplitude):
 # || 2) Remove a sinusoidal background (y = c*sin(d*x + e)
 
 def FitTargetSignal(time, targetAmp):
+    """Fit the ion grid target signal after background subtraction.
+
+    Parameters
+    ----------
+    time
+        Sample axis centred on the trigger.
+    targetAmp
+        Raw target amplitude used for event-level charge estimation.
+
+    Returns
+    -------
+    tuple
+        Best-fit parameters, covariance matrix, and signal amplitude.
+    """
+
     x = np.asarray(time)
     y = np.asarray(targetAmp)
 
@@ -201,8 +309,24 @@ def FitTargetSignal(time, targetAmp):
 # || Generator object from LASP packets
 # || to read in the data
 class IDEXEvent:
+    """Container for decoded IDEX packets and derived metadata.
+
+    The class ingests a binary telemetry stream, typically sourced from the
+    ``Data/`` directory, and exposes convenience helpers to plot and write
+    Level-0 derived products for subsequent L1A through L2C processing.
+    """
+
     def __init__(self, filename: str):
-        """Test parsing a real XTCE document"""
+        """Parse a binary telemetry file and populate waveform containers.
+
+        Parameters
+        ----------
+        filename
+            Path to the raw IDEX L0 binary packet stream produced by the
+            instrument. The parser consumes the stream, extracts per-event
+            metadata, and decodes science waveforms in preparation for
+            higher-level processing.
+        """
         # TODO: CHge location of xml definition
         idex_xtce = 'idex_combined_science_definition.xml'
         idex_definition = xtcedef.XtcePacketDefinition(xtce_document=idex_xtce)
@@ -667,9 +791,20 @@ class IDEXEvent:
 
     # ||
     # ||
-    # || Gather all of the events 
+    # || Gather all of the events
     # || and plot them
     def plot_all_data(self, packets, fname: str):
+        """Create per-event overview plots for all decoded channels.
+
+        Parameters
+        ----------
+        packets
+            Mapping of ``(event_number, channel_name)`` keys to decoded
+            waveform arrays.
+        fname
+            Original filename used for naming the plot output directory.
+        """
+
         fname = os.path.split(fname)[-1]
         # Create a folder to store the plots
         PlotFolder = os.path.join(os.getcwd(), f"Plots/{fname}")
@@ -781,9 +916,20 @@ class IDEXEvent:
     
     # ||
     # ||
-    # || Write the waveform data 
+    # || Write the waveform data
     # || to an HDF5 file
     def write_to_hdf5(self, waveforms: dict, filename: str):
+        """Persist decoded waveforms and metadata to the HDF5 output tree.
+
+        Parameters
+        ----------
+        waveforms
+            Dictionary of decoded waveform arrays keyed by
+            ``(event_number, channel_name)``.
+        filename
+            HDF5 file written beneath the ``HDF5/`` directory.
+        """
+
         os.chdir('./HDF5/')
         filename = os.path.split(filename)[-1]  # Just get the name of the file
         # Prepend HDF5 folder to filename
@@ -966,7 +1112,19 @@ class IDEXEvent:
 # || Parse the high sampling rate data, this
 # || should be 10-bit blocks
 def parse_hs_waveform(waveform_raw: str):
-    """Parse a binary string representing a high gain waveform"""
+    """Parse a binary string representing a high sampling-rate waveform.
+
+    Parameters
+    ----------
+    waveform_raw
+        Binary string extracted from the packet payload for high gain
+        channels.
+
+    Returns
+    -------
+    list[int]
+        Sequence of data numbers representing the decoded waveform.
+    """
     w = bitstring.ConstBitStream(bin=waveform_raw)
     ints = []
     while w.pos < len(w):
@@ -980,7 +1138,19 @@ def parse_hs_waveform(waveform_raw: str):
 # || Parse the low sampling rate data, this
 # || should be 12-bit blocks
 def parse_ls_waveform(waveform_raw: str):
-    """Parse a binary string representing a low gain waveform"""
+    """Parse a binary string representing a low sampling-rate waveform.
+
+    Parameters
+    ----------
+    waveform_raw
+        Binary string extracted from the packet payload for low gain
+        channels.
+
+    Returns
+    -------
+    list[int]
+        Sequence of data numbers representing the decoded waveform.
+    """
     w = bitstring.ConstBitStream(bin=waveform_raw)
     ints = []
     while w.pos < len(w):
@@ -994,7 +1164,20 @@ def parse_ls_waveform(waveform_raw: str):
 # || Use the SciType flag to determine the sampling rate of
 # || the data we are trying to parse
 def parse_waveform_data(waveform: str, scitype: int):
-    """Parse the binary string that represents a waveform"""
+    """Parse a waveform string using the SCI type to select the decoder.
+
+    Parameters
+    ----------
+    waveform
+        Binary waveform payload.
+    scitype
+        SCI type identifier describing which decoding scheme to apply.
+
+    Returns
+    -------
+    list[int]
+        Decoded waveform data numbers.
+    """
     print(f'Parsing waveform for scitype={scitype}')
     if scitype in (2, 4, 8):
         return parse_hs_waveform(waveform)
@@ -1006,7 +1189,16 @@ def parse_waveform_data(waveform: str, scitype: int):
 # || Write the waveform data 
 # || to CDF files
 def write_to_cdf(packets):
-    
+    """Write decoded packets to a CDF file using the master template.
+
+    Parameters
+    ----------
+    packets
+        Initialized :class:`IDEXEvent` containing waveform arrays and
+        metadata. The function mirrors the template structure contained in
+        ``imap_idex_l0-raw_0000000_v01.cdf``.
+    """
+
     cdf_master = cdfread.CDF('imap_idex_l0-raw_0000000_v01.cdf')
     if (cdf_master.file != None):
     # Get the cdf's specification
@@ -1103,8 +1295,19 @@ def write_to_cdf(packets):
 # || Test code: Import file and write the relevant data to an hdf5 file
 if __name__ == "__main__":
     # Initalize parsing object to pass filename
-    aparser = argparse.ArgumentParser()
-    aparser.add_argument("--file", "-f", type=str, required=True)
+    aparser = argparse.ArgumentParser(
+        description=(
+            "Decode an IDEX L0 binary file from the Data/ directory and "
+            "produce higher level quicklook outputs."
+        )
+    )
+    aparser.add_argument(
+        "--file",
+        "-f",
+        type=str,
+        required=True,
+        help="Path to the raw L0 binary file (typically within Data/).",
+    )
     args = aparser.parse_args()
 
     packets = IDEXEvent(args.file)
