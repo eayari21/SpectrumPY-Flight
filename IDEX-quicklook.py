@@ -634,18 +634,65 @@ class FitModelMeta:
     evaluator: Callable[..., np.ndarray]
 
 
-def _idex_ion_grid_model(x: np.ndarray, p0: float, p1: float, p4: float, p5: float, p6: float) -> np.ndarray:
+ION_GRID_PARAMETER_LABELS_FULL: Tuple[str, ...] = (
+    "t0 (impact onset)",
+    "C0 (baseline)",
+    "C1 (image amplitude)",
+    "C2 (impact amplitude)",
+    "τ0 (image decay)",
+    "τ1 (impact rise)",
+    "τ2 (impact decay)",
+)
+
+ION_GRID_PARAMETER_LABELS_LEGACY: Tuple[str, ...] = (
+    "t0 (impact onset)",
+    "C0 (baseline)",
+    "C2 (impact amplitude)",
+    "τ1 (impact rise)",
+    "τ2 (impact decay)",
+)
+
+ION_GRID_LABEL_OVERRIDES: Dict[int, Tuple[str, ...]] = {
+    len(ION_GRID_PARAMETER_LABELS_LEGACY): ION_GRID_PARAMETER_LABELS_LEGACY,
+}
+
+
+def _idex_ion_grid_model(x: np.ndarray, *params: float) -> np.ndarray:
     """Evaluate the standard IDEX ion grid / target response model."""
 
     arr = np.asarray(x, dtype=float)
-    shift = arr - p0
-    step = np.heaviside(shift, 0.0)
-    safe_p5 = p5 if abs(p5) > 1.0e-12 else 1.0e-12
-    safe_p6 = p6 if abs(p6) > 1.0e-12 else 1.0e-12
-    with np.errstate(over="ignore", under="ignore", divide="ignore", invalid="ignore"):
-        rise = 1.0 - np.exp(-shift / safe_p5)
-        decay = np.exp(-shift / safe_p6)
-    return p1 + step * (p4 * rise * decay)
+    if arr.size == 0:
+        return arr
+
+    if len(params) >= 7:
+        t0, c0, c1, c2, tau0, tau1, tau2 = params[:7]
+        shift = arr - t0
+        step = np.heaviside(shift, 0.0)
+        safe_tau0 = tau0 if abs(tau0) > 1.0e-12 else 1.0e-12
+        safe_tau1 = tau1 if abs(tau1) > 1.0e-12 else 1.0e-12
+        safe_tau2 = tau2 if abs(tau2) > 1.0e-12 else 1.0e-12
+        with np.errstate(over="ignore", under="ignore", divide="ignore", invalid="ignore"):
+            image_decay = np.exp(-shift / safe_tau0)
+            rise = 1.0 - np.exp(-shift / safe_tau1)
+            decay = np.exp(-shift / safe_tau2)
+        return c0 + step * (-c1 * image_decay + c2 * rise * decay - c1)
+
+    if len(params) >= 5:
+        p0, p1, p4, p5, p6 = params[:5]
+        shift = arr - p0
+        step = np.heaviside(shift, 0.0)
+        safe_p5 = p5 if abs(p5) > 1.0e-12 else 1.0e-12
+        safe_p6 = p6 if abs(p6) > 1.0e-12 else 1.0e-12
+        with np.errstate(over="ignore", under="ignore", divide="ignore", invalid="ignore"):
+            rise = 1.0 - np.exp(-shift / safe_p5)
+            decay = np.exp(-shift / safe_p6)
+        return p1 + step * (p4 * rise * decay)
+
+    if len(params) >= 1:
+        baseline = params[1] if len(params) > 1 else params[0]
+        return np.full_like(arr, float(baseline), dtype=float)
+
+    return np.zeros_like(arr, dtype=float)
 
 
 def _emg_model(x: np.ndarray, mu: float, sigma: float, lam: float) -> np.ndarray:
@@ -663,14 +710,12 @@ def _emg_model(x: np.ndarray, mu: float, sigma: float, lam: float) -> np.ndarray
 
 
 ION_GRID_FIT = FitModelMeta(
-    parameter_labels=(
-        "t0 (impact time)",
-        "c (constant offset)",
-        "A (amplitude)",
-        "t1 (rise time)",
-        "t2 (discharge time)",
+    parameter_labels=ION_GRID_PARAMETER_LABELS_FULL,
+    latex=(
+        r"w[t; t_0, C_0, C_1, C_2, \tau_0, \tau_1, \tau_2] = C_0"
+        r" - \underbrace{H(t - t_0)\,C_1\,e^{-(t - t_0)/\tau_0}}_{\mathrm{Image}\ \mathrm{Charge}}"
+        r" + \underbrace{H(t - t_0)\left[C_2\left(1 - e^{-(t - t_0)/\tau_1}\right)e^{-(t - t_0)/\tau_2} - C_1\right]}_{\mathrm{Impact}\ \mathrm{Charge}}"
     ),
-    latex=r"f(t) = c + H(t - t_0)\,A\,\left(1 - e^{-(t - t_0)/t_1}\right)e^{-(t - t_0)/t_2}",
     evaluator=_idex_ion_grid_model,
 )
 
@@ -2611,6 +2656,10 @@ class FitParameterDialog(QDialog):
         model = FIT_MODEL_BY_CHANNEL.get(channel)
         if not model:
             return [f"p{i + 1}" for i in range(count)]
+        if model is ION_GRID_FIT:
+            override = ION_GRID_LABEL_OVERRIDES.get(count)
+            if override:
+                return list(override)
         labels = list(model.parameter_labels)
         if len(labels) >= count:
             return labels[:count]
