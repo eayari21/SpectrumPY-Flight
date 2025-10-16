@@ -38,6 +38,11 @@ try:  # pragma: no cover - optional dependency, loaded lazily
 except Exception:  # pragma: no cover
     launch_cdf_viewer = None
 
+try:  # pragma: no cover - optional dependency
+    from IDEX_Definitions_View import launch_variable_definitions_viewer
+except Exception:  # pragma: no cover
+    launch_variable_definitions_viewer = None
+
 # Qt-backed Matplotlib so NavigationToolbar works
 import matplotlib
 from matplotlib import mathtext
@@ -1246,6 +1251,10 @@ class MainWindow(QMainWindow):
         self.view_structure_action.setShortcut("Ctrl+B")
         self.view_structure_action.triggered.connect(self.action_view_structure)
 
+        self.open_variable_definitions_action = QAction("Variable Definitions…", self)
+        self.open_variable_definitions_action.setEnabled(launch_variable_definitions_viewer is not None)
+        self.open_variable_definitions_action.triggered.connect(self.action_open_variable_definitions)
+
         self.reload_action = QAction("Reload", self)
         self.reload_action.setShortcut("Ctrl+R")
         self.reload_action.triggered.connect(self.reload_current)
@@ -1319,6 +1328,7 @@ class MainWindow(QMainWindow):
 
         view_menu = menubar.addMenu("&View")
         view_menu.addAction(self.view_structure_action)
+        view_menu.addAction(self.open_variable_definitions_action)
 
         help_menu = menubar.addMenu("&Help")
         help_menu.addAction(self.help_action)
@@ -1416,6 +1426,8 @@ class MainWindow(QMainWindow):
         act_reload.triggered.connect(self.reload_current)
         tb.addAction(act_reload)
         tb.addAction(self.view_structure_action)
+        if launch_variable_definitions_viewer is not None:
+            tb.addAction(self.open_variable_definitions_action)
         tb.addSeparator()
 
         tb.addAction(self.close_file_action)
@@ -1692,6 +1704,37 @@ class MainWindow(QMainWindow):
                 self._child_windows.remove(viewer)
 
         viewer.destroyed.connect(_cleanup)
+
+    def action_open_variable_definitions(self):
+        if launch_variable_definitions_viewer is None:
+            QMessageBox.information(
+                self,
+                "Viewer Unavailable",
+                "The variable definitions viewer is not available in this environment.",
+            )
+            return
+
+        try:
+            window = launch_variable_definitions_viewer(parent=self)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Viewer Error",
+                f"Unable to launch the variable definitions viewer:\n{exc}",
+            )
+            return
+
+        window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        window.raise_()
+        window.activateWindow()
+
+        self._child_windows.append(window)
+
+        def _cleanup(*_args):
+            if window in self._child_windows:
+                self._child_windows.remove(window)
+
+        window.destroyed.connect(_cleanup)
 
     def action_open_dust_composition(self):
         if not self._h5 or not self._current_event:
