@@ -32,7 +32,7 @@ SpectrumPY-Flight bundles every tool the IDEX team used during the flight-model 
 
 * Python 3.10 and the mission packet definition `idex_combined_science_definition.xml`.【F:science_tool.py†L1-L79】
 * Scientific Python stack: NumPy, SciPy, matplotlib, pandas, seaborn, h5py, lmfit, bitstring, cdflib, and a Qt binding (PySide6 or PyQt6).【F:lmfit_idex_packet.py†L12-L200】【F:HDF_View.py†L60-L163】
-* Optional GUI helpers for HDF5/CDF browsing (`HDF_View.py`, `CDF_View.py`) and plot dashboards (`HDF_Plotter.py`).【F:HDF_View.py†L60-L398】【F:CDF_View.py†L87-L324】【F:HDF_Plotter.py†L24-L410】
+* Optional GUI helpers for HDF5/CDF browsing (`HDF_View.py`, `CDF_View.py`) and plot dashboards (`HDF_Explorer.py`).【F:HDF_View.py†L60-L398】【F:CDF_View.py†L87-L324】【F:HDF_Explorer.py†L24-L536】
 
 ### Environment setup
 
@@ -82,7 +82,7 @@ SpectrumPY-Flight bundles every tool the IDEX team used during the flight-model 
 * `process_packets.sh` watches `Data/` for new binary dumps, runs the lmfit decoder, and writes cleaned products into `HDF5/`.【F:process_packets.sh†L1-L27】
 * `process_EM_Data.sh` orchestrates oscilloscope calibration sweeps, invoking `ImpactBook.py` for every trace directory and capturing plots/CSVs.【F:process_EM_Data.sh†L1-L37】【F:ImpactBook.py†L120-L609】
 * `analyze_velocities.sh` and `qd_quicklook.py` deliver quick assessments for accelerator campaigns and target/QD fits.【F:analyze_velocities.sh†L1-L18】【F:qd_quicklook.py†L43-L878】
-* `HDF_Plotter.py` builds multi-file scatter dashboards for analysis groups, while `HDF_View.py` and `CDF_View.py` provide lightweight structure browsers.【F:HDF_Plotter.py†L24-L410】【F:HDF_View.py†L60-L398】【F:CDF_View.py†L87-L324】
+* `HDF_Explorer.py` builds multi-file scatter dashboards for analysis groups, while `HDF_View.py` and `CDF_View.py` provide lightweight structure browsers.【F:HDF_Explorer.py†L24-L536】【F:HDF_View.py†L60-L398】【F:CDF_View.py†L87-L324】
 
 ## Repository layout
 
@@ -101,7 +101,7 @@ SpectrumPY-Flight bundles every tool the IDEX team used during the flight-model 
 * **Missing dependencies** – Install `h5py` and `cdflib` when the GUI reports missing optional modules. CLI decoders depend on `bitstring` and `lmfit` for waveform parsing and fits.【F:lmfit_idex_packet.py†L12-L200】【F:idex_packet.py†L34-L201】
 * **Headless systems** – Wrap GUI launches with `xvfb-run python IDEX-quicklook.py` to provide a virtual display server on CI or remote nodes.【F:IDEX-quicklook.py†L1585-L1595】
 * **Unexpected fit curves** – Use the fit parameter dialog to review overrides, then click `Reset Fit Overrides` or restart the viewer to reload on-disk parameters.【F:IDEX-quicklook.py†L1056-L1188】
-* **Scatter click tools not launching Quicklook** – Confirm matplotlib is emitting pick events and gather the diagnostics listed in [Debugging the interactive clicking tools](docs/clicking_tools_support.md) before filing an issue. The log lines printed inside `HDF_Plotter.py`'s `on_click` handler indicate whether the selection fired.【F:docs/clicking_tools_support.md†L1-L38】【F:HDF_Plotter.py†L232-L333】
+* **Scatter click tools not launching Quicklook** – Confirm matplotlib is emitting pick events and gather the diagnostics listed in [Debugging the interactive clicking tools](docs/clicking_tools_support.md) before filing an issue. The log lines printed inside `HDF_Explorer.py`'s click handler indicate whether the selection fired.【F:docs/clicking_tools_support.md†L1-L38】【F:HDF_Explorer.py†L478-L526】
 
 ## Documentation library
 

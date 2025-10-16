@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from HDF_Plotter import HDF5PlotterApp
+from HDF_Explorer import HDFDataExplorer
 from IDEX_quicklook import MainWindow as QuicklookWindow
 
 APP_TITLE = "SpectrumPY: Flight Addition"
@@ -162,7 +162,7 @@ class LaunchWindow(QMainWindow):
 
         self.hdf_button = QPushButton("Open in HDF Plotter")
         self.hdf_button.setEnabled(False)
-        self.hdf_button.clicked.connect(self.launch_hdf_plotter)
+        self.hdf_button.clicked.connect(self.launch_hdf_explorer)
         button_row.addWidget(self.hdf_button)
 
         self.quicklook_button = QPushButton("Open in IDEX Quicklook")
@@ -210,7 +210,7 @@ class LaunchWindow(QMainWindow):
         self.hdf_button.setEnabled(enables_hdf)
 
     # ------------------------------------------------------------------
-    def launch_hdf_plotter(self) -> None:
+    def launch_hdf_explorer(self) -> None:
         if not self._selected_path:
             QMessageBox.information(self, "No data selected", "Please choose an HDF5 file first.")
             return
@@ -219,11 +219,11 @@ class LaunchWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Unsupported file",
-                "The HDF Plotter works with HDF5 products. Select a *.h5 file to continue.",
+                "The HDF Explorer works with HDF5 products. Select a *.h5 file to continue.",
             )
             return
 
-        plotter = HDF5PlotterApp(self._selected_path)
+        plotter = HDFDataExplorer(self._selected_path)
         plotter.show()
         self._register_child_window(plotter)
 
