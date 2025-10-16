@@ -50,10 +50,8 @@ from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as Navigation
 # --------- Qt binding-agnostic imports (prefer PySide6, fallback PyQt6) ---------
 _QT = None
 try:
-    from PySide6.QtCore import Qt, QSize
+    from PySide6.QtCore import Qt, QSize, QTimer, QUrl
     from PySide6.QtGui import QAction, QFont, QIcon, QPixmap, QImage, QTextCursor, QTextDocument
-    from PySide6.QtCore import Qt, QSize, QTimer
-    from PySide6.QtGui import QAction, QFont, QPixmap, QImage, QTextCursor, QTextDocument
     from PySide6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
@@ -63,10 +61,8 @@ try:
     )
     _QT = "PySide6"
 except Exception:
-    from PyQt6.QtCore import Qt, QSize
+    from PyQt6.QtCore import Qt, QSize, QTimer, QUrl
     from PyQt6.QtGui import QAction, QFont, QIcon, QPixmap, QImage, QTextCursor, QTextDocument
-    from PyQt6.QtCore import Qt, QSize, QTimer
-    from PyQt6.QtGui import QAction, QFont, QPixmap, QImage, QTextCursor, QTextDocument
     from PyQt6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
@@ -412,8 +408,21 @@ class DocumentationCenter(QDialog):
 
     def _display_entry(self, entry: DocumentationEntry, *, line_no: int = 0, highlight: str = "") -> None:
         self._current_entry = entry
-        header = f"{entry.display_name}\n{entry.relative_path}"
-        self.viewer.setPlainText(f"{header}\n\n{entry.text}")
+        document = self.viewer.document()
+        if hasattr(document, "setMarkdownFeatures"):
+            feature = getattr(QTextDocument.MarkdownFeature, "MarkdownDialectGitHub", None)
+            if feature is None:
+                feature = getattr(QTextDocument.MarkdownFeature, "MarkdownDialectCommonMark", None)
+            if feature is not None:
+                document.setMarkdownFeatures(feature)
+        if hasattr(document, "setBaseUrl"):
+            document.setBaseUrl(QUrl.fromLocalFile(str(entry.path.parent)))
+        header = f"**{entry.display_name}**  \n`{entry.relative_path}`\n\n{entry.text}"
+        if hasattr(self.viewer, "setMarkdown"):
+            self.viewer.setMarkdown(header)
+        else:
+            plain = f"{entry.display_name}\n{entry.relative_path}\n\n{entry.text}"
+            self.viewer.setPlainText(plain)
         if line_no > 0:
             cursor = self.viewer.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.Start)
@@ -671,7 +680,7 @@ EMG_FIT = FitModelMeta(
         "σ (width)",
         "λ (decay)",
     ),
-    latex=r"f(t) = \frac{\lambda}{2} \exp\left[\frac{\lambda}{2}(2\mu + \lambda\sigma^2 - 2t)\right] \operatorname{erfc}\left(\frac{\mu + \lambda\sigma^2 - t}{\sqrt{2}\,\sigma}\right)",
+    latex=r"f(t) = \frac{\lambda}{2} \exp\left[\frac{\lambda}{2}(2\mu + \lambda\sigma^2 - 2t)\right] \mathrm{erfc}\left(\frac{\mu + \lambda\sigma^2 - t}{\sqrt{2}\,\sigma}\right)",
     evaluator=_emg_model,
 )
 
