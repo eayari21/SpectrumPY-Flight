@@ -29,7 +29,9 @@ import h5py
 import shutil
 import struct
 import matplotlib.pyplot as plt
-import pandas as pd
+from typing import Dict, Tuple
+
+from idex_variable_definitions import load_variable_definitions
 # try:
 #     plt.style.use("seaborn-pastel")
 # except:
@@ -114,27 +116,6 @@ def calculate_area_under_emg(x_slice, param):
         return area
     else:
         return 0.0
-
-# Helper function to apply the polynomial transformation
-def apply_polynomial(coeffs, X):
-    """Evaluate a polynomial defined by ``coeffs`` at points ``X``.
-
-    Parameters
-    ----------
-    coeffs
-        Iterable of polynomial coefficients ordered from the constant term
-        upwards.
-    X
-        Sample locations where the polynomial should be evaluated.
-
-    Returns
-    -------
-    numpy.ndarray or float
-        The computed polynomial value(s) for ``X``.
-    """
-
-    # Compute the value using the polynomial formula
-    return sum(coeffs[i] * (X ** i) for i in range(len(coeffs)))
 
 # Helper function to create dataset if it doesn't exist
 def create_dataset_if_not_exists(hdf5_file, dataset_path, data):
@@ -266,7 +247,6 @@ def FitTargetSignal(time, targetAmp):
     yBaseline = np.where(x < pre, y, np.nan)  # Set elements of y to nan where x >= pre
     yImage = y[(x >= pre) & (x < 0.0)]
     ionError = np.std(yBaseline)
-    ionErrorVector = pd.DataFrame([np.nan] * len(yBaseline))
     ionMean = yBaseline.mean()
     yBaseline -= ionMean
     parameters = []
@@ -350,7 +330,9 @@ class IDEXEvent:
         idex_binary_data.pos = 0
         idex_packet_generator = idex_parser.generator(idex_binary_data)
         self.data = {}
-        self.header={}
+        self.header = {}
+        self.metadata_units: Dict[Tuple[int, str], str] = {}
+        self._definitions_catalog = load_variable_definitions()
         evtnum = 0
         for pkt in idex_packet_generator:
             print(evtnum)
@@ -530,9 +512,6 @@ class IDEXEvent:
 
 
 
-                    # Define the coefficients that are the same for every variable
-                    coefficients = ['CO', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7']
-
                     mapping_dict = {
                         'detector_voltage': 'Last measurement in raw DN for HVPS Board signal “Detector Voltage”',
                         'sensor_voltage': 'Last measurement in raw DN for HVPS Board signal “Sensor Voltage"',
@@ -569,57 +548,32 @@ class IDEXEvent:
                         'voltage_3.3V_bus': 'Last measurement in raw DN for Processor Board signal “3.3V Voltage”'
                     }
 
-                    # Create a reverse dictionary
-                    reverse_mapping_dict = {value: key for key, value in mapping_dict.items()}
+                    catalog = self._definitions_catalog
+                    print("\n\n ***** Applying engineering unit conversions ***** \n\n")
 
-                    # Read in Scott K's instrument settings conversions
-                    settings_df = pd.read_excel("IDEX CDF Variable Definitions.xlsx")
-                    # Normalize Var_notes by converting curly quotes to straight quotes and removing NaN values
-                    # settings_df['Var_notes'] = settings_df['Var_notes'].replace(np.nan, '', regex=True)  # Replace NaN with empty strings
-                    # settings_df['Var_notes'] = settings_df['Var_notes'].str.replace('“', '"').str.replace('”', '"')  # Replace curly quotes with straight quotes
-                    # settings_df['Var_notes'] = settings_df['Var_notes'].str.strip()  # Remove any leading/trailing spaces
+                    for header_key, var_note in mapping_dict.items():
+                        definition = catalog.find_by_var_notes(var_note)
+                        if definition is None:
+                            print(f"No variable definition found for note: {var_note}")
+                            continue
 
-                    # print("Var notes: ", [note for note in settings_df["Var_notes"]])
+                        raw_key = (evtnum, header_key)
+                        if raw_key not in self.header:
+                            print(f"Missing raw value for {header_key}")
+                            continue
 
-                    # print("Coefficients: ", settings_df.columns)
-
-                    # Step 1: Create the mapping from Var_notes to row indices
-                    var_to_row = {var_note: idx for idx, var_note in enumerate(settings_df['Var_notes'])}
-
-                    print(f"var_to_row = {var_to_row}")
-
-                    print(f"\n \n ***** var_name being converted for each instrument setting ***** \n \n")
-
-                    for var_name, row_idx in var_to_row.items():
+                        raw_value = self.header[raw_key]
                         try:
-                            print("Matching row ", len(settings_df.iloc[[row_idx]].columns))  # Print the entire row for the problematic variable
+                            converted_value = definition.evaluate(raw_value)
+                        except Exception as exc:
+                            print(f"Failed to evaluate polynomial for {header_key}: {exc}")
+                            continue
 
-                            # Extract the polynomial coefficients from the spreadsheet
-                            coeffs = settings_df.iloc[row_idx][coefficients].values  # Access the row by index and then columns by labels
-                            print(f"coeffs for {var_name}= {coeffs}")
-                            target_value = var_name
-                            print(f"var_name = {var_name}")
-
-
-                            # Get the corresponding key
-                            var_name = reverse_mapping_dict.get(target_value)
-                            print(f"var_name = {var_name}")
-                            
-                            # Get the raw DN value for this variable (from your script)
-                            X = self.header[(evtnum, var_name)]
-
-                            print(f"Header info = {X}")
-                            
-                            # Apply the polynomial transformation
-                            transformed_value = apply_polynomial(coeffs, X)
-                            self.header[(evtnum, var_name)] = transformed_value
-                            
-                            print(f"Transformed value for {var_name} = {transformed_value}")
-                        
-                        except KeyError as e:
-                            print(f"KeyError: {e} - Could not find entry for {var_name}, {row_idx}. Please check the Var_notes or variable mapping.")
-                        except Exception as e:
-                            print(f"An error occurred: {e}")
+                        self.header[raw_key] = converted_value
+                        self.metadata_units[raw_key] = definition.units or ""
+                        print(
+                            f"Converted {header_key} ({raw_value}) -> {converted_value} {definition.units}"
+                        )
 
 
                      # Account for HS trigger delay
@@ -950,17 +904,20 @@ class IDEXEvent:
             dataset_path = f"/{evtnum}/Metadata/{key}"
             
             # Check if the dataset exists before creating it
-            if dataset_path not in h:
-                # Check if the value is a string and handle accordingly
+            if dataset_path in h:
+                dataset = h[dataset_path]
+            else:
                 if isinstance(value, str):
-                    # Use string_dtype to handle string data
                     dtype = h5py.string_dtype(encoding='utf-8')
-                    h.create_dataset(dataset_path, data=value, dtype=dtype)
+                    dataset = h.create_dataset(dataset_path, data=value, dtype=dtype)
                 else:
-                    # Convert value to numpy array and write normally for non-strings
-                    h.create_dataset(dataset_path, data=np.array(value))
-                
+                    dataset = h.create_dataset(dataset_path, data=np.array(value))
+
                 print(f"Created dataset: {dataset_path} with value: {value}")
+
+            units = self.metadata_units.get((evtnum, key))
+            if units is not None:
+                dataset.attrs['units'] = units
 
         # Conversion factors based on channel type
         conversion_factors = {
