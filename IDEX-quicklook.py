@@ -482,7 +482,8 @@ def _latex_to_pixmap(latex: str) -> Optional[QPixmap]:
         return cached
     try:
         ftimage, _ = _MATH_TEXT_PARSER.to_rgba(f"${latex}$", dpi=180)
-    except Exception:
+    except Exception as exc:
+        print(f"[warn] Failed to render LaTeX '{latex}': {exc}")
         _LATEX_CACHE[latex] = None
         return None
 
@@ -712,9 +713,9 @@ def _emg_model(x: np.ndarray, mu: float, sigma: float, lam: float) -> np.ndarray
 ION_GRID_FIT = FitModelMeta(
     parameter_labels=ION_GRID_PARAMETER_LABELS_FULL,
     latex=(
-        r"w[t; t_0, C_0, C_1, C_2, \tau_0, \tau_1, \tau_2] = C_0"
-        r" - \underbrace{H(t - t_0)\,C_1\,e^{-(t - t_0)/\tau_0}}_{\mathrm{Image}\ \mathrm{Charge}}"
-        r" + \underbrace{H(t - t_0)\left[C_2\left(1 - e^{-(t - t_0)/\tau_1}\right)e^{-(t - t_0)/\tau_2} - C_1\right]}_{\mathrm{Impact}\ \mathrm{Charge}}"
+        r"w(t; t_0, C_0, C_1, C_2, \tau_0, \tau_1, \tau_2) = C_0"
+        r" - H(t - t_0)\,C_1\,e^{-(t - t_0)/\tau_0}"
+        r" + H(t - t_0)\left[C_2\left(1 - e^{-(t - t_0)/\tau_1}\right)e^{-(t - t_0)/\tau_2} - C_1\right]"
     ),
     evaluator=_idex_ion_grid_model,
 )
@@ -725,7 +726,10 @@ EMG_FIT = FitModelMeta(
         "σ (width)",
         "λ (decay)",
     ),
-    latex=r"f(t) = \frac{\lambda}{2} \exp\left[\frac{\lambda}{2}(2\mu + \lambda\sigma^2 - 2t)\right] \mathrm{erfc}\left(\frac{\mu + \lambda\sigma^2 - t}{\sqrt{2}\,\sigma}\right)",
+    latex=(
+        r"f(t) = \frac{\lambda}{2} \exp\left[\frac{\lambda}{2}(2\mu + \lambda\sigma^2 - 2t)\right]"
+        r" \mathrm{erfc}\left(\frac{\mu + \lambda\sigma^2 - t}{\sqrt{2}\,\sigma}\right)"
+    ),
     evaluator=_emg_model,
 )
 
