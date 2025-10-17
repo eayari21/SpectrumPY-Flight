@@ -1467,7 +1467,7 @@ class MainWindow(QMainWindow):
         logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(logo_label)
 
-        title_label = QLabel("SpectrumPY: Flight Eddition")
+        title_label = QLabel("SpectrumPY: Flight Edition")
         title_label.setStyleSheet("font-size: 18px; font-weight: 600; color: #1f2937;")
         title_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(title_label)
