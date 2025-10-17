@@ -298,7 +298,7 @@ class HDFDataExplorer(QWidget):
             logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             header_layout.addWidget(logo_label)
 
-        title_label = QLabel("SpectrumPY: Flight Addition — HDF Explorer")
+        title_label = QLabel("SpectrumPY: Flight Edition — HDF Explorer")
         title_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         title_label.setStyleSheet("font-size: 18px; font-weight: 600;")
         header_layout.addWidget(title_label)

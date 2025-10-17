@@ -188,7 +188,7 @@ Plotter or full Quicklook interface.【F:start.py†L1-L7】【F:spectrum_launch
   files without restarting.【F:spectrum_launcher.py†L220-L247】
 * **Multiple sessions.** Each viewer window registers itself with the launcher
   so closing Quicklook or the HDF Plotter leaves the welcome screen running for
-  additional files.【F:spectrum_launcher.py†L249-L279】
+  extra files.【F:spectrum_launcher.py†L249-L279】
 
 ## Troubleshooting reference
 

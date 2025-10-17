@@ -34,7 +34,7 @@ docs_dir = REPO_ROOT / "docs"
 if docs_dir.exists():
     datas.append((str(docs_dir), "docs"))
 
-# Matplotlib, seaborn, and Qt all load additional data files at runtime.
+# Matplotlib, seaborn, and Qt all load extra data files at runtime.
 # `collect_data_files` makes sure the frozen bundle contains fonts, stylesheets,
 # and plugin libraries that would otherwise be missing.
 datas.extend(collect_data_files("matplotlib", include_py_files=False))
