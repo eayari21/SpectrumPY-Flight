@@ -13,7 +13,16 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+# `__file__` is not defined when PyInstaller executes this spec via
+# `run_build` on some platforms (notably macOS). Fall back to the first
+# CLI argument, which is the path to this spec file, so the build does
+# not crash when `__file__` is missing.
+try:
+    SPEC_PATH = Path(__file__).resolve()
+except NameError:  # pragma: no cover - depends on PyInstaller runtime behaviour
+    SPEC_PATH = Path(sys.argv[0]).resolve()
+
+REPO_ROOT = SPEC_PATH.parent.parent
 ENTRYPOINT = REPO_ROOT / "IDEX-quicklook.py"
 
 if not ENTRYPOINT.exists():
