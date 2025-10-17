@@ -36,11 +36,14 @@ try:  # pragma: no cover - Qt import guard
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import (
         QAbstractItemView,
+        QDialog,
+        QDialogButtonBox,
         QDoubleSpinBox,
         QFormLayout,
         QGroupBox,
         QHBoxLayout,
         QLabel,
+        QLineEdit,
         QMainWindow,
         QMessageBox,
         QPushButton,
@@ -56,11 +59,14 @@ except Exception:  # pragma: no cover - fallback to PyQt6
     from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import (
         QAbstractItemView,
+        QDialog,
+        QDialogButtonBox,
         QDoubleSpinBox,
         QFormLayout,
         QGroupBox,
         QHBoxLayout,
         QLabel,
+        QLineEdit,
         QMainWindow,
         QMessageBox,
         QPushButton,
@@ -239,6 +245,108 @@ class MassLineFit:
             f"{self.lam:.6f}",
             f"{self.abundance * 100.0:.2f}",
         )
+
+
+# ---------------------------------------------------------------------------
+# Dialogs
+# ---------------------------------------------------------------------------
+
+
+class ManualMassLineDialog(QDialog):
+    """Dialog allowing users to manually create a mass-line fit."""
+
+    def __init__(self, parent: QWidget, defaults: Dict[str, float | str]):
+        super().__init__(parent)
+        self.setWindowTitle("Add Manual Mass Line")
+        self._result: Optional[Dict[str, float | str]] = None
+
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        form.setContentsMargins(0, 0, 0, 0)
+
+        self.label_edit = QLineEdit(self)
+        self.label_edit.setText(str(defaults.get("label", "Manual line")))
+        form.addRow("Label:", self.label_edit)
+
+        self.mass_spin = QDoubleSpinBox(self)
+        self.mass_spin.setDecimals(6)
+        self.mass_spin.setRange(-1e6, 1e6)
+        self.mass_spin.setValue(float(defaults.get("mass", 0.0)))
+        form.addRow("Mass (amu):", self.mass_spin)
+
+        self.mu_spin = QDoubleSpinBox(self)
+        self.mu_spin.setDecimals(6)
+        self.mu_spin.setRange(-1e6, 1e6)
+        self.mu_spin.setValue(float(defaults.get("mu", 0.0)))
+        form.addRow("μ (µs):", self.mu_spin)
+
+        self.sigma_spin = QDoubleSpinBox(self)
+        self.sigma_spin.setDecimals(6)
+        self.sigma_spin.setRange(1e-9, 1e6)
+        self.sigma_spin.setSingleStep(1e-3)
+        self.sigma_spin.setValue(float(max(abs(float(defaults.get("sigma", 0.01))), 1e-9)))
+        form.addRow("σ (µs):", self.sigma_spin)
+
+        self.lambda_spin = QDoubleSpinBox(self)
+        self.lambda_spin.setDecimals(6)
+        self.lambda_spin.setRange(1e-9, 1e6)
+        self.lambda_spin.setSingleStep(1e-3)
+        self.lambda_spin.setValue(float(max(abs(float(defaults.get("lam", 1.0))), 1e-9)))
+        form.addRow("λ (µs⁻¹):", self.lambda_spin)
+
+        self.start_spin = QDoubleSpinBox(self)
+        self.start_spin.setDecimals(6)
+        self.start_spin.setRange(-1e6, 1e6)
+        self.start_spin.setValue(float(defaults.get("time_start", 0.0)))
+        form.addRow("Start time (µs):", self.start_spin)
+
+        self.end_spin = QDoubleSpinBox(self)
+        self.end_spin.setDecimals(6)
+        self.end_spin.setRange(-1e6, 1e6)
+        self.end_spin.setValue(float(defaults.get("time_end", 1.0)))
+        form.addRow("End time (µs):", self.end_spin)
+
+        layout.addLayout(form)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, parent=self)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def accept(self) -> None:  # type: ignore[override]
+        try:
+            self._result = self._collect_values()
+        except ValueError as exc:  # pragma: no cover - UI feedback
+            QMessageBox.warning(self, "Invalid Input", str(exc))
+            return
+        super().accept()
+
+    def result(self) -> Optional[Dict[str, float | str]]:
+        return self._result
+
+    def _collect_values(self) -> Dict[str, float | str]:
+        label = self.label_edit.text().strip() or "Manual line"
+        mass = float(self.mass_spin.value())
+        mu = float(self.mu_spin.value())
+        sigma = float(self.sigma_spin.value())
+        lam = float(self.lambda_spin.value())
+        start = float(self.start_spin.value())
+        end = float(self.end_spin.value())
+        if sigma <= 0.0:
+            raise ValueError("σ must be positive.")
+        if lam <= 0.0:
+            raise ValueError("λ must be positive.")
+        if end <= start:
+            raise ValueError("End time must be greater than start time.")
+        return {
+            "label": label,
+            "mass": mass,
+            "mu": mu,
+            "sigma": sigma,
+            "lam": lam,
+            "time_start": start,
+            "time_end": end,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -520,6 +628,10 @@ class DustCompositionWindow(QMainWindow):
         self.mass_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.mass_table.itemChanged.connect(self._on_mass_table_changed)
         layout.addWidget(self.mass_table)
+        self.manual_mass_button = QPushButton("Add Manual Line", box)
+        self.manual_mass_button.setToolTip("Enter EMG parameters directly without selecting a region on the plot.")
+        self.manual_mass_button.clicked.connect(self._prompt_manual_mass_line)
+        layout.addWidget(self.manual_mass_button)
         self.remove_mass_button = QPushButton("Remove Selected", box)
         self.remove_mass_button.clicked.connect(self._remove_selected_mass_line)
         layout.addWidget(self.remove_mass_button)
@@ -573,6 +685,41 @@ class DustCompositionWindow(QMainWindow):
             self.statusBar().showMessage("Select a region to fit an EMG mass line.", 6000)
         else:
             self.statusBar().clearMessage()
+
+    def _prompt_manual_mass_line(self) -> None:
+        defaults = self._manual_mass_defaults()
+        dialog = ManualMassLineDialog(self, defaults)
+        result_code = dialog.exec()
+        try:
+            accepted = result_code == QDialog.DialogCode.Accepted  # type: ignore[attr-defined]
+        except Exception:
+            accepted = int(result_code) == int(QDialog.DialogCode.Accepted)
+        if not accepted:
+            return
+        data = dialog.result()
+        if not data:
+            return
+        line = MassLineFit(
+            line_id=self._mass_line_counter,
+            label=str(data.get("label", "Manual line")),
+            mu=float(data.get("mu", 0.0)),
+            sigma=float(abs(float(data.get("sigma", 0.01)))),
+            lam=float(abs(float(data.get("lam", 1.0)))),
+            time_start=float(data.get("time_start", 0.0)),
+            time_end=float(data.get("time_end", 1.0)),
+            mass_guess=float(data.get("mass", 0.0)),
+            abundance=0.0,
+            color="#2ca02c",
+        )
+        dense_time = np.linspace(line.time_start, line.time_end, 800)
+        line.time_axis = dense_time
+        line.fit_values = _emg_model(dense_time, line.mu, abs(line.sigma), abs(line.lam))
+        self._mass_line_counter += 1
+        self._mass_lines.append(line)
+        self._update_mass_line_abundances()
+        self._update_tables()
+        self._update_summary()
+        self._refresh_plot()
 
     def _set_span_selector_active(self, active: bool) -> None:
         if self._span_selector is not None:
@@ -811,6 +958,43 @@ class DustCompositionWindow(QMainWindow):
             stretch = 1.0
         return np.asarray(mass_values, dtype=float) / stretch + shift
     # ---- Mass line management ------------------------------------------
+    def _manual_mass_defaults(self) -> Dict[str, float | str]:
+        if self._combined is not None and self._combined.size and self._time_axis.size:
+            try:
+                corrected = self._combined - self._baseline
+                idx = int(np.nanargmax(np.clip(corrected, 0.0, None)))
+                idx = int(np.clip(idx, 0, self._time_axis.size - 1))
+                mu = float(self._time_axis[idx])
+            except Exception:
+                mu = float(self._time_axis[self._time_axis.size // 2])
+        elif self._time_axis.size:
+            mu = float(self._time_axis[self._time_axis.size // 2])
+        else:
+            mu = 0.0
+        if self._time_axis.size >= 2:
+            try:
+                dt = float(np.nanmedian(np.diff(self._time_axis)))
+            except Exception:
+                dt = 0.0
+        else:
+            dt = 0.0
+        sigma = max(abs(float(dt * 6.0)), 1.0e-3) if dt > 0 else 0.01
+        lam = 1.0 / max(sigma, 1.0e-6)
+        span = max(sigma * 8.0, 1.0e-3)
+        start = mu - span / 2.0
+        end = mu + span / 2.0
+        mass_guess = float(self._time_to_mass(mu))
+        label = nearest_mass_name(mass_guess)
+        return {
+            "label": label,
+            "mass": mass_guess,
+            "mu": mu,
+            "sigma": sigma,
+            "lam": lam,
+            "time_start": start,
+            "time_end": end,
+        }
+
     def add_mass_line(self, x_min: float, x_max: float) -> None:
         if self._combined is None:
             return
