@@ -83,6 +83,30 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.widgets import SpanSelector
 
+# ``numpy.erfc`` was removed in NumPy 2.0 in favour of ``scipy.special.erfc``.
+# Provide a lightweight compatibility shim so the analysis tools can operate
+# regardless of the NumPy version bundled with the runtime environment.
+try:  # NumPy < 2.0
+    from numpy import erfc as _compat_erfc
+except AttributeError:  # pragma: no cover - depends on NumPy version
+    try:  # Prefer SciPy if it is available
+        from scipy.special import erfc as _compat_erfc  # type: ignore
+    except Exception:  # pragma: no cover - SciPy may be unavailable
+        from math import erfc as _math_erfc
+
+        def _compat_erfc(values: np.ndarray) -> np.ndarray:
+            arr = np.asarray(values, dtype=float)
+            if arr.ndim == 0:
+                return np.array(float(_math_erfc(float(arr))))
+            vectorised = np.vectorize(lambda x: float(_math_erfc(float(x))), otypes=[float])
+            return vectorised(arr)
+
+
+def _erfc(values: np.ndarray) -> np.ndarray:
+    """Return the complementary error function for *values*."""
+
+    return _compat_erfc(values)
+
 # ---------------------------------------------------------------------------
 # Constants & helper utilities
 # ---------------------------------------------------------------------------
@@ -115,7 +139,7 @@ def _emg_model(time_values: np.ndarray, mu: float, sigma: float, lam: float) -> 
     with np.errstate(over="ignore", under="ignore", divide="ignore", invalid="ignore"):
         exponent = np.exp((safe_lambda / 2.0) * (2.0 * mu + safe_lambda * safe_sigma**2 - 2.0 * arr))
     argument = (mu + safe_lambda * safe_sigma**2 - arr) / (np.sqrt(2.0) * safe_sigma)
-    return (safe_lambda / 2.0) * exponent * np.erfc(argument)
+    return (safe_lambda / 2.0) * exponent * _erfc(argument)
 
 
 def _contiguous_mask(condition: np.ndarray, min_samples: int) -> np.ndarray:
