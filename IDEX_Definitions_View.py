@@ -130,8 +130,11 @@ class VariableDefinitionsWindow(QMainWindow):
         self._dn_input.valueChanged.connect(self._update_evaluated_value)
         detail_layout.addWidget(self._dn_input)
 
-        self._evaluated_label = QLabel("Converted value: —", detail_widget)
-        detail_layout.addWidget(self._evaluated_label)
+        self._dn_value_label = QLabel("DN — → Converted value: —", detail_widget)
+        detail_layout.addWidget(self._dn_value_label)
+
+        self._range_status_label = QLabel("Range status: —", detail_widget)
+        detail_layout.addWidget(self._range_status_label)
 
         self.setCentralWidget(central)
 
@@ -233,13 +236,34 @@ class VariableDefinitionsWindow(QMainWindow):
 
     def _update_evaluated_value(self, dn_value: int) -> None:
         if self._current_definition is None:
-            self._evaluated_label.setText("Converted value: —")
+            self._dn_value_label.setText("DN — → Converted value: —")
+            self._range_status_label.setText("Range status: —")
             return
+
         converted = self._current_definition.evaluate(dn_value)
         if isinstance(converted, np.ndarray):
             converted = converted.item()
         units = self._current_definition.units or ""
-        self._evaluated_label.setText(f"Converted value: {converted:.6g} {units}")
+        unit_text = f" {units}" if units else ""
+        self._dn_value_label.setText(f"DN {dn_value} → {converted:.6g}{unit_text}")
+
+        dn_span = self._current_definition.dn_range()
+        if not dn_span:
+            self._range_status_label.setText("Range status: —")
+            return
+
+        low, high = dn_span
+        if dn_value < low:
+            status = "below"
+        elif dn_value > high:
+            status = "exceeding"
+        else:
+            if high == low:
+                fraction = 1.0
+            else:
+                fraction = (dn_value - low) / (high - low)
+            status = "low" if fraction <= 0.5 else "high"
+        self._range_status_label.setText(f"Range status: {status}")
 
     def _clear_details(self) -> None:
         self._title_label.setText("Select a variable to view its definition")
@@ -249,7 +273,8 @@ class VariableDefinitionsWindow(QMainWindow):
         self._summary_edit.clear()
         self._notes_edit.clear()
         self._segments_table.setRowCount(0)
-        self._evaluated_label.setText("Converted value: —")
+        self._dn_value_label.setText("DN — → Converted value: —")
+        self._range_status_label.setText("Range status: —")
 
 
 def launch_variable_definitions_viewer(parent: Optional[QWidget] = None) -> VariableDefinitionsWindow:
