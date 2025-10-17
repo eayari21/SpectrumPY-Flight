@@ -109,6 +109,8 @@ The `.github/workflows/desktop-builds.yml` workflow rebuilds the macOS, Windows,
 
 Updates are nondestructive—users replace their previous installation with the new archive and keep working with their existing configuration and local data.【F:packaging/README.md†L64-L79】 Refer to the packaging playbook for guidance on communicating release notes and validating upgrades.【F:docs/packaging_tutorial.md†L142-L188】
 
+If a local PyInstaller run fails, rely on those CI artifacts instead of fighting the environment. You can trigger the workflow manually or download the latest notarization-ready `.dmg` alongside the Windows and Linux bundles with `gh release download` patterns documented in the packaging README.【F:packaging/README.md†L11-L53】【F:.github/workflows/desktop-builds.yml†L1-L82】
+
 ## Repository layout
 
 | Path | Purpose |
