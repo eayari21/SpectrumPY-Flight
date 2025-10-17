@@ -119,7 +119,7 @@ def idex_rice_Decode(input, nBit10, sampleCount):
 
         # Align your bits
         length = len(bits)
-        alignment_bits = (-length) % 8  # Calculate the number of additional bits needed for alignment
+        alignment_bits = (-length) % 8  # Calculate the number of extra bits needed for alignment
         padding = bitstring.BitStream(bin='0' * alignment_bits)  # Create a new BitStream with padding bits
         aligned_bits = bits + padding  # Concatenate the existing bits with the padding bits
         byte_position = aligned_bits.bytepos
@@ -248,7 +248,7 @@ def rice_Decode(sourceFile, destinationFile, nBit10, sampleCount):
 
         # Align your bits
         length = len(bits)
-        alignment_bits = (-length) % 8  # Calculate the number of additional bits needed for alignment
+        alignment_bits = (-length) % 8  # Calculate the number of extra bits needed for alignment
         padding = bitstring.BitStream(bin='0' * alignment_bits)  # Create a new BitStream with padding bits
         aligned_bits = bits + padding  # Concatenate the existing bits with the padding bits
         byte_position = aligned_bits.bytepos

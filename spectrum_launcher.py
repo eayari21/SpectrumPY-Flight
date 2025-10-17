@@ -1,4 +1,4 @@
-"""Launch panel for SpectrumPY: Flight Addition.
+"""Launch panel for SpectrumPY: Flight Edition.
 
 Provides a welcome screen that highlights the mission imagery and lets the
 user choose which analysis environment to enter.
@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
 from HDF_Explorer import HDFDataExplorer
 from IDEX_quicklook import MainWindow as QuicklookWindow
 
-APP_TITLE = "SpectrumPY: Flight Addition"
+APP_TITLE = "SpectrumPY: Flight Edition"
 APP_AUTHOR = "Ethan Ayari"
 REPO_ROOT = Path(__file__).resolve().parent
 IMAGES_DIR = REPO_ROOT / "Images"
