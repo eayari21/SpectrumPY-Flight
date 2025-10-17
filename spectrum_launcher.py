@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QIcon, QPixmap
+from PyQt6.QtGui import QFont, QIcon, QPixmap, QResizeEvent
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -63,29 +63,60 @@ def _find_image(candidates: tuple[str, ...]) -> Optional[Path]:
     return None
 
 
-def _load_scaled_pixmap(path: Path, *, max_width: int | None = None, max_height: int | None = None) -> Optional[QPixmap]:
+def _load_scaled_pixmap(path: Path) -> Optional[QPixmap]:
     pixmap = QPixmap(str(path))
     if pixmap.isNull():
         return None
+    return pixmap
 
-    target = pixmap
-    if max_width is not None or max_height is not None:
-        width = max_width or pixmap.width()
-        height = max_height or pixmap.height()
-        target = pixmap.scaled(
-            width,
-            height,
+
+class ResponsiveImageLabel(QLabel):
+    """QLabel that scales its pixmap while maintaining aspect ratio."""
+
+    def __init__(self, *args, minimum_height: int | None = None, maximum_height: int | None = None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._original_pixmap: Optional[QPixmap] = None
+        self.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        if minimum_height is not None:
+            self.setMinimumHeight(minimum_height)
+        if maximum_height is not None:
+            self.setMaximumHeight(maximum_height)
+
+    def setPixmap(self, pixmap: QPixmap | None) -> None:  # type: ignore[override]
+        if pixmap is None or pixmap.isNull():
+            self._original_pixmap = None
+            super().setPixmap(QPixmap())
+            return
+
+        self._original_pixmap = pixmap
+        self._update_scaled_pixmap()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        if self._original_pixmap is not None:
+            self._update_scaled_pixmap()
+
+    def _update_scaled_pixmap(self) -> None:
+        if not self._original_pixmap:
+            return
+
+        available_width = max(1, self.width())
+        available_height = max(1, self.height())
+        scaled = self._original_pixmap.scaled(
+            available_width,
+            available_height,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
-    return target
+        super().setPixmap(scaled)
 
 
 class LaunchWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_TITLE)
-        self.setMinimumSize(720, 640)
+        self.setMinimumSize(800, 680)
 
         self._child_windows: List[QWidget] = []
         self._selected_path: Optional[Path] = None
@@ -104,11 +135,10 @@ class LaunchWindow(QMainWindow):
         layout.setContentsMargins(32, 32, 32, 32)
 
         if logo_path:
-            logo_pixmap = _load_scaled_pixmap(logo_path, max_height=96)
+            logo_pixmap = _load_scaled_pixmap(logo_path)
             if logo_pixmap:
-                logo_label = QLabel()
+                logo_label = ResponsiveImageLabel(maximum_height=120)
                 logo_label.setPixmap(logo_pixmap)
-                logo_label.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
                 layout.addWidget(logo_label)
 
         title_label = QLabel(APP_TITLE)
@@ -128,12 +158,10 @@ class LaunchWindow(QMainWindow):
 
         instrument_path = _find_image(INSTRUMENT_IMAGE_CANDIDATES)
         if instrument_path:
-            instrument_pixmap = _load_scaled_pixmap(instrument_path, max_width=520, max_height=260)
+            instrument_pixmap = _load_scaled_pixmap(instrument_path)
             if instrument_pixmap:
-                instrument_label = QLabel()
+                instrument_label = ResponsiveImageLabel(minimum_height=260)
                 instrument_label.setPixmap(instrument_pixmap)
-                instrument_label.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
-                instrument_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
                 layout.addWidget(instrument_label)
 
         description = QLabel(
@@ -149,24 +177,33 @@ class LaunchWindow(QMainWindow):
         self.file_edit = QLineEdit()
         self.file_edit.setPlaceholderText("Choose a CDF/HDF5/trace file to work with")
         self.file_edit.setReadOnly(True)
+        self.file_edit.setMinimumHeight(42)
+        self.file_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         file_row.addWidget(self.file_edit)
 
         browse_button = QPushButton("Browse…")
+        browse_button.setMinimumHeight(42)
         browse_button.clicked.connect(self.select_file)
+        browse_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         file_row.addWidget(browse_button)
 
         layout.addLayout(file_row)
 
         button_row = QHBoxLayout()
+        button_row.setSpacing(16)
         button_row.addStretch()
 
         self.hdf_button = QPushButton("Open in HDF Plotter")
         self.hdf_button.setEnabled(False)
+        self.hdf_button.setMinimumSize(200, 48)
+        self.hdf_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.hdf_button.clicked.connect(self.launch_hdf_explorer)
         button_row.addWidget(self.hdf_button)
 
         self.quicklook_button = QPushButton("Open in IDEX Quicklook")
         self.quicklook_button.setEnabled(False)
+        self.quicklook_button.setMinimumSize(200, 48)
+        self.quicklook_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.quicklook_button.clicked.connect(self.launch_quicklook)
         button_row.addWidget(self.quicklook_button)
 
