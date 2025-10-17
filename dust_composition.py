@@ -31,6 +31,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import h5py
 import numpy as np
+from numpy import special
 
 try:  # pragma: no cover - Qt import guard
     from PySide6.QtCore import Qt
@@ -115,7 +116,7 @@ def _emg_model(time_values: np.ndarray, mu: float, sigma: float, lam: float) -> 
     with np.errstate(over="ignore", under="ignore", divide="ignore", invalid="ignore"):
         exponent = np.exp((safe_lambda / 2.0) * (2.0 * mu + safe_lambda * safe_sigma**2 - 2.0 * arr))
     argument = (mu + safe_lambda * safe_sigma**2 - arr) / (np.sqrt(2.0) * safe_sigma)
-    return (safe_lambda / 2.0) * exponent * np.erfc(argument)
+    return (safe_lambda / 2.0) * exponent * special.erfc(argument)
 
 
 def _contiguous_mask(condition: np.ndarray, min_samples: int) -> np.ndarray:
