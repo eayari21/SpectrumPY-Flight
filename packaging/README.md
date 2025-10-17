@@ -10,6 +10,30 @@ If you prefer a narrative, end-to-end walkthrough, read the companion
 [**SpectrumPY Packaging & Distribution Playbook**](../docs/packaging_tutorial.md)
 for annotated checklists, validation steps, and troubleshooting recipes.
 
+## Downloading prebuilt bundles
+
+When PyInstaller is uncooperative on local machines, you do not need to
+ship a hand-crafted build. Trigger the
+[desktop-builds workflow](../.github/workflows/desktop-builds.yml) from a
+tag or the **Run workflow** button and download the generated artifacts
+once it finishes. Each run publishes a notarization-ready macOS `.dmg`, a
+Windows `.zip`, and a Linux `.tar.gz` that mirror the spec file in this
+directory.【F:.github/workflows/desktop-builds.yml†L1-L82】
+
+For quick testing without kicking off a new run, grab the latest release
+artifacts from GitHub:
+
+```bash
+gh release download --pattern 'IDEX-Quicklook-*-macos-*.dmg'
+gh release download --pattern 'IDEX-Quicklook-*-windows.zip'
+gh release download --pattern 'IDEX-Quicklook-*-linux.tar.gz'
+```
+
+The downloads contain the Spectrum Launcher, Quicklook viewer, and the
+embedded documentation exactly as they appear in a locally frozen
+bundle, so you can validate fixes or share preview builds without
+touching PyInstaller.【F:.github/workflows/desktop-builds.yml†L1-L82】
+
 ## Build overview
 
 1. Create a clean Python 3.10+ environment on the target platform.

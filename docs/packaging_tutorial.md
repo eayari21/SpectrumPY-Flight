@@ -14,7 +14,8 @@ frozen desktop experience still mirrors the developer environment.
 5. [Running and validating the bundles](#running-and-validating-the-bundles)
 6. [Shipping updates](#shipping-updates)
 7. [Integrating with the Spectrum Launcher](#integrating-with-the-spectrum-launcher)
-8. [Troubleshooting reference](#troubleshooting-reference)
+8. [When PyInstaller refuses to cooperate](#when-pyinstaller-refuses-to-cooperate)
+9. [Troubleshooting reference](#troubleshooting-reference)
 
 ## Overview
 
@@ -189,6 +190,35 @@ Plotter or full Quicklook interface.【F:start.py†L1-L7】【F:spectrum_launch
 * **Multiple sessions.** Each viewer window registers itself with the launcher
   so closing Quicklook or the HDF Plotter leaves the welcome screen running for
   extra files.【F:spectrum_launcher.py†L249-L279】
+
+## When PyInstaller refuses to cooperate
+
+Local packaging environments can fail for a host of reasons—from mismatched
+Qt binaries to stale build artifacts. Before throwing out the workflow, walk
+through these guardrails:
+
+1. **Reset the build directory.** Delete the `build/` and `dist/` folders and
+   rerun PyInstaller with the `--clean` flag to discard cached metadata:
+   ```bash
+   rm -rf build dist
+   pyinstaller --noconfirm --clean packaging/idex_quicklook.spec
+   ```
+2. **Recreate the environment.** Use Python 3.10 and install the pinned
+   packaging requirements to guarantee a known-good PyInstaller/Qt pairing:
+   ```bash
+   python -m pip install --upgrade pip
+   pip install -r packaging/packaging-requirements.txt
+   ```
+   This pulls the same versions that power the automated builds.【F:packaging/packaging-requirements.txt†L1-L13】
+3. **Compare against CI.** If the build still fails, trigger the
+   [desktop-builds workflow](../.github/workflows/desktop-builds.yml) or grab
+   the latest release artifacts. Each run emits notarization-ready `.dmg`
+   images plus Windows and Linux bundles, so you can validate fixes without a
+   local freeze.【F:.github/workflows/desktop-builds.yml†L1-L82】
+
+Once you have a working artifact from CI, you can diff the PyInstaller logs or
+the embedded Python runtime to isolate machine-specific quirks before retrying
+locally.
 
 ## Troubleshooting reference
 
