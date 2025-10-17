@@ -6,6 +6,10 @@ Apple silicon), Windows, and Linux. The build process relies on
 [PyInstaller](https://pyinstaller.org/) to freeze the Python environment and
 captures the Markdown documentation so the in-app help browser works offline.
 
+If you prefer a narrative, end-to-end walkthrough, read the companion
+[**SpectrumPY Packaging & Distribution Playbook**](../docs/packaging_tutorial.md)
+for annotated checklists, validation steps, and troubleshooting recipes.
+
 ## Build overview
 
 1. Create a clean Python 3.10+ environment on the target platform.
@@ -14,7 +18,7 @@ captures the Markdown documentation so the in-app help browser works offline.
    python -m pip install --upgrade pip
    pip install -r packaging/packaging-requirements.txt
    ```
-3. Invoke PyInstaller with the shared spec file:
+3. Invoke PyInstaller with the shared spec:
    ```bash
    pyinstaller --noconfirm packaging/idex_quicklook.spec
    ```
@@ -24,7 +28,7 @@ captures the Markdown documentation so the in-app help browser works offline.
 The `packaging/idex_quicklook.spec` definition collects the documentation,
 Qt/Matplotlib assets, and scientific dependencies that are dynamically imported
 at runtime. The same spec works across macOS, Windows, and Linux, so you only
-need to maintain one configuration.
+need to maintain one configuration.【F:packaging/idex_quicklook.spec†L1-L89】
 
 ## Platform notes
 

@@ -53,11 +53,13 @@ SpectrumPY-Flight bundles every tool the IDEX team used during the flight-model 
 
 ## Launching the Quicklook GUI
 
-* Launch the new welcome screen with `python start.py` for the simplest entry point, or run `python spectrum_launcher.py` directly to choose a data file and jump into either the HDF Plotter or the full IDEX Quicklook interface.【F:start.py†L1-L6】【F:spectrum_launcher.py†L21-L214】
-* Prefer `python -m imfpy.gui.main` when SpectrumPY is installed as a package—the command adds the repository to `PYTHONPATH` automatically and mirrors the welcome screen launcher. Use `python -m imfpy.gui.main quicklook --filename <file.h5>` to jump straight into the viewer with an optional dataset pre-selected.【F:imfpy/gui/main.py†L8-L129】
-* Run `python IDEX-quicklook.py` from the repository root. Pass `--filename <file.h5>` (and optionally `--eventnumber N`) to pre-load a dataset.【F:IDEX-quicklook.py†L1585-L1595】
-* The universal Open dialog remembers the best starting folder: HDF5 files default to `HDF5/` while the **Open CDF…** shortcut jumps straight into the `CDF/` directory for exported products.【F:IDEX-quicklook.py†L82-L120】
-* Press `Ctrl+R` to reload a file after re-running fits; channel selections and overrides remain intact.【F:IDEX-quicklook.py†L1058-L1323】
+SpectrumPY ships with a launcher-first workflow so analysts always land on a guided welcome screen before diving into data.
+
+* **Primary entry point:** run `python start.py` from a source checkout to open the Spectrum Launcher. The wrapper simply forwards to `spectrum_launcher.main()` so packaged apps and local checkouts share the same UX.【F:start.py†L1-L7】【F:spectrum_launcher.py†L167-L289】
+* **Alternative commands:** invoke `python spectrum_launcher.py` directly or use `python -m imfpy.gui.main` when SpectrumPY is installed as a Python package. The module exposes subcommands such as `quicklook --filename <file.h5>` for scripted launches without the welcome screen.【F:spectrum_launcher.py†L281-L293】【F:imfpy/gui/main.py†L8-L129】
+* **Direct viewer access:** call `python IDEX-quicklook.py --filename <file>` and optionally `--eventnumber N` to skip the launcher for automation or debugging sessions.【F:IDEX-quicklook.py†L1585-L1595】
+* **Launcher behavior:** the welcome window remembers preferred directories, enables Quicklook/HDF buttons based on file type, and keeps running while child windows are open so you can inspect multiple datasets back-to-back.【F:spectrum_launcher.py†L196-L279】
+* **In-app convenience:** the universal Open dialog defaults to `HDF5/` while the **Open CDF…** shortcut jumps to `CDF/`. Press `Ctrl+R` after re-running fits to reload data without losing channel selections.【F:IDEX-quicklook.py†L82-L132】【F:IDEX-quicklook.py†L1056-L1323】
 
 ## Exploring the interface
 
@@ -84,6 +86,29 @@ SpectrumPY-Flight bundles every tool the IDEX team used during the flight-model 
 * `analyze_velocities.sh` and `qd_quicklook.py` deliver quick assessments for accelerator campaigns and target/QD fits.【F:analyze_velocities.sh†L1-L18】【F:qd_quicklook.py†L43-L878】
 * `HDF_Explorer.py` builds multi-file scatter dashboards for analysis groups, while `HDF_View.py` and `CDF_View.py` provide lightweight structure browsers.【F:HDF_Explorer.py†L24-L536】【F:HDF_View.py†L60-L398】【F:CDF_View.py†L87-L324】
 
+## Desktop packaging & distribution
+
+SpectrumPY’s desktop builds use a shared PyInstaller spec that freezes the Quicklook GUI, Spectrum Launcher, mission assets, and bundled documentation so analysts can work offline.【F:packaging/idex_quicklook.spec†L1-L89】
+
+### Building locally
+
+1. Create a clean Python ≥3.10 environment on the target platform.
+2. Install the packaging requirements and project dependencies:
+   ```bash
+   python -m pip install --upgrade pip
+   pip install -r packaging/packaging-requirements.txt
+   ```
+3. Run `pyinstaller --noconfirm packaging/idex_quicklook.spec` and collect the bundle from `dist/`. Each archive includes the Spectrum Launcher, Quicklook viewer, and Markdown docs referenced by the in-app help center.【F:packaging/README.md†L10-L45】【F:packaging/idex_quicklook.spec†L21-L47】
+4. Package the output for your platform (DMG, ZIP, or tar.gz) and follow the platform-specific signing or installer guidance in the packaging documentation.【F:packaging/README.md†L20-L63】【F:docs/packaging_tutorial.md†L60-L140】
+
+The [SpectrumPY Packaging & Distribution Playbook](docs/packaging_tutorial.md) expands these steps with platform nuances, validation checklists, and troubleshooting scenarios.【F:docs/packaging_tutorial.md†L1-L198】
+
+### Automated releases & updates
+
+The `.github/workflows/desktop-builds.yml` workflow rebuilds the macOS, Windows, and Linux bundles whenever you tag a release. Download the generated `.dmg`, `.zip`, and `.tar.gz` artifacts from the release page and share them with analysts.【F:packaging/README.md†L49-L72】
+
+Updates are nondestructive—users replace their previous installation with the new archive and keep working with their existing configuration and local data.【F:packaging/README.md†L64-L79】 Refer to the packaging playbook for guidance on communicating release notes and validating upgrades.【F:docs/packaging_tutorial.md†L142-L188】
+
 ## Repository layout
 
 | Path | Purpose |
@@ -108,7 +133,8 @@ SpectrumPY-Flight bundles every tool the IDEX team used during the flight-model 
 The repository ships with a comprehensive Markdown knowledge base accessible from within the application:
 
 * **README (this page)** – Mission overview, setup instructions, and navigation tips.
-* **Quicklook Tutorial** – Deep dive on GUI workflows and shortcuts.【F:docs/quicklook_tutorial.md†L1-L91】
+* **Quicklook Tutorial** – Deep dive on GUI workflows and shortcuts.【F:docs/quicklook_tutorial.md†L1-L123】
 * **L2A CDF Guides** – Detailed comparisons between ASCII scans and HDF/CDF exports for downstream processing.【F:docs/l2a_cdf_ascii_scan.md†L1-L75】【F:docs/l2a_cdf_vs_hdf.md†L1-L83】
+* **Packaging & Distribution Playbook** – Comprehensive PyInstaller tutorials, validation checklists, and update workflows for desktop releases.【F:docs/packaging_tutorial.md†L1-L198】
 
 Launch the documentation center (`F1`) at any time to browse, search, and cross-reference these guides directly inside the application.【F:IDEX-quicklook.py†L200-L409】
