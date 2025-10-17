@@ -386,7 +386,6 @@ class HDFDataExplorer(QWidget):
             return None
         return pixmap.scaledToHeight(
             max_height,
-            Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
 
