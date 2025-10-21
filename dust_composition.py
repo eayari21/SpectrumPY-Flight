@@ -89,14 +89,15 @@ import numpy as np
 
 try:
     # Preferred on modern stacks
-    from scipy.special import erfc as _erfc  # type: ignore
+    from scipy.special import erfc as _erfc_impl  # type: ignore
 except Exception:
     # Fallback: vectorize Python's math.erfc
     from math import erfc as _math_erfc
 
-    def _erfc(x: Union[np.ndarray, float, int]) -> np.ndarray:
+    def _erfc_impl(x: Union[np.ndarray, float, int]) -> np.ndarray:
         arr = np.asarray(x, dtype=float)
         if arr.ndim == 0:
+            # Preserve scalar behaviour so callers see a 0-D array
             return np.array(_math_erfc(float(arr)))
         vec = np.vectorize(lambda v: _math_erfc(float(v)), otypes=[float])
         return vec(arr)
@@ -105,7 +106,7 @@ except Exception:
 def _erfc(values: np.ndarray) -> np.ndarray:
     """Return the complementary error function for *values*."""
 
-    return _erfc(values)
+    return np.asarray(_erfc_impl(values), dtype=float)
 
 # ---------------------------------------------------------------------------
 # Constants & helper utilities
@@ -345,7 +346,9 @@ class ManualMassLineDialog(QDialog):
             return
         super().accept()
 
-    def result(self) -> Optional[Dict[str, float | str]]:
+    def collected_values(self) -> Optional[Dict[str, float | str]]:
+        """Return the values entered by the user, if available."""
+
         return self._result
 
     def _collect_values(self) -> Dict[str, float | str]:
@@ -720,7 +723,7 @@ class DustCompositionWindow(QMainWindow):
             accepted = int(result_code) == int(QDialog.DialogCode.Accepted)
         if not accepted:
             return
-        data = dialog.result()
+        data = dialog.collected_values()
         if not data:
             return
         line = MassLineFit(

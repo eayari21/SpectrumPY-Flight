@@ -246,7 +246,7 @@ def FitTargetSignal(time, targetAmp):
         linearbase = LinearFit(time, linparam[0], linparam[1])
         # y -= linearbase
         y = detrend(y)
-    except:
+    except Exception:
         print(f"Linear background not found.")
         linearbase = None
 
@@ -261,7 +261,7 @@ def FitTargetSignal(time, targetAmp):
         y = butter_lowpass_filter(y, time)
 
 
-    except:
+    except Exception:
         print(f"Sinusoidal background not found.")
         sinebase=None
 
@@ -300,16 +300,21 @@ def FitTargetSignal(time, targetAmp):
 
 
 
-    param, param_cov = curve_fit(IDEXIonGrid, ionTime, ionAmp, p0=[t0, c, A, t1, t2], maxfev=100_000)
+    filtered_time = ionTime
+    filtered_signal = ionAmp
+    fit_result = None
 
+    try:
+        param, param_cov = curve_fit(IDEXIonGrid, ionTime, ionAmp, p0=[t0, c, A, t1, t2], maxfev=100_000)
+        result = IDEXIonGrid(ionTime, param[0], param[1], param[2], param[3], param[4])
+        sig_amp = max(result) - yBaseline.mean()
+        fit_result = result
+    except RuntimeError as exc:
+        print(f"Ion grid fit failed: {exc}")
+        param, param_cov = None, None
+        sig_amp = 0.0
 
-
-    result = IDEXIonGrid(ionTime, param[0], param[1], param[2], param[3], param[4])
-    sig_amp = max(result) - yBaseline.mean()
-
-
-
-    return(param, param_cov, sig_amp)
+    return (param, param_cov, sig_amp, filtered_time, filtered_signal, fit_result)
 
 
 # ||
@@ -1153,8 +1158,35 @@ class IDEXEvent:
                         param = np.full(5, np.nan)
                         sig_amp = np.nan
                     create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}FitParams", data=np.array(param))
+                    (param,
+                     param_cov,
+                     sig_amp,
+                     fit_time,
+                     fit_signal,
+                     fit_result) = FitTargetSignal(self.lstime, v)
+
+                    if param is not None:
+                        create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}FitParams", data=np.array(param))
                     create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}MassEstimate", data=sig_amp)
                     create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}ImpactCharge", data=sig_amp)
+
+                    if fit_time is not None and fit_signal is not None:
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{k[0]}/Analysis/{k[1]}FitTime",
+                            data=np.asarray(fit_time, dtype=float),
+                        )
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{k[0]}/Analysis/{k[1]}FitData",
+                            data=np.asarray(fit_signal, dtype=float),
+                        )
+                    if fit_result is not None:
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{k[0]}/Analysis/{k[1]}FitResult",
+                            data=np.asarray(fit_result, dtype=float),
+                        )
 
 
             else:

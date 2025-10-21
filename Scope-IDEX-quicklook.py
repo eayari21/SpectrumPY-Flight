@@ -292,16 +292,40 @@ class MainWindow(QMainWindow):
         self.sc.ax[2].set_ylabel("TOF H", font="Times New Roman", fontsize=12, fontweight='bold', labelpad=70)
 
         self.sc.ax[3].plot(self.dataset[f"{eventnum}/Time"][:], self.dataset[f"{eventnum}/Ion Grid"][:])
-        # self.sc.ax[3].plot(self.dataset[f"{eventnum}/Analysis/Ion GridFitTime"][:], self.dataset[f"{eventnum}/Analysis/Ion GridFitResult"][:])
         self.sc.ax[3].set_ylabel("Ion Grid", font="Times New Roman", fontsize=12, fontweight='bold', labelpad=70)
+        ion_prefix = f"{eventnum}/Analysis/Ion Grid"
+        if f"{ion_prefix}FitTime" in self.dataset and f"{ion_prefix}FitData" in self.dataset:
+            fit_time = self.dataset[f"{ion_prefix}FitTime"][:]
+            fit_data = self.dataset[f"{ion_prefix}FitData"][:]
+            self.sc.ax[3].plot(fit_time, fit_data, color='tab:orange', linewidth=1.5, label='Ion Grid (filtered)')
+            if f"{ion_prefix}FitResult" in self.dataset:
+                fit_result = self.dataset[f"{ion_prefix}FitResult"][:]
+                self.sc.ax[3].plot(fit_time, fit_result, color='tab:green', linestyle='--', linewidth=1.5, label='Ion Grid Fit')
+            self.sc.ax[3].legend(loc='best')
 
         self.sc.ax[4].plot(self.dataset[f"{eventnum}/Time"][:], self.dataset[f"{eventnum}/Target L"][:])
-        # self.sc.ax[4].plot(self.dataset[f"{eventnum}/Analysis/Target LFitTime"][:], self.dataset[f"{eventnum}/Analysis/Target LFitResult"][:])
         self.sc.ax[4].set_ylabel("Target L", font="Times New Roman", fontsize=12, fontweight='bold', labelpad=70)
+        target_l_prefix = f"{eventnum}/Analysis/Target L"
+        if f"{target_l_prefix}FitTime" in self.dataset and f"{target_l_prefix}FitData" in self.dataset:
+            fit_time = self.dataset[f"{target_l_prefix}FitTime"][:]
+            fit_data = self.dataset[f"{target_l_prefix}FitData"][:]
+            self.sc.ax[4].plot(fit_time, fit_data, color='tab:orange', linewidth=1.5, label='Target L (filtered)')
+            if f"{target_l_prefix}FitResult" in self.dataset:
+                fit_result = self.dataset[f"{target_l_prefix}FitResult"][:]
+                self.sc.ax[4].plot(fit_time, fit_result, color='tab:green', linestyle='--', linewidth=1.5, label='Target L Fit')
+            self.sc.ax[4].legend(loc='best')
 
         self.sc.ax[5].plot(self.dataset[f"{eventnum}/Time"][:], self.dataset[f"{eventnum}/Target H"][:])
-        # self.sc.ax[5].plot(self.dataset[f"{eventnum}/Analysis/Target HFitTime"][:], self.dataset[f"{eventnum}/Analysis/Target HFitResult"][:])
         self.sc.ax[5].set_ylabel("Target H", font="Times New Roman", fontsize=12, fontweight='bold', labelpad=70)
+        target_h_prefix = f"{eventnum}/Analysis/Target H"
+        if f"{target_h_prefix}FitTime" in self.dataset and f"{target_h_prefix}FitData" in self.dataset:
+            fit_time = self.dataset[f"{target_h_prefix}FitTime"][:]
+            fit_data = self.dataset[f"{target_h_prefix}FitData"][:]
+            self.sc.ax[5].plot(fit_time, fit_data, color='tab:orange', linewidth=1.5, label='Target H (filtered)')
+            if f"{target_h_prefix}FitResult" in self.dataset:
+                fit_result = self.dataset[f"{target_h_prefix}FitResult"][:]
+                self.sc.ax[5].plot(fit_time, fit_result, color='tab:green', linestyle='--', linewidth=1.5, label='Target H Fit')
+            self.sc.ax[5].legend(loc='best')
 
 
 
@@ -396,16 +420,40 @@ class MainWindow(QMainWindow):
         self.sc.ax[2].set_ylabel("TOF H", font="Times New Roman", fontsize=12, fontweight='bold', labelpad=70)
 
         self.sc.ax[3].plot(self.dataset[f"{eventnum}/Time"][:], self.dataset[f"{eventnum}/Ion Grid"][:])
-        # self.sc.ax[3].plot(self.dataset[f"{eventnum}/Analysis/Ion GridFitTime"][:], self.dataset[f"{eventnum}/Analysis/Ion GridFitResult"][:])
         self.sc.ax[3].set_ylabel("Ion Grid", font="Times New Roman", fontsize=12, fontweight='bold', labelpad=70)
+        ion_prefix = f"{eventnum}/Analysis/Ion Grid"
+        if f"{ion_prefix}FitTime" in self.dataset and f"{ion_prefix}FitData" in self.dataset:
+            fit_time = self.dataset[f"{ion_prefix}FitTime"][:]
+            fit_data = self.dataset[f"{ion_prefix}FitData"][:]
+            self.sc.ax[3].plot(fit_time, fit_data, color='tab:orange', linewidth=1.5, label='Ion Grid (filtered)')
+            if f"{ion_prefix}FitResult" in self.dataset:
+                fit_result = self.dataset[f"{ion_prefix}FitResult"][:]
+                self.sc.ax[3].plot(fit_time, fit_result, color='tab:green', linestyle='--', linewidth=1.5, label='Ion Grid Fit')
+            self.sc.ax[3].legend(loc='best')
 
         self.sc.ax[4].plot(self.dataset[f"{eventnum}/Time"][:], self.dataset[f"{eventnum}/Target L"][:])
-        # self.sc.ax[4].plot(self.dataset[f"{eventnum}/Analysis/Target LFitTime"][:], self.dataset[f"{eventnum}/Analysis/Target LFitResult"][:])
         self.sc.ax[4].set_ylabel("Target L", font="Times New Roman", fontsize=12, fontweight='bold', labelpad=70)
+        target_l_prefix = f"{eventnum}/Analysis/Target L"
+        if f"{target_l_prefix}FitTime" in self.dataset and f"{target_l_prefix}FitData" in self.dataset:
+            fit_time = self.dataset[f"{target_l_prefix}FitTime"][:]
+            fit_data = self.dataset[f"{target_l_prefix}FitData"][:]
+            self.sc.ax[4].plot(fit_time, fit_data, color='tab:orange', linewidth=1.5, label='Target L (filtered)')
+            if f"{target_l_prefix}FitResult" in self.dataset:
+                fit_result = self.dataset[f"{target_l_prefix}FitResult"][:]
+                self.sc.ax[4].plot(fit_time, fit_result, color='tab:green', linestyle='--', linewidth=1.5, label='Target L Fit')
+            self.sc.ax[4].legend(loc='best')
 
         self.sc.ax[5].plot(self.dataset[f"{eventnum}/Time"][:], self.dataset[f"{eventnum}/Target H"][:])
-        # self.sc.ax[5].plot(self.dataset[f"{eventnum}/Analysis/Target HFitTime"][:], self.dataset[f"{eventnum}/Analysis/Target HFitResult"][:])
         self.sc.ax[5].set_ylabel("Target H", font="Times New Roman", fontsize=12, fontweight='bold', labelpad=70)
+        target_h_prefix = f"{eventnum}/Analysis/Target H"
+        if f"{target_h_prefix}FitTime" in self.dataset and f"{target_h_prefix}FitData" in self.dataset:
+            fit_time = self.dataset[f"{target_h_prefix}FitTime"][:]
+            fit_data = self.dataset[f"{target_h_prefix}FitData"][:]
+            self.sc.ax[5].plot(fit_time, fit_data, color='tab:orange', linewidth=1.5, label='Target H (filtered)')
+            if f"{target_h_prefix}FitResult" in self.dataset:
+                fit_result = self.dataset[f"{target_h_prefix}FitResult"][:]
+                self.sc.ax[5].plot(fit_time, fit_result, color='tab:green', linestyle='--', linewidth=1.5, label='Target H Fit')
+            self.sc.ax[5].legend(loc='best')
         plt.draw()
 
 # %%CREATE MENU BAR AND FILE DROP DOWN OPTIONS
