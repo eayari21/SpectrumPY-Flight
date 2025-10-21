@@ -29,6 +29,8 @@ import h5py
 import shutil
 import struct
 import matplotlib.pyplot as plt
+from collections import defaultdict
+from pathlib import Path
 from typing import Dict, Tuple
 
 from idex_variable_definitions import load_variable_definitions
@@ -135,6 +137,32 @@ def create_dataset_if_not_exists(hdf5_file, dataset_path, data):
         print(f"Dataset '{dataset_path}' already exists. Skipping creation.")
     else:
         hdf5_file.create_dataset(dataset_path, data=data)
+
+
+def create_or_replace_dataset(hdf5_file, dataset_path, data, **kwargs):
+    """Create ``dataset_path`` and replace existing data if necessary.
+
+    Parameters
+    ----------
+    hdf5_file
+        Open :mod:`h5py` handle.
+    dataset_path
+        Full dataset location within the file.
+    data
+        Array-like object persisted to ``dataset_path``.
+    kwargs
+        Additional keyword arguments forwarded to
+        :meth:`h5py.Group.create_dataset`.
+    """
+
+    dataset_name = dataset_path.lstrip('/')
+    group_path = os.path.dirname(dataset_name)
+    if group_path:
+        hdf5_file.require_group(group_path)
+
+    if dataset_name in hdf5_file:
+        del hdf5_file[dataset_name]
+    return hdf5_file.create_dataset(dataset_name, data=data, **kwargs)
 
 # Fit routine for EMG
 def FitEMG(time, amplitude):
@@ -336,6 +364,11 @@ class IDEXEvent:
         idex_packet_generator = idex_parser.generator(idex_binary_data)
         self.data = {}
         self.header = {}
+        self.analysis_flags = defaultdict(lambda: {
+            'failed_fits': [],
+            'saturated_channels': [],
+            'notes': []
+        })
         self.metadata_units: Dict[Tuple[int, str], str] = {}
         self._definitions_catalog = load_variable_definitions()
         evtnum = 0
@@ -889,18 +922,43 @@ class IDEXEvent:
             HDF5 file written beneath the ``HDF5/`` directory.
         """
 
-        os.chdir('./HDF5/')
-        filename = os.path.split(filename)[-1]  # Just get the name of the file
-        # Prepend HDF5 folder to filename
+        self.analysis_flags = defaultdict(lambda: {
+            'failed_fits': [],
+            'saturated_channels': [],
+            'notes': []
+        })
 
-        # print(waveforms.keys())
-        # print(waveforms.values())
+        output_path = Path(filename)
+        if not output_path.is_absolute():
+            output_dir = Path('HDF5')
+            output_dir.mkdir(parents=True, exist_ok=True)
+            output_path = output_dir / output_path.name
+        else:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if os.path.exists(filename):
-            os.remove(filename)
-        h = h5py.File(filename,'w')
+        if output_path.exists():
+            output_path.unlink()
+
+        def _adc_limit(channel_name: str) -> int:
+            if channel_name.startswith('TOF'):
+                return 1023
+            return 4095
+
+        mass_line_dtype = np.dtype([
+            ('mass', np.float64),
+            ('peak_index', np.int32),
+            ('mu', np.float64),
+            ('sigma', np.float64),
+            ('lambda', np.float64),
+            ('signal_amplitude', np.float64),
+            ('abundance', np.float64),
+            ('fit_success', np.bool_)
+        ])
+
+        h = h5py.File(output_path, 'w')
 
         for (evtnum, key), value in self.header.items():
+            self.analysis_flags[int(evtnum)]
             # Skip fields starting with "IDX__" for waveforms
             if "IDX__" in key:
                 print(f"Skipping header field {key}")
@@ -980,8 +1038,13 @@ class IDEXEvent:
                 h.create_dataset(f"/{k[0]}/Metadata/Epoch", data = self.header[(int(k[0]), 'Timestamp')])
             # Apply transformation based on k[1] (waveform name)
             if k[1] in conversion_factors:
-                transformed_data = np.array(v) * conversion_factors[k[1]]
+                waveform_values = np.array(v)
+                transformed_data = waveform_values * conversion_factors[k[1]]
                 h.create_dataset(f"/{k[0]}/{k[1]}", data=transformed_data)
+
+                event_flags = self.analysis_flags[int(k[0])]
+                if waveform_values.size and waveform_values.max() >= _adc_limit(k[1]):
+                    event_flags['saturated_channels'].append(k[1])
 
                 if k[1] in ['TOF H']:  # Calculate mass scale from TOF H arrays (best quality of the 3 gain stages)
                     stretch, shift, mass_scale = time2mass(transformed_data, self.hstime)
@@ -1018,6 +1081,7 @@ class IDEXEvent:
                     create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/SNR", data=np.array([SNR]))
 
                     fit_results = []
+                    mass_line_records = []
                     for peak in peaks:
                         print("Analyzing peak {peak}")
                         # Take a slice of 5 samples on either side of the peak
@@ -1030,12 +1094,33 @@ class IDEXEvent:
                         # Fit the EMG to the slice
                         print(f"Calculating mass fit for peak {mass_scale[peak]}")
                         param, param_cov, sig_amp, fitted_curve = FitEMG(x_slice, y_slice)
-                        if param is not None:
+                        if isinstance(param, np.ndarray) or isinstance(param, list):
                             area = calculate_area_under_emg(x_slice, param)
                             print(f"Area under the EMG fit for peak {mass_scale[peak]}: {area}")
-                            fit_results.append((param, sig_amp, x_slice, fitted_curve, area))
+                            fit_results.append((np.asarray(param), sig_amp, x_slice, fitted_curve, area))
+                            mass_line_records.append({
+                                'mass': float(mass_scale[peak]),
+                                'peak_index': int(peak),
+                                'mu': float(param[0]),
+                                'sigma': float(param[1]),
+                                'lambda': float(param[2]),
+                                'signal_amplitude': float(sig_amp),
+                                'abundance': float(area),
+                                'fit_success': True
+                            })
                         else:
+                            event_flags['failed_fits'].append(f"{k[1]} peak {int(peak)}")
                             fit_results.append(None)
+                            mass_line_records.append({
+                                'mass': float(mass_scale[peak]),
+                                'peak_index': int(peak),
+                                'mu': np.nan,
+                                'sigma': np.nan,
+                                'lambda': np.nan,
+                                'signal_amplitude': np.nan,
+                                'abundance': np.nan,
+                                'fit_success': False
+                            })
 
                         # Overlay EMG fits
                         for result in fit_results:
@@ -1052,7 +1137,27 @@ class IDEXEvent:
 
 
 
+                    if not peaks.size:
+                        event_flags['notes'].append(f"{k[1]} no peaks identified")
+
+                    mass_line_dataset = (np.array(mass_line_records, dtype=mass_line_dtype)
+                                          if mass_line_records
+                                          else np.empty(0, dtype=mass_line_dtype))
+                    create_or_replace_dataset(
+                        h,
+                        f"/{k[0]}/Analysis/{k[1]}/MassLines",
+                        data=mass_line_dataset
+                    )
+
                 if k[1] in ['Target L', 'Target H', 'Ion Grid']:  # Fit target and ion grid signals
+                    try:
+                        param, param_cov, sig_amp = FitTargetSignal(self.lstime, v)
+                    except Exception as exc:
+                        event_flags = self.analysis_flags[int(k[0])]
+                        event_flags['failed_fits'].append(f"{k[1]} target fit error: {exc}")
+                        param = np.full(5, np.nan)
+                        sig_amp = np.nan
+                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}FitParams", data=np.array(param))
                     (param,
                      param_cov,
                      sig_amp,
@@ -1091,8 +1196,17 @@ class IDEXEvent:
                 h.create_dataset(f"/{k[0]}/Time (high sampling)", data=self.hstime)
             if(k[1]=='Ion Grid'):
                 h.create_dataset(f"/{k[0]}/Time (low sampling)", data=self.lstime)
-        os.chdir('../')
         # h.create_dataset("Time since ")
+        string_dtype = h5py.string_dtype(encoding='utf-8')
+        for event_id, flags in self.analysis_flags.items():
+            failed = np.array(sorted(set(flags['failed_fits'])), dtype=string_dtype)
+            saturated = np.array(sorted(set(flags['saturated_channels'])), dtype=string_dtype)
+            notes = np.array(sorted(set(flags['notes'])), dtype=string_dtype)
+            create_or_replace_dataset(h, f"/{event_id}/Analysis/Flags/FailedFits", data=failed)
+            create_or_replace_dataset(h, f"/{event_id}/Analysis/Flags/SaturatedChannels", data=saturated)
+            create_or_replace_dataset(h, f"/{event_id}/Analysis/Flags/Notes", data=notes)
+
+        h.close()
 
 # ||
 # ||
