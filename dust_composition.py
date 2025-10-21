@@ -79,7 +79,7 @@ except Exception:  # pragma: no cover - fallback to PyQt6
         QWidget,
     )
 
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
 from matplotlib.widgets import SpanSelector
 
@@ -448,11 +448,21 @@ class DustCompositionWindow(QMainWindow):
         layout.addWidget(splitter)
         self.setCentralWidget(central)
 
+        figure_container = QWidget(self)
+        figure_layout = QVBoxLayout(figure_container)
+        figure_layout.setContentsMargins(0, 0, 0, 0)
+        figure_layout.setSpacing(0)
+
         self.figure = Figure(figsize=(8.2, 6.4), constrained_layout=True)
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.canvas.mpl_connect("button_press_event", self._on_canvas_click)
-        splitter.addWidget(self.canvas)
+
+        self.toolbar = NavigationToolbar2QT(self.canvas, figure_container)
+
+        figure_layout.addWidget(self.toolbar)
+        figure_layout.addWidget(self.canvas)
+        splitter.addWidget(figure_container)
 
         self.control_panel = QWidget(self)
         self.control_layout = QVBoxLayout(self.control_panel)
