@@ -345,7 +345,9 @@ class ManualMassLineDialog(QDialog):
             return
         super().accept()
 
-    def result(self) -> Optional[Dict[str, float | str]]:
+    def collected_values(self) -> Optional[Dict[str, float | str]]:
+        """Return the values entered by the user, if available."""
+
         return self._result
 
     def _collect_values(self) -> Dict[str, float | str]:
@@ -720,7 +722,7 @@ class DustCompositionWindow(QMainWindow):
             accepted = int(result_code) == int(QDialog.DialogCode.Accepted)
         if not accepted:
             return
-        data = dialog.result()
+        data = dialog.collected_values()
         if not data:
             return
         line = MassLineFit(
