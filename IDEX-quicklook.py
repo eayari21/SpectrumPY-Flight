@@ -2906,8 +2906,11 @@ class FitParameterDialog(QDialog):
             html_text = _latex_to_html(model.latex)
             if html_text:
                 self.formula_label.setText(
-                    f"<span style='font-family: "
-                    "\"STIX Two Math\", \"Times New Roman\", serif;'>{html_text}</span>"
+                    (
+                        "<span style='font-family: \"STIX Two Math\", "
+                        "\"Times New Roman\", serif;'>"
+                        f"{html_text}</span>"
+                    )
                 )
             else:
                 self.formula_label.setText(html.escape(model.latex))
