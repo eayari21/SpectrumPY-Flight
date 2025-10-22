@@ -423,42 +423,76 @@ class HDFDataExplorer(QWidget):
         store = DataStore()
 
         for filename in sorted(os.listdir(self.hdf5_folder)):
-            if not filename.endswith(".h5"):
-                continue
             file_path = self.hdf5_folder / filename
-            try:
-                handle = h5py.File(str(file_path), "r")
-            except OSError:
+            lower = filename.lower()
+
+            if lower.endswith((".h5", ".hdf5")):
+                try:
+                    handle = h5py.File(str(file_path), "r")
+                except OSError:
+                    continue
+
+                with handle:
+                    for event_name, group in handle.items():
+                        if not isinstance(group, h5py.Group):
+                            continue
+
+                        epoch = self._extract_epoch(group)
+                        event_index = store.append_event(
+                            EventRecord(filename=filename, event_name=event_name, epoch=epoch)
+                        )
+
+                        analysis = group.get("Analysis")
+                        if not isinstance(analysis, h5py.Group):
+                            continue
+
+                        datasets: Dict[str, np.ndarray] = {}
+                        for name, dataset in analysis.items():
+                            if not isinstance(dataset, h5py.Dataset):
+                                continue
+                            try:
+                                data = np.array(dataset[()])
+                            except Exception:
+                                continue
+                            datasets[name] = data
+
+                        self._process_event_datasets(
+                            store,
+                            event_index,
+                            group_name=group.name,
+                            datasets=datasets,
+                        )
+
                 continue
 
-            with handle:
-                for event_name, group in handle.items():
-                    if not isinstance(group, h5py.Group):
-                        continue
+            if lower.endswith(".cdf"):
+                try:
+                    source = module.CDFDataSource(str(file_path))  # type: ignore[attr-defined]
+                except ImportError:
+                    continue
+                except Exception:
+                    continue
 
-                    epoch = self._extract_epoch(group)
-                    event_index = store.append_event(EventRecord(filename=filename, event_name=event_name, epoch=epoch))
+                try:
+                    for event_name in source.list_events():
+                        epoch = source.get_epoch_seconds(event_name)
+                        event_index = store.append_event(
+                            EventRecord(filename=filename, event_name=event_name, epoch=epoch)
+                        )
 
-                    analysis = group.get("Analysis")
-                    if not isinstance(analysis, h5py.Group):
-                        continue
-
-                    datasets: Dict[str, np.ndarray] = {}
-                    for name, dataset in analysis.items():
-                        if not isinstance(dataset, h5py.Dataset):
+                        datasets = source.iter_analysis_datasets(event_name)
+                        if not datasets:
                             continue
-                        try:
-                            data = np.array(dataset[()])
-                        except Exception:
-                            continue
-                        datasets[name] = data
 
-                    self._process_event_datasets(
-                        store,
-                        event_index,
-                        group_name=group.name,
-                        datasets=datasets,
-                    )
+                        self._process_event_datasets(
+                            store,
+                            event_index,
+                            group_name=f"/{event_name}",
+                            datasets=datasets,
+                        )
+                finally:
+                    source.close()
+
         return store
 
     # ------------------------------------------------------------------

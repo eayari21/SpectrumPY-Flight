@@ -13,6 +13,7 @@ import argparse
 import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
@@ -1138,6 +1139,51 @@ class CDFDataSource(BaseDataSource):
         "Target H": "target_high",
     }
 
+    SHARED_DATASETS = {"Time (high sampling)", "Time (low sampling)"}
+
+    #: Mapping from analysis dataset names (under ``/event/Analysis``) to the
+    #: underlying CDF variable and extraction mode.
+    #: ``mode`` indicates how the data should be returned:
+    #: ``"direct"`` slices the record, while ``"time_low"`` and ``"time_high"``
+    #: reuse the shared sampling axes.
+    ANALYSIS_DATASET_MAP: Dict[str, Tuple[str, str]] = {
+        # Ion Grid derived products
+        "Ion Grid Fit Result": ("ion_grid_fit_results", "direct"),
+        "Ion Grid Fit Parameters": ("ion_grid_fit_parameters", "direct"),
+        "Ion Grid Fit Time": ("time_low_sample_rate", "time_low"),
+        "Ion Grid Impact Charge": ("ion_grid_impact_charge", "direct"),
+        "Ion Grid Velocity Estimate": ("ion_grid_velocity_estimate", "direct"),
+        "Ion Grid Dust Mass Estimate": ("ion_grid_dust_mass_estimate", "direct"),
+        "Ion Grid Chi Squared": ("ion_grid_chi_squared", "direct"),
+        "Ion Grid Reduced Chi Squared": ("ion_grid_reduced_chi_squared", "direct"),
+        # Target low-rate products
+        "Target L Fit Result": ("target_low_fit_results", "direct"),
+        "Target L Fit Parameters": ("target_low_fit_parameters", "direct"),
+        "Target L Fit Time": ("time_low_sample_rate", "time_low"),
+        "Target L Impact Charge": ("target_low_impact_charge", "direct"),
+        "Target L Velocity Estimate": ("target_low_velocity_estimate", "direct"),
+        "Target L Dust Mass Estimate": ("target_low_dust_mass_estimate", "direct"),
+        "Target L Chi Squared": ("target_low_chi_squared", "direct"),
+        "Target L Reduced Chi Squared": ("target_low_reduced_chi_squared", "direct"),
+        # Target high-rate products
+        "Target H Fit Result": ("target_high_fit_results", "direct"),
+        "Target H Fit Parameters": ("target_high_fit_parameters", "direct"),
+        "Target H Fit Time": ("time_low_sample_rate", "time_low"),
+        "Target H Impact Charge": ("target_high_impact_charge", "direct"),
+        "Target H Velocity Estimate": ("target_high_velocity_estimate", "direct"),
+        "Target H Dust Mass Estimate": ("target_high_dust_mass_estimate", "direct"),
+        "Target H Chi Squared": ("target_high_chi_squared", "direct"),
+        "Target H Reduced Chi Squared": ("target_high_reduced_chi_squared", "direct"),
+        # TOF peak products
+        "TOF H Fit Parameters": ("tof_peak_fit_parameters", "direct"),
+        "TOF H Fit Time": ("time_high_sample_rate", "time_high"),
+        "TOF H Peak Area": ("tof_peak_area_under_fit", "direct"),
+        "TOF H Peak Chi Squared": ("tof_peak_chi_square", "direct"),
+        "TOF H Peak Reduced Chi Squared": ("tof_peak_reduced_chi_square", "direct"),
+        "TOF H Peak Kappa": ("tof_peak_kappa", "direct"),
+        "TOF H SNR": ("tof_snr", "direct"),
+    }
+
     #: Fit metadata required for quicklook overlays.
     FIT_VARIABLES: Dict[str, Dict[str, str]] = {
         "Ion Grid": {
@@ -1170,6 +1216,7 @@ class CDFDataSource(BaseDataSource):
         self._cdf = cdflib.CDF(filename)
         self._cache: Dict[str, np.ndarray] = {}
         self._event_count = self._resolve_event_count()
+        self._epoch_seconds: Optional[np.ndarray] = self._resolve_epoch_seconds()
 
     # ------------------------------------------------------------------
     # Helpers
@@ -1207,17 +1254,96 @@ class CDFDataSource(BaseDataSource):
         except Exception:
             return np.asarray([])
 
+    def _resolve_epoch_seconds(self) -> Optional[np.ndarray]:
+        try:
+            raw = self._cdf.varget("epoch")
+        except Exception:
+            return None
+
+        arr = np.asarray(raw)
+        if arr.size == 0:
+            return None
+
+        converter = getattr(self._cdflib, "cdfepoch", None)
+        if converter is not None:
+            try:
+                dt_list = converter.to_datetime(arr)
+            except Exception:
+                dt_list = None
+            if dt_list:
+                try:
+                    seconds = []
+                    for dt in dt_list:
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        seconds.append(float(datetime.timestamp(dt)))
+                    return np.asarray(seconds, dtype=float)
+                except Exception:
+                    pass
+
+        with np.errstate(all="ignore"):
+            coerced = np.asarray(arr, dtype=float)
+        if coerced.size == 0:
+            return None
+        return coerced.astype(float, copy=False)
+
+    def _analysis_dataset_names(self) -> List[str]:
+        return list(self.ANALYSIS_DATASET_MAP.keys())
+
+    def _analysis_dataset(self, event: str, name: str) -> Optional[np.ndarray]:
+        mapping = self.ANALYSIS_DATASET_MAP.get(name)
+        if not mapping:
+            return None
+
+        varname, mode = mapping
+        if mode == "time_low":
+            data = self._cached_variable("time_low_sample_rate")
+        elif mode == "time_high":
+            data = self._cached_variable("time_high_sample_rate")
+        else:
+            data = self._cached_variable(varname)
+
+        if data.size == 0:
+            return None
+
+        index = self._event_index(event)
+        if data.ndim == 1:
+            if mode in {"time_low", "time_high"}:
+                return np.array(data, copy=True)
+            if index >= data.shape[0]:
+                return None
+            return np.array(data[index], copy=True)
+
+        if index >= data.shape[0]:
+            return None
+
+        try:
+            slice_data = data[index]
+        except Exception:
+            return None
+
+        return np.array(slice_data, copy=True)
+
     def list_events(self) -> List[str]:
         return [str(idx + 1) for idx in range(self._event_count)]
 
     def get_dataset(self, event: str, dataset_name: str) -> Optional[np.ndarray]:
         varname = self.DATASET_MAP.get(dataset_name)
         if not varname:
+            if dataset_name.startswith("Analysis/"):
+                analysis_name = dataset_name.split("/", 1)[1]
+                return self._analysis_dataset(event, analysis_name)
             return None
         data = self._cached_variable(varname)
         if data.size == 0:
             return None
         index = self._event_index(event)
+        if data.ndim == 1:
+            if dataset_name in self.SHARED_DATASETS:
+                return np.array(data, copy=True)
+            if index >= data.shape[0]:
+                return None
+            return np.array(data[index], copy=True)
         if index >= data.shape[0]:
             return None
         try:
@@ -1225,6 +1351,29 @@ class CDFDataSource(BaseDataSource):
         except Exception:
             return None
         return np.array(slice_data, copy=True)
+
+    def iter_analysis_datasets(self, event: str) -> Dict[str, np.ndarray]:
+        datasets: Dict[str, np.ndarray] = {}
+        for name in self._analysis_dataset_names():
+            arr = self._analysis_dataset(event, name)
+            if arr is None:
+                continue
+            if arr.size == 0:
+                continue
+            datasets[name] = arr
+        return datasets
+
+    def get_epoch_seconds(self, event: str) -> Optional[float]:
+        if self._epoch_seconds is None:
+            return None
+        index = self._event_index(event)
+        if index < 0 or index >= self._epoch_seconds.shape[0]:
+            return None
+        try:
+            value = float(self._epoch_seconds[index])
+        except Exception:
+            return None
+        return value if np.isfinite(value) else None
 
     def gather_fit_data(self, event: str, channel: str) -> FitData:
         data = FitData()
