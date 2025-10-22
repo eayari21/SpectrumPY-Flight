@@ -247,8 +247,17 @@ class IDEXEvent:
         os.makedirs(PlotFolder)
 
         # print("Number of packet items = ", len(packets.items()))
+        def _build_stats_text(values):
+            return (
+                f"Min = {np.min(values)} [dN]\n"
+                f"Avg = {np.mean(values):4.2f} [dN]\n"
+                f"Std = {np.std(values):4.2f} [dN]\n"
+                f"Max = {np.max(values)} [dN]"
+            )
+
         fig, ax = plt.subplots(nrows=6)  # Make this general
         fig.set_size_inches(18.5, 10.5)
+        fig.subplots_adjust(top=0.9, bottom=0.08, left=0.08, right=0.78, hspace=0.4)
         for i, (k, v) in enumerate(packets.items()):  # k[0] = Event number, k[1] = channel name, v=waveform data
 
             # fig = plt.figure(figsize=(17,12)) 
@@ -281,62 +290,131 @@ class IDEXEvent:
                 self.lstime = self.lstime-self.hstriggertime
                 ax[i].axvline(min(self.lstime)+self.hstriggertime, c="red", lw=2)
                 
-            plt.subplots_adjust(bottom=0.2)
-
-
             plt.suptitle(f"{fname} Event {k[0]}", font="Times New Roman", fontsize=30, fontweight='bold')
             # plt.tight_layout()
 
             if i==5:  #  End of the event, lets free up some memory
                 ax[0].plot(self.hstime, packets[(k[0], "TOF L")])
                 ax[0].set_ylabel("TOF L", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = f'Min = {min(packets[(k[0], "TOF L")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "TOF L")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "TOF L")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "TOF L")])} [dN]'
-                ax[0].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[0].transAxes)
+                text = _build_stats_text(packets[(k[0], "TOF L")])
+                ax[0].text(
+                    1.02,
+                    0.98,
+                    text,
+                    fontsize=12,
+                    va="top",
+                    ha="left",
+                    transform=ax[0].transAxes,
+                    bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                )
                 # ax[0].set_xlim([0, 31.5])
                 
                 ax[1].plot(self.hstime, packets[(k[0], "TOF M")])
                 ax[1].set_ylabel("TOF M", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = f'Min = {min(packets[(k[0], "TOF M")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "TOF M")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "TOF M")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "TOF M")])} [dN]'
-                ax[1].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[1].transAxes)
+                text = _build_stats_text(packets[(k[0], "TOF M")])
+                ax[1].text(
+                    1.02,
+                    0.98,
+                    text,
+                    fontsize=12,
+                    va="top",
+                    ha="left",
+                    transform=ax[1].transAxes,
+                    bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                )
                 # ax[1].set_xlim([0, 31.5])
                 
                 ax[2].plot(self.hstime, packets[(k[0], "TOF H")])
                 ax[2].set_ylabel("TOF H", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = f'Min = {min(packets[(k[0], "TOF H")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "TOF H")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "TOF H")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "TOF H")])} [dN]'
-                ax[2].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[2].transAxes)
+                text = _build_stats_text(packets[(k[0], "TOF H")])
+                ax[2].text(
+                    1.02,
+                    0.98,
+                    text,
+                    fontsize=12,
+                    va="top",
+                    ha="left",
+                    transform=ax[2].transAxes,
+                    bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                )
                 # ax[2].set_xlim([0, 31.5])
 
                 ax[3].plot(self.lstime, packets[(k[0], "Ion Grid")])
                 ax[3].set_ylabel("Ion Grid", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = f'Min = {min(packets[(k[0], "Ion Grid")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Ion Grid")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Ion Grid")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Ion Grid")])} [dN]'
-                ax[3].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[3].transAxes)
+                text = _build_stats_text(packets[(k[0], "Ion Grid")])
+                ax[3].text(
+                    1.02,
+                    0.98,
+                    text,
+                    fontsize=12,
+                    va="top",
+                    ha="left",
+                    transform=ax[3].transAxes,
+                    bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                )
                 # ax[3].set_xlim([0, 126.5])
 
                 if(self.header[(k[0], 'Timestamp')] < 494_733_600):  # If we are before September 27th, 2023 then we use the old definitions
                 
                     ax[4].plot(self.lstime, packets[(k[0], "Target L")])
                     ax[4].set_ylabel("Target LG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = f'Min = {min(packets[(k[0], "Target L")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Target L")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Target L")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Target L")])} [dN]'
-                    ax[4].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[4].transAxes)
+                    text = _build_stats_text(packets[(k[0], "Target L")])
+                    ax[4].text(
+                        1.02,
+                        0.98,
+                        text,
+                        fontsize=12,
+                        va="top",
+                        ha="left",
+                        transform=ax[4].transAxes,
+                        bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                    )
                     # ax[4].set_xlim([0, 126.5])
                     
                     ax[5].plot(self.lstime, packets[(k[0], "Target H")])
                     ax[5].set_ylabel("Target HG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = f'Min = {min(packets[(k[0], "Target H")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Target H")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Target H")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Target H")])} [dN]'
-                    ax[5].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[5].transAxes)
+                    text = _build_stats_text(packets[(k[0], "Target H")])
+                    ax[5].text(
+                        1.02,
+                        0.98,
+                        text,
+                        fontsize=12,
+                        va="top",
+                        ha="left",
+                        transform=ax[5].transAxes,
+                        bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                    )
                     # ax[5].set_xlim([0, 126.5])
 
                 else:
                     ax[4].plot(self.lstime, packets[(k[0], "Target H")])
                     ax[4].set_ylabel("Target HG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = f'Min = {min(packets[(k[0], "Target H")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Target H")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Target H")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Target H")])} [dN]'
-                    ax[4].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[4].transAxes)
+                    text = _build_stats_text(packets[(k[0], "Target H")])
+                    ax[4].text(
+                        1.02,
+                        0.98,
+                        text,
+                        fontsize=12,
+                        va="top",
+                        ha="left",
+                        transform=ax[4].transAxes,
+                        bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                    )
                     # ax[4].set_xlim([0, 126.5])
                     
                     ax[5].plot(self.lstime, packets[(k[0], "Target L")])
                     ax[5].set_ylabel("Target LG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = f'Min = {min(packets[(k[0], "Target L")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Target L")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Target L")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Target L")])} [dN]'
-                    ax[5].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[5].transAxes)
+                    text = _build_stats_text(packets[(k[0], "Target L")])
+                    ax[5].text(
+                        1.02,
+                        0.98,
+                        text,
+                        fontsize=12,
+                        va="top",
+                        ha="left",
+                        transform=ax[5].transAxes,
+                        bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                    )
                     # ax[5].set_xlim([0, 126.5])
 
                 plt.savefig(os.path.join(PlotFolder, f"{fname}_Event_{k[0]}.png"), dpi=100)

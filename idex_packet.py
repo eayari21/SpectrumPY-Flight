@@ -379,172 +379,127 @@ class IDEXEvent:
                 if pkt.data['IDX__SCI0TYPE'].raw_value == 1:
                     evtnum += 1
                     print(pkt.data)
-
                     # Iterate over all items in pkt.data and store them in the header
                     for key, item in pkt.data.items():
                         self.header[(evtnum, key)] = item.derived_value
                         print(f"{key} = {self.header[(evtnum, key)]}")
                     print(f"^*****Event header {evtnum}******^")
-
                     # sciEvtnum = bin(pkt.data['IDX__SCI0EVTNUM'].derived_value).replace('b', '')
-
 
                     # print(f"NBlocks = binary: {bin(pkt.data['IDX__TXHDRBLOCKS'].derived_value)} hex: {hex(pkt.data['IDX__TXHDRBLOCKS'].derived_value)}")
                     
                     # nBlocks = bin(pkt.data['IDX__TXHDRBLOCKS'].derived_value).replace('b', '')
-
                     # Extract the 17-22-bit integer (usually 8)
                     self.lspretrigblocks = (pkt.data['IDX__TXHDRBLOCKS'].derived_value >> 16) &  0b1111
-
                     # Extract the next 4-bit integer (usually 8)
                     self.lsposttrigblocks = (pkt.data['IDX__TXHDRBLOCKS'].derived_value >> 12) & 0b1111
-
                     # Extract the next 6 bits integer (usually 32)
                     self.hspretrigblocks = (pkt.data['IDX__TXHDRBLOCKS'].derived_value >> 6) & 0b111111
-
                     # Extract the first 6 bits (usually 32)
                     self.hsposttrigblocks = (pkt.data['IDX__TXHDRBLOCKS'].derived_value) & 0b111111
 
-
                     print("HS pre trig sampling blocks: ", self.hspretrigblocks)
-
                     print("LS pre trig sampling blocks: ", self.lspretrigblocks)
-
                     print("HS post trig sampling blocks: ", self.hsposttrigblocks)
-
                     print("LS post trig sampling blocks: ", self.lsposttrigblocks)
-
                     print(f"IDX__TXHDRHVPSHKCH01 = {pkt.data['IDX__TXHDRHVPSHKCH01'].derived_value}")
-
                     # Extract raw DN value for Voltage reading of Detector on HVPS Board (ADC CHnel 0)
                     self.header[(evtnum, 'detector_voltage')] = (pkt.data['IDX__TXHDRHVPSHKCH01'].derived_value) & 0b111111111111
                     print("Detector voltage = ", self.header[(evtnum, 'detector_voltage')])
-
                     # Extract raw DN value for Voltage reading of Sensor on HVPS Board (ADC CHnel 1)
                     self.header[(evtnum, 'sensor_voltage')] = (pkt.data['IDX__TXHDRHVPSHKCH01'].derived_value >> 16) & 0b111111111111
                     print("Sensor voltage = ", self.header[(evtnum, 'sensor_voltage')])
-
                     # HVPS Board signal "Target Voltage" (ADC CHnel 23)
                     self.header[(evtnum, 'target_voltage')] = (pkt.data['IDX__TXHDRHVPSHKCH23'].derived_value) & 0b111111111111
                     print("Target voltage = ", self.header[(evtnum, 'target_voltage')])
-
                     # HVPS Board signal "Reflectron Voltage" (ADC CHnel 23)
                     self.header[(evtnum, 'reflectron_voltage')] = (pkt.data['IDX__TXHDRHVPSHKCH23'].derived_value >> 16) & 0b111111111111
                     print("Reflectron voltage = ", self.header[(evtnum, 'reflectron_voltage')])
-
                     # HVPS Board signal "Rejection Voltage" (ADC CHnel 45)
                     self.header[(evtnum, 'rejection_voltage')] = (pkt.data['IDX__TXHDRHVPSHKCH45'].derived_value) & 0b111111111111
                     print("Rejection voltage = ", self.header[(evtnum, 'rejection_voltage')])
-
                     # HVPS Board signal "Current for the HVPS sensor" (ADC CHnel 45)
                     self.header[(evtnum, 'current_hvps_sensor')] = (pkt.data['IDX__TXHDRHVPSHKCH45'].derived_value >> 16) & 0b111111111111
                     print("Current for HVPS sensor = ", self.header[(evtnum, 'current_hvps_sensor')])
-
                     # HVPS Board signal "Positive current for the HVPS sensor" (ADC CHnel 67)
                     self.header[(evtnum, 'positive_current_hvps')] = (pkt.data['IDX__TXHDRHVPSHKCH67'].derived_value) & 0b111111111111
                     print("Positive current for HVPS sensor = ", self.header[(evtnum, 'positive_current_hvps')])
-
                     # HVPS Board signal "Negative current for the HVPS sensor" (ADC CHnel 67)
                     self.header[(evtnum, 'negative_current_hvps')] = (pkt.data['IDX__TXHDRHVPSHKCH67'].derived_value >> 16) & 0b111111111111
                     print("Negative current for HVPS sensor = ", self.header[(evtnum, 'negative_current_hvps')])
-
                     # LVPS Board signal "Voltage of +3.3V reference" (ADC CHnel 01)
                     self.header[(evtnum, 'voltage_3V3_ref')] = (pkt.data['IDX__TXHDRLVHK0CH01'].derived_value) & 0b111111111111
                     print("Voltage +3.3V reference = ", self.header[(evtnum, 'voltage_3V3_ref')])
-
                     # LVPS Board signal "Voltage of +3.3V operational reference" (ADC CHnel 01)
                     self.header[(evtnum, 'voltage_3V3_op_ref')] = (pkt.data['IDX__TXHDRLVHK0CH01'].derived_value >> 16) & 0b111111111111
                     print("Voltage +3.3V operational reference = ", self.header[(evtnum, 'voltage_3V3_op_ref')])
-
                     # LVPS Board signal "Voltage on -6V bus" (ADC CHnel 23)
                     self.header[(evtnum, 'voltage_neg6V_bus')] = (pkt.data['IDX__TXHDRLVHK0CH23'].derived_value) & 0b111111111111
                     print("Voltage -6V bus = ", self.header[(evtnum, 'voltage_neg6V_bus')])
-
                     # LVPS Board signal "Voltage on +6V bus" (ADC CHnel 23)
                     self.header[(evtnum, 'voltage_pos6V_bus')] = (pkt.data['IDX__TXHDRLVHK0CH23'].derived_value >> 16) & 0b111111111111
                     print("Voltage +6V bus = ", self.header[(evtnum, 'voltage_pos6V_bus')])
-
                     # LVPS Board signal "Voltage on +16V bus" (ADC CHnel 45)
                     self.header[(evtnum, 'voltage_pos16V_bus')] = (pkt.data['IDX__TXHDRLVHK0CH45'].derived_value) & 0b111111111111
                     print("Voltage +16V bus = ", self.header[(evtnum, 'voltage_pos16V_bus')])
-
                     # LVPS Board signal "Voltage on +3.3V bus" (ADC CHnel 45)
                     self.header[(evtnum, 'voltage_pos3V3_bus')] = (pkt.data['IDX__TXHDRLVHK0CH45'].derived_value >> 16) & 0b111111111111
                     print("Voltage +3.3V bus = ", self.header[(evtnum, 'voltage_pos3V3_bus')])
-
                     # LVPS Board signal "Voltage on -5V bus" (ADC CHnel 67)
                     self.header[(evtnum, 'voltage_neg5V_bus')] = (pkt.data['IDX__TXHDRLVHK0CH67'].derived_value) & 0b111111111111
                     print("Voltage -5V bus = ", self.header[(evtnum, 'voltage_neg5V_bus')])
-
                     # LVPS Board signal "Voltage on +5V bus" (ADC CHnel 67)
                     self.header[(evtnum, 'voltage_pos5V_bus')] = (pkt.data['IDX__TXHDRLVHK0CH67'].derived_value >> 16) & 0b111111111111
                     print("Voltage +5V bus = ", self.header[(evtnum, 'voltage_pos5V_bus')])
-
                     # LVPS Board signal "Current on +3.3V bus" (ADC CHnel 01)
                     self.header[(evtnum, 'current_3V3_bus')] = (pkt.data['IDX__TXHDRLVHK1CH01'].derived_value) & 0b111111111111
                     print("Current +3.3V bus = ", self.header[(evtnum, 'current_3V3_bus')])
-
                     # LVPS Board signal "Current on +16V bus" (ADC CHnel 23)
                     self.header[(evtnum, 'current_16V_bus')] = (pkt.data['IDX__TXHDRLVHK1CH23'].derived_value >> 16) & 0b111111111111
                     print("Current +16V bus = ", self.header[(evtnum, 'current_16V_bus')])
-
                     # LVPS Board signal "Current on +6V bus" (ADC CHnel 23)
                     self.header[(evtnum, 'current_6V_bus')] = (pkt.data['IDX__TXHDRLVHK1CH23'].derived_value) & 0b111111111111
                     print("Current +6V bus = ", self.header[(evtnum, 'current_6V_bus')])
-
                     # LVPS Board signal "Current on -6V bus" (ADC CHnel 23)
                     self.header[(evtnum, 'current_neg6V_bus')] = (pkt.data['IDX__TXHDRLVHK1CH23'].derived_value >> 16) & 0b111111111111
                     print("Current -6V bus = ", self.header[(evtnum, 'current_neg6V_bus')])
-
                     # LVPS Board signal "Current on +5V bus" (ADC CHnel 45)
                     self.header[(evtnum, 'current_5V_bus')] = (pkt.data['IDX__TXHDRLVHK1CH45'].derived_value) & 0b111111111111
                     print("Current +5V bus = ", self.header[(evtnum, 'current_5V_bus')])
-
                     # LVPS Board signal "Current on -5V bus" (ADC CHnel 45)
                     self.header[(evtnum, 'current_neg5V_bus')] = (pkt.data['IDX__TXHDRLVHK1CH45'].derived_value >> 16) & 0b111111111111
                     print("Current -5V bus = ", self.header[(evtnum, 'current_neg5V_bus')])
-
                     # LVPS Board signal "Current on +2.5V bus" (ADC CHnel 67)
                     self.header[(evtnum, 'current_2V5_bus')] = (pkt.data['IDX__TXHDRLVHK1CH67'].derived_value) & 0b111111111111
                     print("Current +2.5V bus = ", self.header[(evtnum, 'current_2V5_bus')])
-
                     # LVPS Board signal "Current on -2.5V bus" (ADC CHnel 67)
                     self.header[(evtnum, 'current_neg2V5_bus')] = (pkt.data['IDX__TXHDRLVHK1CH67'].derived_value >> 16) & 0b111111111111
                     print("Current -2.5V bus = ", self.header[(evtnum, 'current_neg2V5_bus')])
 
-
                     # LVPS Board signal "Current on the 1V POL" (ADC CHnel 01)
                     self.header[(evtnum, 'current_1V_pol')] = (pkt.data['IDX__TXHDRPROCHKCH01'].derived_value) & 0b111111111111
                     print("Current on the 1V POL = ", self.header[(evtnum, 'current_1V_pol')])
-
                     # LVPS Board signal "Current on the 1.9V POL" (ADC CHnel 01)
                     self.header[(evtnum, 'current_1.9V_pol')] = (pkt.data['IDX__TXHDRPROCHKCH01'].derived_value >> 16) & 0b111111111111
                     print("Current on the 1.9V POL = ", self.header[(evtnum, 'current_1.9V_pol')])
-
                     # LVPS Board signal "ProcBd Temperature 1" (ADC CHnel 23)
                     self.header[(evtnum, 'temperature_1')] = (pkt.data['IDX__TXHDRPROCHKCH23'].derived_value) & 0b111111111111
                     print("ProcBd Temperature 1 = ", self.header[(evtnum, 'temperature_1')])
-
                     # LVPS Board signal "ProcBd Temperature 2" (ADC CHnel 23)
                     self.header[(evtnum, 'temperature_2')] = (pkt.data['IDX__TXHDRPROCHKCH23'].derived_value >> 16) & 0b111111111111
                     print("ProcBd Temperature 2 = ", self.header[(evtnum, 'temperature_2')])
-
                     # LVPS Board signal "Voltage on 1V bus" (ADC CHnel 45)
                     self.header[(evtnum, 'voltage_1V_bus')] = (pkt.data['IDX__TXHDRPROCHKCH45'].derived_value) & 0b111111111111
                     print("Voltage on 1V bus = ", self.header[(evtnum, 'voltage_1V_bus')])
-
                     # LVPS Board signal "FPGA Temperature" (ADC CHnel 45)
                     self.header[(evtnum, 'fpga_temperature')] = (pkt.data['IDX__TXHDRPROCHKCH45'].derived_value >> 16) & 0b111111111111
                     print("FPGA Temperature = ", self.header[(evtnum, 'fpga_temperature')])
-
                     # LVPS Board signal "Voltage on 1.9V bus" (ADC CHnel 67)
                     self.header[(evtnum, 'voltage_1.9V_bus')] = (pkt.data['IDX__TXHDRPROCHKCH67'].derived_value) & 0b111111111111
                     print("Voltage on 1.9V bus = ", self.header[(evtnum, 'voltage_1.9V_bus')])
-
                     # LVPS Board signal "Voltage on 3.3V bus" (ADC CHnel 67)
                     self.header[(evtnum, 'voltage_3.3V_bus')] = (pkt.data['IDX__TXHDRPROCHKCH67'].derived_value >> 16) & 0b111111111111
                     print("Voltage on 3.3V bus = ", self.header[(evtnum, 'voltage_3.3V_bus')])
-
 
 
 
@@ -585,48 +540,39 @@ class IDEXEvent:
                         'voltage_1.9V_bus': 'Last measurement in raw DN for Processor Board signal “1.9V Voltage”',
                         'voltage_3.3V_bus': 'Last measurement in raw DN for Processor Board signal “3.3V Voltage”'
                     }
-
                     catalog = self._definitions_catalog
                     print("\n\n ***** Applying engineering unit conversions ***** \n\n")
-
                     for header_key, var_note in mapping_dict.items():
                         definition = catalog.find_by_var_notes(var_note)
                         if definition is None:
                             print(f"No variable definition found for note: {var_note}")
                             continue
-
                         raw_key = (evtnum, header_key)
                         if raw_key not in self.header:
                             print(f"Missing raw value for {header_key}")
                             continue
-
                         raw_value = self.header[raw_key]
                         try:
                             converted_value = definition.evaluate(raw_value)
                         except Exception as exc:
                             print(f"Failed to evaluate polynomial for {header_key}: {exc}")
                             continue
-
                         self.header[raw_key] = converted_value
                         self.metadata_units[raw_key] = definition.units or ""
                         print(
                             f"Converted {header_key} ({raw_value}) -> {converted_value} {definition.units}"
                         )
 
-
                      # Account for HS trigger delay
                     self.TOFdelay = pkt.data['IDX__TXHDRSAMPDELAY'].derived_value  # Last two bits are padding
-
                     # Mask to extract 10-bit values
                     mask = 0b1111111111
-
                     self.lgdelay = (self.TOFdelay) & mask # First 10 bits (0-9)
                     self.mgdelay = (self.TOFdelay >> 10) & mask # Next 10 bits (10-19)
                     self.hgdelay = (self.TOFdelay >> 20) & mask # Next 10 bits (20-29)
                     print(f"High gain delay = {self.hgdelay} samples.")
                     print(f"Mid gain delay = {self.mgdelay} samples.")
                     print(f"Low gain delay = {self.lgdelay} samples.")
-
                     if(pkt.data['IDX__TXHDRLSTRIGMODE'].derived_value!='DIS'):  # If this was a LS (Target Low Gain) trigger (DIS=disabled)
                         print(f"Low sampling trigger mode = {pkt.data['IDX__TXHDRLSTRIGMODE'].derived_value}")
                         self.Triggerorigin = 'LS' 
@@ -651,7 +597,6 @@ class IDEXEvent:
                         # Extract the last 10 bits (bits 0-9)
                         self.header[(evtnum, 'TriggerLevel')] = 2.89e-4*((pkt.data['IDX__TXHDRLGTRIGCTRL1'].derived_value >> 22) & mask_10_bit)
                         print(f"Trigger level = {self.header[(evtnum, 'TriggerLevel')]}")
-
                         if(pkt.data['IDX__TXHDRLGTRIGMODE'].derived_value==1):
                             print("Threshold trigger mode enabled for low gain channel.")
                             self.header[(evtnum, 'TriggerMode')] = "LGThreshold"
@@ -661,7 +606,6 @@ class IDEXEvent:
                         else:
                             print("Double pulse mode enabled for low gain channel.")
                             self.header[(evtnum, 'TriggerMode')] = "LGDoublePulse"
-
                     if(pkt.data['IDX__TXHDRMGTRIGMODE'].derived_value!=0):
                         print("Mid gain TOF trigger mode enabled.")
                         self.Triggerorigin = 'MG'
@@ -681,7 +625,6 @@ class IDEXEvent:
                         else:
                             print("Double pulse mode enabled for mid gain channel.")
                             self.header[(evtnum, 'TriggerMode')] = "MGDoublePulse"
-
                     if(pkt.data['IDX__TXHDRHGTRIGMODE'].derived_value!=0):
                         print("High gain trigger mode enabled.")
                         self.Triggerorigin = 'HG'
@@ -692,7 +635,6 @@ class IDEXEvent:
                         # Extract the last 10 bits (bits 0-9)
                         self.header[(evtnum, 'TriggerLevel')] = 2.89e-4*((pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value >> 22) & mask_10_bit)
                         print(f"For {pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value}, HG Trigger level = {self.header[(evtnum, 'TriggerLevel')]}, sample settings = {minsamples}, {maxsamples}")
-
                         if(pkt.data['IDX__TXHDRHGTRIGMODE'].derived_value==1):
                             print("Threshold trigger mode enabled for high gain channel.")
                             self.header[(evtnum, 'TriggerMode')] = "HGThreshold"
@@ -702,20 +644,16 @@ class IDEXEvent:
                         else:
                             print("Double pulse mode enabled for high gain channel.")
                             self.header[(evtnum, 'TriggerMode')] = "HGDoublePulse"
-
                     print(f"AID = {pkt.data['IDX__SCI0AID'].derived_value}")  # Instrument event number
                     print(f"Event number = {pkt.data['IDX__SCI0EVTNUM'].raw_value}")  # Event number out of how many events constitute the file
                     # print(f"Time = {pkt.data['IDX__SCI0TIME32'].derived_value}")  # Time in 20 ns intervals
 
-
                     print(f"Rice compression enabled = {bool(pkt.data['IDX__SCI0COMP'].raw_value)}")
                     compressed = bool(pkt.data['IDX__SCI0COMP'].raw_value)  # If we need to decompress the data
-
 
                     # self.header[evtnum][f"TimeIntervals"] = pkt.data['IDX__SCI0TIME32'].derived_value  # Store the number of 20 us intervals in the respective CDF "Time" variables
                     self.header[(evtnum, 'Timestamp')] = pkt.data['SHCOARSE'].derived_value + 20*(10**(-6))*pkt.data['SHFINE'].derived_value # Use this as the CDF epoch
                     print(f"Timestamp = {self.header[(evtnum, 'Timestamp')]} seconds since epoch (Midnight January 1st, 2012)")
-
                     # Convert to MST (UTC-7)
                     utc_time = datetime(2010, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=self.header[(evtnum, 'Timestamp')])
                     # mst_offset = timedelta(hours=-7)
@@ -726,7 +664,6 @@ class IDEXEvent:
 
                 if pkt.data['IDX__SCI0TYPE'].raw_value in [2, 4, 8, 16, 32, 64]:
                     # print(self.data.keys())
-
                     if (evtnum, pkt.data['IDX__SCI0TYPE'].raw_value) not in self.data.keys():  # If this is a new entry,
                         self.data.update({(evtnum, pkt.data['IDX__SCI0TYPE'].raw_value): pkt.data['IDX__SCI0RAW'].raw_value})
                     else:
@@ -745,15 +682,11 @@ class IDEXEvent:
                         while index < len(waveform):
                             # Get 4 bytes (32 bits) from the 'waveform' binary string
                             data = waveform[index: index + 32]
-
                             # Convert the binary string to bytes using 'int' and 'to_bytes'
                             uint32 = int(data, 2).to_bytes(4, byteorder='big')
-
                             # Write the bytes to the file
                             dataFile.write(uint32)
-
                             index = index + 32
-
                         dataFile.close()
                         # print(waveform)
                         decompressor = RiceGolombDecompressor(waveform)
@@ -805,8 +738,17 @@ class IDEXEvent:
         os.makedirs(PlotFolder)
 
         # print("Number of packet items = ", len(packets.items()))
+        def _build_stats_text(values):
+            return (
+                f"Min = {np.min(values)} [dN]\n"
+                f"Avg = {np.mean(values):4.2f} [dN]\n"
+                f"Std = {np.std(values):4.2f} [dN]\n"
+                f"Max = {np.max(values)} [dN]"
+            )
+
         fig, ax = plt.subplots(nrows=6)  # Make this general
         fig.set_size_inches(18.5, 10.5)
+        fig.subplots_adjust(top=0.9, bottom=0.08, left=0.08, right=0.78, hspace=0.4)
         for i, (k, v) in enumerate(packets.items()):  # k[0] = Event number, k[1] = CHnel name, v=waveform data
             # fig = plt.figure(figsize=(17,12)) 
             # print(i%6)
@@ -838,62 +780,131 @@ class IDEXEvent:
                 self.lstime = self.lstime-self.hstriggertime
                 ax[i].axvline(min(self.lstime)+self.hstriggertime, c="red", lw=2)
                 
-            plt.subplots_adjust(bottom=0.2)
-
-
             plt.suptitle(f"{fname} Event {k[0]}", font="Times New Roman", fontsize=30, fontweight='bold')
             # plt.tight_layout()
 
             if i==5:  #  End of the event, lets free up some memory
                 ax[0].plot(self.hstime, packets[(k[0], "TOF L")])
                 ax[0].set_ylabel("TOF L", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = f'Min = {min(packets[(k[0], "TOF L")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "TOF L")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "TOF L")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "TOF L")])} [dN]'
-                ax[0].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[0].transAxes)
+                text = _build_stats_text(packets[(k[0], "TOF L")])
+                ax[0].text(
+                    1.02,
+                    0.98,
+                    text,
+                    fontsize=12,
+                    va="top",
+                    ha="left",
+                    transform=ax[0].transAxes,
+                    bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                )
                 # ax[0].set_xlim([0, 31.5])
                 
                 ax[1].plot(self.hstime, packets[(k[0], "TOF M")])
                 ax[1].set_ylabel("TOF M", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = f'Min = {min(packets[(k[0], "TOF M")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "TOF M")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "TOF M")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "TOF M")])} [dN]'
-                ax[1].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[1].transAxes)
+                text = _build_stats_text(packets[(k[0], "TOF M")])
+                ax[1].text(
+                    1.02,
+                    0.98,
+                    text,
+                    fontsize=12,
+                    va="top",
+                    ha="left",
+                    transform=ax[1].transAxes,
+                    bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                )
                 # ax[1].set_xlim([0, 31.5])
                 
                 ax[2].plot(self.hstime, packets[(k[0], "TOF H")])
                 ax[2].set_ylabel("TOF H", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = f'Min = {min(packets[(k[0], "TOF H")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "TOF H")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "TOF H")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "TOF H")])} [dN]'
-                ax[2].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[2].transAxes)
+                text = _build_stats_text(packets[(k[0], "TOF H")])
+                ax[2].text(
+                    1.02,
+                    0.98,
+                    text,
+                    fontsize=12,
+                    va="top",
+                    ha="left",
+                    transform=ax[2].transAxes,
+                    bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                )
                 # ax[2].set_xlim([0, 31.5])
 
                 ax[3].plot(self.lstime, packets[(k[0], "Ion Grid")])
                 ax[3].set_ylabel("Ion Grid", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = f'Min = {min(packets[(k[0], "Ion Grid")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Ion Grid")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Ion Grid")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Ion Grid")])} [dN]'
-                ax[3].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[3].transAxes)
+                text = _build_stats_text(packets[(k[0], "Ion Grid")])
+                ax[3].text(
+                    1.02,
+                    0.98,
+                    text,
+                    fontsize=12,
+                    va="top",
+                    ha="left",
+                    transform=ax[3].transAxes,
+                    bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                )
                 # ax[3].set_xlim([0, 126.5])
                 
                 if(self.header[(k[0], 'Timestamp')] < 494_733_600):  # If we are before September 27th, 2023 then we use the old definitions
                 
                     ax[4].plot(self.lstime, packets[(k[0], "Target L")])
                     ax[4].set_ylabel("Target LG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = f'Min = {min(packets[(k[0], "Target L")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Target L")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Target L")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Target L")])} [dN]'
-                    ax[4].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[4].transAxes)
+                    text = _build_stats_text(packets[(k[0], "Target L")])
+                    ax[4].text(
+                        1.02,
+                        0.98,
+                        text,
+                        fontsize=12,
+                        va="top",
+                        ha="left",
+                        transform=ax[4].transAxes,
+                        bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                    )
                     # ax[4].set_xlim([0, 126.5])
                     
                     ax[5].plot(self.lstime, packets[(k[0], "Target H")])
                     ax[5].set_ylabel("Target HG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = f'Min = {min(packets[(k[0], "Target H")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Target H")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Target H")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Target H")])} [dN]'
-                    ax[5].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[5].transAxes)
+                    text = _build_stats_text(packets[(k[0], "Target H")])
+                    ax[5].text(
+                        1.02,
+                        0.98,
+                        text,
+                        fontsize=12,
+                        va="top",
+                        ha="left",
+                        transform=ax[5].transAxes,
+                        bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                    )
                     # ax[5].set_xlim([0, 126.5])
 
                 else:
                     ax[4].plot(self.lstime, packets[(k[0], "Target H")])
                     ax[4].set_ylabel("Target HG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = f'Min = {min(packets[(k[0], "Target H")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Target H")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Target H")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Target H")])} [dN]'
-                    ax[4].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[4].transAxes)
+                    text = _build_stats_text(packets[(k[0], "Target H")])
+                    ax[4].text(
+                        1.02,
+                        0.98,
+                        text,
+                        fontsize=12,
+                        va="top",
+                        ha="left",
+                        transform=ax[4].transAxes,
+                        bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                    )
                     # ax[4].set_xlim([0, 126.5])
                     
                     ax[5].plot(self.lstime, packets[(k[0], "Target L")])
                     ax[5].set_ylabel("Target LG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = f'Min = {min(packets[(k[0], "Target L")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Target L")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Target L")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Target L")])} [dN]'
-                    ax[5].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[5].transAxes)
+                    text = _build_stats_text(packets[(k[0], "Target L")])
+                    ax[5].text(
+                        1.02,
+                        0.98,
+                        text,
+                        fontsize=12,
+                        va="top",
+                        ha="left",
+                        transform=ax[5].transAxes,
+                        bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"),
+                    )
                     # ax[5].set_xlim([0, 126.5])
 
 
@@ -1051,35 +1062,28 @@ class IDEXEvent:
                     create_dataset_if_not_exists(h, f"/{k[0]}/Mass", data=np.array(mass_scale))
                     peaks, _ = find_peaks(transformed_data, prominence=.01)
                     print(f"peaks = {peaks}")
-
                     # Plot the data
                     plt.figure(figsize=(10, 6))
                     plt.plot(self.hstime, transformed_data, label="Transformed Data", color="blue")
                     plt.scatter(self.hstime[peaks], transformed_data[peaks], color="red", label="Peaks", marker="x", s=100)
-
                     # Add labels and legend
                     plt.xlabel("Time (hstime)")
                     plt.ylabel("Transformed Data")
                     plt.title("Transformed Data with Detected Peaks")
                     plt.legend()
                     plt.grid(True)
-
                     # Show the plot
                     # plt.show()
-
                     kappa = np.mean([mass_scale[peak]-np.round(mass_scale[peak], 1) for peak in peaks])
                     print(f"Kappa = {kappa}")
                     create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/kappa", data=np.array([kappa]))
-
                     # Find indices where Time (High Sampling) is between -7 and -5
                     mask = np.logical_and(self.hstime >= -7, self.hstime <= -5)
-
                     # Append the corresponding TOF H values to the baseline array
                     TOFmax = max(transformed_data) - np.mean(transformed_data[mask])
                     TOFsigma = np.std(transformed_data[mask])
                     SNR = TOFmax/TOFsigma
                     create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/SNR", data=np.array([SNR]))
-
                     fit_results = []
                     mass_line_records = []
                     for peak in peaks:
@@ -1121,7 +1125,6 @@ class IDEXEvent:
                                 'abundance': np.nan,
                                 'fit_success': False
                             })
-
                         # Overlay EMG fits
                         for result in fit_results:
                             if result is not None:
@@ -1136,10 +1139,8 @@ class IDEXEvent:
                                     create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}/Masses/{param[0]}AreaUnderFit", data=np.array([area]))
 
 
-
                     if not peaks.size:
                         event_flags['notes'].append(f"{k[1]} no peaks identified")
-
                     mass_line_dataset = (np.array(mass_line_records, dtype=mass_line_dtype)
                                           if mass_line_records
                                           else np.empty(0, dtype=mass_line_dtype))
@@ -1164,12 +1165,10 @@ class IDEXEvent:
                      fit_time,
                      fit_signal,
                      fit_result) = FitTargetSignal(self.lstime, v)
-
                     if param is not None:
                         create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}FitParams", data=np.array(param))
                     create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}MassEstimate", data=sig_amp)
                     create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}ImpactCharge", data=sig_amp)
-
                     if fit_time is not None and fit_signal is not None:
                         create_dataset_if_not_exists(
                             h,
