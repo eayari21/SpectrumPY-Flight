@@ -83,7 +83,7 @@ from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as Navigation
 # --------- Qt binding-agnostic imports (prefer PySide6, fallback PyQt6) ---------
 _QT = None
 try:
-    from PySide6.QtCore import Qt, QSize, QTimer, QUrl, QBuffer, QIODevice
+    from PySide6.QtCore import Qt, QSize, QTimer, QUrl, QBuffer, QIODevice, QSignalBlocker
     from PySide6.QtGui import QAction, QFont, QIcon, QPixmap, QImage, QTextCursor, QTextDocument
     from PySide6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
@@ -94,7 +94,7 @@ try:
     )
     _QT = "PySide6"
 except Exception:
-    from PyQt6.QtCore import Qt, QSize, QTimer, QUrl, QBuffer, QIODevice
+    from PyQt6.QtCore import Qt, QSize, QTimer, QUrl, QBuffer, QIODevice, QSignalBlocker
     from PyQt6.QtGui import QAction, QFont, QIcon, QPixmap, QImage, QTextCursor, QTextDocument
     from PyQt6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
@@ -1001,10 +1001,22 @@ def _evaluate_fit_curve(channel: str, time_values: np.ndarray, params: np.ndarra
         return None
 
     param_array = _coerce_parameter_values(params)
-    if param_array is None or param_array.size < len(model.parameter_labels):
+    if param_array is None:
         return None
 
-    first = np.asarray(param_array[: len(model.parameter_labels)], dtype=float)
+    allowed_lengths = {len(model.parameter_labels)}
+    if model is ION_GRID_FIT:
+        allowed_lengths.update(ION_GRID_LABEL_OVERRIDES.keys())
+
+    first: Optional[np.ndarray] = None
+    for length in sorted(allowed_lengths, reverse=True):
+        if param_array.size >= length:
+            first = np.asarray(param_array[:length], dtype=float)
+            break
+
+    if first is None:
+        return None
+
     if not np.all(np.isfinite(first)):
         return None
 
@@ -2989,6 +3001,12 @@ class FitParameterDialog(QDialog):
         chooser_row.addStretch(1)
         layout.addLayout(chooser_row)
 
+        self.image_charge_checkbox = QCheckBox("Include image charge component", self)
+        self.image_charge_checkbox.setStyleSheet("font-size: 14px;")
+        self.image_charge_checkbox.stateChanged.connect(self._on_image_charge_toggled)
+        self.image_charge_checkbox.setVisible(False)
+        layout.addWidget(self.image_charge_checkbox)
+
         self.table = QTableWidget(self)
         self.table.setColumnCount(2)
         self.table.setHorizontalHeaderLabels(["Fit parameter", "Value"])
@@ -3083,6 +3101,7 @@ class FitParameterDialog(QDialog):
 
         flat = array.ravel()
         labels = self._parameter_labels(channel, dataset_path, flat.size)
+        self._update_image_charge_controls(channel, dataset_path, flat)
 
         self._is_updating_table = True
         try:
@@ -3231,6 +3250,9 @@ class FitParameterDialog(QDialog):
         self._current_dataset = None
         self._current_shape = None
         self._is_updating_table = False
+        self.image_charge_checkbox.setVisible(False)
+        with QSignalBlocker(self.image_charge_checkbox):
+            self.image_charge_checkbox.setChecked(False)
 
     def _format_value(self, value: object) -> str:
         try:
@@ -3252,6 +3274,135 @@ class FitParameterDialog(QDialog):
         self._reset_callback(self._event_name, self._current_channel, self._current_dataset)
         self._display_dataset(self._current_channel, self._current_dataset, preserve_feedback=True)
         self._set_feedback("Reverted to values from the file.", success=False)
+
+    def _channel_supports_image_charge(self, channel: Optional[str]) -> bool:
+        if not channel:
+            return False
+        model = FIT_MODEL_BY_CHANNEL.get(channel)
+        return model is ION_GRID_FIT
+
+    def _update_image_charge_controls(
+        self,
+        channel: Optional[str],
+        dataset_path: Optional[str],
+        flat_values: np.ndarray,
+    ) -> None:
+        supports = self._channel_supports_image_charge(channel)
+        with QSignalBlocker(self.image_charge_checkbox):
+            if not supports:
+                self.image_charge_checkbox.setVisible(False)
+                self.image_charge_checkbox.setChecked(False)
+                return
+
+            include_image_charge = flat_values.size >= len(ION_GRID_PARAMETER_LABELS_FULL)
+            self.image_charge_checkbox.setVisible(True)
+            self.image_charge_checkbox.setToolTip(
+                "Toggle whether the Ion Grid fit includes the image charge component."
+            )
+            self.image_charge_checkbox.setChecked(include_image_charge)
+
+    def _collect_table_values(self) -> Optional[List[float]]:
+        values: List[float] = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 1)
+            text = item.text().strip() if item else ""
+            if not text:
+                values.append(0.0)
+                continue
+            try:
+                values.append(float(text))
+            except ValueError:
+                return None
+        return values
+
+    def _replace_table_values(self, channel: str, dataset_path: str, values: Iterable[float]) -> None:
+        value_list = list(values)
+        labels = self._parameter_labels(channel, dataset_path, len(value_list))
+        self._is_updating_table = True
+        try:
+            self.table.setRowCount(len(value_list))
+            for idx, value in enumerate(value_list):
+                label = labels[idx] if idx < len(labels) else f"p{idx + 1}"
+                idx_item = QTableWidgetItem(label)
+                idx_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+                value_item = QTableWidgetItem(self._format_value(value))
+                value_item.setFlags(value_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                self.table.setItem(idx, 0, idx_item)
+                self.table.setItem(idx, 1, value_item)
+        finally:
+            self._is_updating_table = False
+        self.table.resizeColumnsToContents()
+
+    def _ensure_image_charge_values(self, values: Iterable[float]) -> List[float]:
+        value_list = list(values)
+        if len(value_list) >= len(ION_GRID_PARAMETER_LABELS_FULL):
+            return list(value_list[: len(ION_GRID_PARAMETER_LABELS_FULL)])
+
+        expanded = [0.0] * len(ION_GRID_PARAMETER_LABELS_FULL)
+        if value_list:
+            expanded[0] = value_list[0]
+        if len(value_list) > 1:
+            expanded[1] = value_list[1]
+        if len(value_list) > 2:
+            expanded[3] = value_list[2]
+        if len(value_list) > 3:
+            expanded[5] = value_list[3]
+        if len(value_list) > 4:
+            expanded[6] = value_list[4]
+
+        # Defaults for the image charge terms
+        expanded[2] = 0.0
+        expanded[4] = expanded[5] if len(value_list) > 3 else 1.0
+        return expanded
+
+    def _ensure_legacy_values(self, values: Iterable[float]) -> List[float]:
+        value_list = list(values)
+        if len(value_list) <= len(ION_GRID_PARAMETER_LABELS_LEGACY):
+            return list(value_list[: len(ION_GRID_PARAMETER_LABELS_LEGACY)])
+
+        legacy = [0.0] * len(ION_GRID_PARAMETER_LABELS_LEGACY)
+        if value_list:
+            legacy[0] = value_list[0]
+        if len(value_list) > 1:
+            legacy[1] = value_list[1]
+        if len(value_list) > 3:
+            legacy[2] = value_list[3]
+        if len(value_list) > 5:
+            legacy[3] = value_list[5]
+        if len(value_list) > 6:
+            legacy[4] = value_list[6]
+        return legacy
+
+    def _on_image_charge_toggled(self, state: int):
+        if self._is_updating_table:
+            return
+        if not self._current_channel or not self._current_dataset:
+            return
+        if not self._channel_supports_image_charge(self._current_channel):
+            return
+
+        include = state == Qt.CheckState.Checked
+        values = self._collect_table_values()
+        if values is None:
+            with QSignalBlocker(self.image_charge_checkbox):
+                self.image_charge_checkbox.setChecked(not include)
+            self._set_feedback(
+                "Cannot toggle image charge because one or more values are invalid.",
+                success=False,
+            )
+            return
+
+        if include:
+            new_values = self._ensure_image_charge_values(values)
+        else:
+            new_values = self._ensure_legacy_values(values)
+
+        self._current_shape = (len(new_values),)
+        self._replace_table_values(self._current_channel, self._current_dataset, new_values)
+
+        if not self._apply_current_values(auto=True):
+            with QSignalBlocker(self.image_charge_checkbox):
+                self.image_charge_checkbox.setChecked(not include)
 
 # --------- CLI / main ---------
 def main():
