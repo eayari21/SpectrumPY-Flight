@@ -24,10 +24,11 @@ read-only files are handled gracefully with clear status messages.
 from __future__ import annotations
 
 import csv
+import html
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import h5py
 import numpy as np
@@ -458,6 +459,268 @@ class ManualMassLineDialog(QDialog):
             "time_end": end,
         }
 
+
+class InspectMassLineDialog(QDialog):
+    """Focused inspector for visualising and editing a single EMG mass line."""
+
+    _EMG_HTML = (
+        "<span style='font-size:16px;'>"
+        "<b>f(t)</b> = <b>A</b> · <b>λ</b>/2 · exp\u207b((t − <b>μ</b>)·<b>λ</b> − (<b>λ</b>·<b>σ</b>)² / 2) · erfc\u208b((<b>μ</b> + (<b>λ</b>·<b>σ</b>)² − t) / (\u221a2 · <b>σ</b>))"
+        "</span>"
+    )
+
+    def __init__(
+        self,
+        parent: QWidget,
+        line: MassLineFit,
+        *,
+        time_axis: np.ndarray,
+        signal: np.ndarray,
+        baseline: float,
+        source_name: str,
+        mass_converter: Callable[[float], float],
+    ):
+        super().__init__(parent)
+
+        self.setModal(True)
+        self.setWindowTitle("Inspect Mass Line")
+        self.setMinimumSize(720, 680)
+
+        self._line = replace(line)
+        self._time_axis = np.asarray(time_axis, dtype=float).ravel()
+        self._signal = np.asarray(signal, dtype=float).ravel()
+        self._baseline = float(baseline)
+        self._source_name = source_name
+        self._mass_converter = mass_converter
+        self._result: Optional[Dict[str, float | str]] = None
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+
+        self.header_label = QLabel("", self)
+        self.header_label.setStyleSheet("font-size: 20px; font-weight: 600;")
+        layout.addWidget(self.header_label)
+
+        self.formula_label = QLabel(self)
+        self.formula_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.formula_label.setTextFormat(Qt.TextFormat.RichText)
+        self.formula_label.setWordWrap(True)
+        self.formula_label.setText(self._EMG_HTML)
+        layout.addWidget(self.formula_label)
+
+        source_label = QLabel(f"Signal source: {html.escape(self._source_name)}", self)
+        source_label.setStyleSheet("color: #495057; font-size: 13px;")
+        layout.addWidget(source_label)
+
+        figure_container = QWidget(self)
+        figure_layout = QVBoxLayout(figure_container)
+        figure_layout.setContentsMargins(0, 0, 0, 0)
+        figure_layout.setSpacing(6)
+
+        self.figure = Figure(figsize=(6.5, 3.8), constrained_layout=True)
+        self.canvas = FigureCanvasQTAgg(self.figure)
+        figure_layout.addWidget(self.canvas)
+
+        layout.addWidget(figure_container, stretch=1)
+
+        parameter_box = QGroupBox("Editable parameters", self)
+        form = QFormLayout(parameter_box)
+        form.setContentsMargins(12, 12, 12, 12)
+        form.setSpacing(8)
+
+        self.label_edit = QLineEdit(parameter_box)
+        self.label_edit.setText(self._line.label)
+        self.label_edit.textChanged.connect(self._on_label_changed)
+        form.addRow("Label:", self.label_edit)
+
+        time_min = float(np.nanmin(self._time_axis)) if self._time_axis.size else -1.0e6
+        time_max = float(np.nanmax(self._time_axis)) if self._time_axis.size else 1.0e6
+
+        self.mu_spin = QDoubleSpinBox(parameter_box)
+        self.mu_spin.setDecimals(6)
+        self.mu_spin.setRange(time_min, time_max)
+        self.mu_spin.setValue(self._line.mu)
+        self.mu_spin.valueChanged.connect(self._on_parameter_changed)
+        form.addRow("μ (µs):", self.mu_spin)
+
+        self.sigma_spin = QDoubleSpinBox(parameter_box)
+        self.sigma_spin.setDecimals(6)
+        self.sigma_spin.setRange(1.0e-9, 1.0e6)
+        self.sigma_spin.setValue(max(abs(self._line.sigma), 1.0e-6))
+        self.sigma_spin.valueChanged.connect(self._on_parameter_changed)
+        form.addRow("σ (µs):", self.sigma_spin)
+
+        self.lambda_spin = QDoubleSpinBox(parameter_box)
+        self.lambda_spin.setDecimals(6)
+        self.lambda_spin.setRange(1.0e-9, 1.0e6)
+        self.lambda_spin.setValue(max(abs(self._line.lam), 1.0e-6))
+        self.lambda_spin.valueChanged.connect(self._on_parameter_changed)
+        form.addRow("λ (µs⁻¹):", self.lambda_spin)
+
+        self.amplitude_spin = QDoubleSpinBox(parameter_box)
+        self.amplitude_spin.setDecimals(6)
+        self.amplitude_spin.setRange(1.0e-12, 1.0e12)
+        self.amplitude_spin.setValue(max(abs(self._line.amplitude), 1.0e-9))
+        self.amplitude_spin.valueChanged.connect(self._on_parameter_changed)
+        form.addRow("A (DN·µs):", self.amplitude_spin)
+
+        self.start_spin = QDoubleSpinBox(parameter_box)
+        self.start_spin.setDecimals(6)
+        self.start_spin.setRange(time_min, time_max)
+        self.start_spin.setValue(self._line.time_start)
+        self.start_spin.valueChanged.connect(self._on_window_changed)
+        form.addRow("Start time (µs):", self.start_spin)
+
+        self.end_spin = QDoubleSpinBox(parameter_box)
+        self.end_spin.setDecimals(6)
+        self.end_spin.setRange(time_min, time_max)
+        self.end_spin.setValue(self._line.time_end)
+        self.end_spin.valueChanged.connect(self._on_window_changed)
+        form.addRow("End time (µs):", self.end_spin)
+
+        layout.addWidget(parameter_box)
+
+        self.mass_hint_label = QLabel("", self)
+        self.mass_hint_label.setStyleSheet("font-size: 14px; font-style: italic; color: #495057;")
+        layout.addWidget(self.mass_hint_label)
+
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+        self._update_header()
+        self._update_mass_hint()
+        self._update_plot()
+
+    def _update_header(self) -> None:
+        label = self.label_edit.text().strip() or "Mass line"
+        self.header_label.setText(f"Inspecting: {html.escape(label)}")
+
+    def _update_mass_hint(self) -> None:
+        mu = float(self.mu_spin.value())
+        try:
+            mass_value = float(self._mass_converter(mu))
+        except Exception:
+            mass_value = float("nan")
+        if math.isfinite(mass_value):
+            text = f"Estimated mass from μ: {mass_value:.3f} amu"
+        else:
+            text = "Estimated mass from μ: unavailable"
+        self.mass_hint_label.setText(text)
+
+    def _update_plot(self) -> None:
+        amplitude = float(max(self.amplitude_spin.value(), 1.0e-12))
+        mu = float(self.mu_spin.value())
+        sigma = float(max(self.sigma_spin.value(), 1.0e-9))
+        lam = float(max(self.lambda_spin.value(), 1.0e-9))
+        start = float(self.start_spin.value())
+        end = float(self.end_spin.value())
+
+        if end <= start:
+            end = start + 1.0e-6
+
+        if self._time_axis.size == 0 or self._signal.size == 0:
+            self.figure.clear()
+            ax = self.figure.add_subplot(111)
+            ax.text(0.5, 0.5, "No waveform data available", ha="center", va="center")
+            ax.set_axis_off()
+            self.canvas.draw_idle()
+            return
+
+        padding = max((end - start) * 0.25, 1.0e-3)
+        window_min = start - padding
+        window_max = end + padding
+        mask = (self._time_axis >= window_min) & (self._time_axis <= window_max)
+        time_data = self._time_axis[mask]
+        signal_data = self._signal[mask]
+        if time_data.size == 0:
+            time_data = self._time_axis
+            signal_data = self._signal
+
+        fit_time = np.linspace(start, end, 1200)
+        fit_values = _emg_model(fit_time, amplitude, mu, sigma, lam)
+
+        offset = 0.0
+        finite_signal = signal_data[np.isfinite(signal_data)]
+        if finite_signal.size:
+            min_signal = float(np.nanmin(finite_signal))
+            if min_signal <= 0.0:
+                offset = abs(min_signal) + 1.0e-9
+        signal_plot = signal_data + offset
+        fit_plot = fit_values + offset
+
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        ax.scatter(time_data, signal_plot, s=22, c="#1f77b4", alpha=0.75, label="Waveform")
+        ax.plot(fit_time, fit_plot, color="#d62728", linewidth=2.2, label="EMG fit")
+        ax.set_xlabel("Time (µs)")
+        ax.set_ylabel("Signal (DN – baseline)")
+        ax.set_yscale("symlog", linthresh=1.0e-3)
+        ax.set_xlim(window_min, window_max)
+        ax.set_title("Zoomed mass line view", fontsize=14, fontweight="bold")
+        ax.legend(loc="best")
+        ax.grid(True, which="both", linestyle="--", linewidth=0.6, alpha=0.35)
+        self.canvas.draw_idle()
+
+    def _on_label_changed(self, _text: str) -> None:
+        self._update_header()
+
+    def _on_parameter_changed(self, _value: float) -> None:
+        self._update_mass_hint()
+        self._update_plot()
+
+    def _on_window_changed(self, _value: float) -> None:
+        if self.start_spin.value() >= self.end_spin.value():
+            if _value == self.start_spin.value():
+                self.end_spin.blockSignals(True)
+                self.end_spin.setValue(self.start_spin.value() + 1.0e-6)
+                self.end_spin.blockSignals(False)
+            else:
+                self.start_spin.blockSignals(True)
+                self.start_spin.setValue(self.end_spin.value() - 1.0e-6)
+                self.start_spin.blockSignals(False)
+        self._update_plot()
+
+    def accept(self) -> None:  # type: ignore[override]
+        try:
+            self._result = self._collect_values()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid parameters", str(exc))
+            return
+        super().accept()
+
+    def _collect_values(self) -> Dict[str, float | str]:
+        label = self.label_edit.text().strip() or "Mass line"
+        amplitude = float(max(self.amplitude_spin.value(), 1.0e-12))
+        mu = float(self.mu_spin.value())
+        sigma = float(max(self.sigma_spin.value(), 1.0e-9))
+        lam = float(max(self.lambda_spin.value(), 1.0e-9))
+        start = float(self.start_spin.value())
+        end = float(self.end_spin.value())
+        if end <= start:
+            raise ValueError("The end time must be greater than the start time.")
+        try:
+            mass_guess = float(self._mass_converter(mu))
+        except Exception:
+            mass_guess = float("nan")
+        return {
+            "label": label,
+            "amplitude": amplitude,
+            "mu": mu,
+            "sigma": sigma,
+            "lam": lam,
+            "time_start": start,
+            "time_end": end,
+            "mass_guess": mass_guess,
+        }
+
+    def collected_values(self) -> Optional[Dict[str, float | str]]:
+        return self._result
 
 # ---------------------------------------------------------------------------
 # Utility helpers
@@ -892,12 +1155,20 @@ class DustCompositionWindow(QMainWindow):
         self.mass_table.itemChanged.connect(self._on_mass_table_changed)
         self.mass_table.itemSelectionChanged.connect(self._on_mass_table_selection_changed)
         layout.addWidget(self.mass_table)
+        self.inspect_mass_button = QPushButton("Inspect Selected", box)
+        self.inspect_mass_button.setToolTip(
+            "Open a zoomed-in view of the selected mass line with editable EMG parameters."
+        )
+        self.inspect_mass_button.setEnabled(False)
+        self.inspect_mass_button.clicked.connect(self._inspect_selected_mass_line)
+        layout.addWidget(self.inspect_mass_button)
         self.manual_mass_button = QPushButton("Add Manual Line", box)
         self.manual_mass_button.setToolTip("Enter EMG parameters directly without selecting a region on the plot.")
         self.manual_mass_button.clicked.connect(self._prompt_manual_mass_line)
         layout.addWidget(self.manual_mass_button)
         self.remove_mass_button = QPushButton("Remove Selected", box)
         self.remove_mass_button.clicked.connect(self._remove_selected_mass_line)
+        self.remove_mass_button.setEnabled(False)
         layout.addWidget(self.remove_mass_button)
         self.control_layout.addWidget(box)
 
@@ -983,6 +1254,59 @@ class DustCompositionWindow(QMainWindow):
         self._mass_lines.append(line)
         self._selected_line_id = line.line_id
         self._update_mass_line_abundances()
+        self._update_tables()
+        self._update_summary()
+        self._refresh_plot()
+
+    def _inspect_selected_mass_line(self) -> None:
+        line = self._current_mass_line()
+        if line is None:
+            QMessageBox.information(self, "No Selection", "Select a mass line to inspect.")
+            return
+        time_axis, signal, source = self._inspection_waveform()
+        if time_axis.size == 0 or signal.size == 0:
+            QMessageBox.warning(self, "No Data", "No waveform data are available for inspection.")
+            return
+
+        def _mass_from_time(value: float) -> float:
+            arr = np.array([value], dtype=float)
+            converted = self._time_to_mass(arr)
+            if converted.size:
+                return float(converted[0])
+            return float("nan")
+
+        dialog = InspectMassLineDialog(
+            self,
+            line,
+            time_axis=time_axis,
+            signal=signal,
+            baseline=self._baseline,
+            source_name=source,
+            mass_converter=_mass_from_time,
+        )
+        result_code = dialog.exec()
+        try:
+            accepted = result_code == QDialog.DialogCode.Accepted  # type: ignore[attr-defined]
+        except Exception:
+            accepted = int(result_code) == int(QDialog.DialogCode.Accepted)
+        if not accepted:
+            return
+        values = dialog.collected_values()
+        if not values:
+            return
+
+        line.label = str(values.get("label", line.label))
+        line.amplitude = float(values.get("amplitude", line.amplitude))
+        line.mu = float(values.get("mu", line.mu))
+        line.sigma = float(values.get("sigma", line.sigma))
+        line.lam = float(values.get("lam", line.lam))
+        line.time_start = float(values.get("time_start", line.time_start))
+        line.time_end = float(values.get("time_end", line.time_end))
+        mass_guess = float(values.get("mass_guess", line.mass_guess))
+        if math.isfinite(mass_guess):
+            line.mass_guess = mass_guess
+        self._recompute_mass_line(line, preserve_label=True)
+        self._selected_line_id = line.line_id
         self._update_tables()
         self._update_summary()
         self._refresh_plot()
@@ -1364,6 +1688,46 @@ class DustCompositionWindow(QMainWindow):
             "time_end": end,
         }
 
+    def _current_mass_line(self) -> Optional[MassLineFit]:
+        if self._selected_line_id is None:
+            return None
+        for line in self._mass_lines:
+            if line.line_id == self._selected_line_id:
+                return line
+        return None
+
+    def _inspection_waveform(self) -> Tuple[np.ndarray, np.ndarray, str]:
+        label = "Waveform"
+        signal: Optional[np.ndarray] = None
+        time_axis = np.asarray(self._time_axis, dtype=float)
+        if self._combined is None or not getattr(self._combined, "size", 0):
+            combined = self._combine_waveforms()
+            if combined is not None and combined.size:
+                self._combined = combined
+        if self._combined is not None and getattr(self._combined, "size", 0):
+            signal = np.asarray(self._combined, dtype=float)
+            label = "Combined TOF"
+        else:
+            for key in ("TOF LG", "TOF L", "TOF Low", "TOF M", "TOF H"):
+                candidate = self._waveforms.get(key)
+                if candidate is not None and getattr(candidate, "size", 0):
+                    signal = np.asarray(candidate, dtype=float)
+                    label = key
+                    break
+        if signal is None or time_axis.size == 0:
+            return np.zeros(0, dtype=float), np.zeros(0, dtype=float), label
+        length = min(time_axis.size, signal.size)
+        trimmed_time = time_axis[:length]
+        trimmed_signal = signal[:length] - self._baseline
+        return trimmed_time, trimmed_signal, label
+
+    def _update_inspect_button_state(self) -> None:
+        has_selection = self._current_mass_line() is not None
+        if hasattr(self, "inspect_mass_button"):
+            self.inspect_mass_button.setEnabled(has_selection)
+        if hasattr(self, "remove_mass_button"):
+            self.remove_mass_button.setEnabled(has_selection)
+
     def add_mass_line(self, x_min: float, x_max: float) -> None:
         if self._combined is None:
             return
@@ -1438,14 +1802,25 @@ class DustCompositionWindow(QMainWindow):
         self._update_summary()
         self._refresh_plot()
 
-    def _recompute_mass_line(self, line: MassLineFit) -> None:
+    def _recompute_mass_line(self, line: MassLineFit, *, preserve_label: bool = False) -> None:
+        previous_label = line.label
+        previous_guess = line.mass_guess
+        previous_auto = nearest_mass_name(previous_guess) if math.isfinite(previous_guess) else ""
         dense_time = np.linspace(line.time_start, line.time_end, 800)
         line.amplitude = max(abs(float(line.amplitude)), 0.0)
         fit_curve = _emg_model(dense_time, line.amplitude, line.mu, abs(line.sigma), abs(line.lam))
         line.time_axis = dense_time
         line.fit_values = fit_curve
-        line.mass_guess = float(self._time_to_mass(line.mu))
-        line.label = nearest_mass_name(line.mass_guess)
+        converted = self._time_to_mass(np.array([line.mu], dtype=float))
+        if converted.size:
+            line.mass_guess = float(converted[0])
+        else:
+            line.mass_guess = float("nan")
+        new_auto = nearest_mass_name(line.mass_guess) if math.isfinite(line.mass_guess) else previous_auto
+        if not preserve_label:
+            label_clean = previous_label.strip() if isinstance(previous_label, str) else ""
+            if not label_clean or (previous_auto and label_clean == previous_auto):
+                line.label = new_auto
         self._update_mass_line_abundances()
 
     def _remove_selected_mass_line(self) -> None:
@@ -1468,6 +1843,7 @@ class DustCompositionWindow(QMainWindow):
             self._update_tables()
             self._update_summary()
             self._refresh_plot()
+            self._update_inspect_button_state()
     def _update_mass_line_abundances(self) -> None:
         if self._combined is None or self._combined.size == 0:
             for line in self._mass_lines:
@@ -1512,6 +1888,7 @@ class DustCompositionWindow(QMainWindow):
             self.mass_table.clearSelection()
         self._block_selection_signals = False
         self._block_table_signals = False
+        self._update_inspect_button_state()
 
     def _on_mass_table_selection_changed(self) -> None:
         if self._block_selection_signals:
@@ -1524,6 +1901,7 @@ class DustCompositionWindow(QMainWindow):
             if self._selected_line_id is not None:
                 self._selected_line_id = None
                 self._refresh_plot()
+            self._update_inspect_button_state()
             return
         row = rows[0].row()
         if not (0 <= row < len(self._mass_lines)):
@@ -1532,6 +1910,7 @@ class DustCompositionWindow(QMainWindow):
         if self._selected_line_id != line.line_id:
             self._selected_line_id = line.line_id
             self._refresh_plot()
+        self._update_inspect_button_state()
 
     def _update_summary(self) -> None:
         entries = sorted(self._mass_lines, key=lambda ln: ln.abundance, reverse=True)
