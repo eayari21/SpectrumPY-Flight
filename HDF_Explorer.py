@@ -1138,10 +1138,22 @@ class HDFDataExplorer(QWidget):
         color_value = None
         data_array = artist.get_array()
         if data_array is not None and data_array.size > selection_index:
-            cmap = artist.get_cmap()
-            norm = artist.get_norm()
+            cmap = getattr(artist, "get_cmap", None)
+            cmap = cmap() if callable(cmap) else getattr(artist, "cmap", None)
+            norm = getattr(artist, "get_norm", None)
+            norm = norm() if callable(norm) else getattr(artist, "norm", None)
             if cmap is not None and norm is not None:
-                color_value = cmap(norm(data_array[selection_index]))
+                try:
+                    color_value = cmap(norm(data_array[selection_index]))
+                except Exception:
+                    color_value = None
+        if color_value is None:
+            facecolors = artist.get_facecolors()
+            if facecolors.size:
+                if facecolors.shape[0] == 1:
+                    color_value = facecolors[0]
+                elif facecolors.shape[0] > selection_index:
+                    color_value = facecolors[selection_index]
 
         self._selected_marker = axis.scatter(
             [point[0]],
