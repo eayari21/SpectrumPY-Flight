@@ -553,6 +553,7 @@ class HDFDataExplorer(QWidget):
         self._slicer_window: Optional[Slicer3DViewer] = None
         self._scatter_artists: Dict[PathCollection, np.ndarray] = {}
         self._pick_cid: Optional[int] = None
+        self._selected_marker: Optional[PathCollection] = None
 
         self._build_ui()
 
@@ -917,6 +918,12 @@ class HDFDataExplorer(QWidget):
     def plot_data(self) -> None:
         self.figure.clear()
         self._scatter_artists.clear()
+        if self._selected_marker is not None:
+            try:
+                self._selected_marker.remove()
+            except ValueError:
+                pass
+            self._selected_marker = None
 
         if not self.data_store.events:
             ax = self.figure.add_subplot(111)
@@ -969,6 +976,7 @@ class HDFDataExplorer(QWidget):
                 edgecolor="white",
                 linewidth=0.6,
                 picker=True,
+                marker="o",
             )
             if color_values.size:
                 cbar = self.figure.colorbar(scatter, ax=axis)
@@ -1101,9 +1109,50 @@ class HDFDataExplorer(QWidget):
         idx = indices[chosen[0]]
         if idx >= len(self.data_store.events):
             return
+        self._highlight_selected_point(artist, chosen[0])
         record = self.data_store.events[idx]
         file_path = str(self.hdf5_folder / record.filename)
         self._launch_quicklook(file_path, record.event_name)
+
+    # ------------------------------------------------------------------
+    def _highlight_selected_point(self, artist: PathCollection, selection_index: int) -> None:
+        if self._selected_marker is not None:
+            try:
+                self._selected_marker.remove()
+            except ValueError:
+                pass
+            self._selected_marker = None
+
+        offsets = artist.get_offsets()
+        if selection_index >= offsets.shape[0]:
+            return
+
+        axis = artist.axes
+        if axis is None:
+            return
+
+        point = offsets[selection_index]
+        sizes = artist.get_sizes()
+        base_size = sizes[selection_index] if sizes.size > selection_index else (sizes[0] if sizes.size else 36.0)
+
+        color_value = None
+        data_array = artist.get_array()
+        if data_array is not None and data_array.size > selection_index:
+            cmap = artist.get_cmap()
+            norm = artist.get_norm()
+            if cmap is not None and norm is not None:
+                color_value = cmap(norm(data_array[selection_index]))
+
+        self._selected_marker = axis.scatter(
+            [point[0]],
+            [point[1]],
+            marker="x",
+            s=base_size * 1.6,
+            linewidth=1.8,
+            color=color_value if color_value is not None else "#1f2937",
+            zorder=artist.get_zorder() + 2,
+        )
+        self.canvas.draw_idle()
 
     # ------------------------------------------------------------------
     def _launch_quicklook(self, file_path: str, event_name: str) -> None:
