@@ -1,5 +1,7 @@
 # SpectrumPY-Flight
 
+## Author: Ethan Ayari
+
 > Ground-system decoding, fitting, and visualization tools for the LASP/IMPACT IDEX campaign.
 
 ![IDEX Quicklook UI map](docs/media/quicklook_overview.svg)
