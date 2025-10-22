@@ -80,6 +80,7 @@ except Exception:  # pragma: no cover - fallback to PyQt6
     )
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
+from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from matplotlib.widgets import SpanSelector
 
@@ -430,6 +431,7 @@ class DustCompositionWindow(QMainWindow):
         self._mass_params = {"stretch": 1.0, "shift": 0.0}
         self._mass_lines: List[MassLineFit] = []
         self._mass_line_counter = 0
+        self._selected_line_id: Optional[int] = None
 
         self._combined_axis = None
         self._combined_time_axis = None
@@ -437,6 +439,7 @@ class DustCompositionWindow(QMainWindow):
         self._span_selector: Optional[SpanSelector] = None
         self._in_baseline_mode = False
         self._block_table_signals = False
+        self._block_selection_signals = False
 
         self._load_datasets()
         self._load_saved_state()
@@ -569,6 +572,8 @@ class DustCompositionWindow(QMainWindow):
                     except Exception:
                         line.time_axis = np.zeros(0)
                         line.fit_values = np.zeros(0)
+        if self._mass_lines and self._selected_line_id is None:
+            self._selected_line_id = self._mass_lines[0].line_id
 
     # ---- UI construction ------------------------------------------------
     def _build_controls(self) -> None:
@@ -665,6 +670,7 @@ class DustCompositionWindow(QMainWindow):
         self.mass_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.mass_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.mass_table.itemChanged.connect(self._on_mass_table_changed)
+        self.mass_table.itemSelectionChanged.connect(self._on_mass_table_selection_changed)
         layout.addWidget(self.mass_table)
         self.manual_mass_button = QPushButton("Add Manual Line", box)
         self.manual_mass_button.setToolTip("Enter EMG parameters directly without selecting a region on the plot.")
@@ -754,6 +760,7 @@ class DustCompositionWindow(QMainWindow):
         line.fit_values = _emg_model(dense_time, line.mu, abs(line.sigma), abs(line.lam))
         self._mass_line_counter += 1
         self._mass_lines.append(line)
+        self._selected_line_id = line.line_id
         self._update_mass_line_abundances()
         self._update_tables()
         self._update_summary()
@@ -922,15 +929,70 @@ class DustCompositionWindow(QMainWindow):
             self._combined_time_axis = ax_time
         if self._baseline or self.baseline_spin.value() != 0.0:
             self._baseline_artist = ax.axhline(self._baseline, color="#aa3377", linestyle="--", linewidth=1.2, label="Baseline")
+        selected_id = self._selected_line_id
+        plotted_any = False
         for line in self._mass_lines:
-            if line.time_axis.size and line.fit_values.size:
-                try:
-                    mass = self._time_to_mass(line.time_axis)
-                except Exception:
-                    mass = line.time_axis
-                ax.plot(mass, line.fit_values + self._baseline, linestyle="-", linewidth=1.4, label=line.label)
-        if len(ax.lines) > 1:
-            ax.legend(loc="best", fontsize=10)
+            if not (line.time_axis.size and line.fit_values.size):
+                continue
+            try:
+                mass_axis = self._time_to_mass(line.time_axis)
+            except Exception:
+                mass_axis = line.time_axis
+            y_values = line.fit_values + self._baseline
+            try:
+                rgba = to_rgba(line.color)
+                base_color = line.color
+            except Exception:
+                rgba = to_rgba("#d62728")
+                base_color = "#d62728"
+            if line.line_id == selected_id:
+                ax.plot(
+                    mass_axis,
+                    y_values,
+                    linestyle="-",
+                    linewidth=2.6,
+                    color=base_color,
+                    zorder=5,
+                    label=line.label,
+                )
+                finite_values = np.asarray(y_values, dtype=float)
+                finite_mask = np.isfinite(finite_values)
+                if np.any(finite_mask):
+                    finite_mass = np.asarray(mass_axis, dtype=float)
+                    safe_values = np.where(finite_mask, finite_values, -np.inf)
+                    peak_idx = int(np.argmax(safe_values))
+                    if 0 <= peak_idx < finite_mass.size and np.isfinite(safe_values[peak_idx]):
+                        peak_x = float(finite_mass[peak_idx])
+                        peak_y = float(finite_values[peak_idx])
+                        ax.annotate(
+                            line.label,
+                            xy=(peak_x, peak_y),
+                            xytext=(0, 14),
+                            textcoords="offset points",
+                            ha="center",
+                            va="bottom",
+                            fontsize=12,
+                            fontweight="bold",
+                            color="#111111",
+                            bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=base_color, lw=1.0, alpha=0.9),
+                            zorder=6,
+                        )
+            else:
+                faded = (rgba[0], rgba[1], rgba[2], 0.45)
+                ax.plot(
+                    mass_axis,
+                    y_values,
+                    linestyle="-",
+                    linewidth=1.2,
+                    color=faded,
+                    zorder=3,
+                    label=line.label,
+                )
+            plotted_any = True
+        if plotted_any and len(ax.lines) > 1:
+            legend = ax.legend(loc="best", fontsize=10)
+            if legend is not None:
+                legend.set_zorder(7)
 
     # ---- Combination logic ---------------------------------------------
     def _combine_waveforms(self) -> Optional[np.ndarray]:
@@ -1104,6 +1166,7 @@ class DustCompositionWindow(QMainWindow):
         )
         self._mass_line_counter += 1
         self._mass_lines.append(line)
+        self._selected_line_id = line.line_id
         self._update_mass_line_abundances()
         self._update_tables()
         self._update_summary()
@@ -1127,7 +1190,13 @@ class DustCompositionWindow(QMainWindow):
             return
         idx = rows[0].row()
         if 0 <= idx < len(self._mass_lines):
-            del self._mass_lines[idx]
+            removed = self._mass_lines.pop(idx)
+            if self._selected_line_id == removed.line_id:
+                if self._mass_lines:
+                    next_idx = min(idx, len(self._mass_lines) - 1)
+                    self._selected_line_id = self._mass_lines[next_idx].line_id
+                else:
+                    self._selected_line_id = None
             self._update_mass_line_abundances()
             self._update_tables()
             self._update_summary()
@@ -1164,7 +1233,41 @@ class DustCompositionWindow(QMainWindow):
                     flags = item.flags()
                     item.setFlags(flags & ~Qt.ItemFlag.ItemIsEditable)
         self.mass_table.resizeColumnsToContents()
+        self._block_selection_signals = True
+        if self._selected_line_id is not None:
+            found = False
+            for row, line in enumerate(self._mass_lines):
+                if line.line_id == self._selected_line_id:
+                    self.mass_table.selectRow(row)
+                    found = True
+                    break
+            if not found:
+                self.mass_table.clearSelection()
+                self._selected_line_id = None
+        else:
+            self.mass_table.clearSelection()
+        self._block_selection_signals = False
         self._block_table_signals = False
+
+    def _on_mass_table_selection_changed(self) -> None:
+        if self._block_selection_signals:
+            return
+        selection = self.mass_table.selectionModel()
+        if selection is None:
+            return
+        rows = selection.selectedRows()
+        if not rows:
+            if self._selected_line_id is not None:
+                self._selected_line_id = None
+                self._refresh_plot()
+            return
+        row = rows[0].row()
+        if not (0 <= row < len(self._mass_lines)):
+            return
+        line = self._mass_lines[row]
+        if self._selected_line_id != line.line_id:
+            self._selected_line_id = line.line_id
+            self._refresh_plot()
 
     def _update_summary(self) -> None:
         entries = sorted(self._mass_lines, key=lambda ln: ln.abundance, reverse=True)
