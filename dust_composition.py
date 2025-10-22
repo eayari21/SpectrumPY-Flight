@@ -1020,7 +1020,8 @@ class DustCompositionWindow(QMainWindow):
         mass_axis = self._combined_mass_axis()
         n = min(self._combined.size, mass_axis.size)
         ax.set_zorder(2)
-        ax.plot(mass_axis[:n], self._combined[:n], color="#1f77b4", linewidth=1.6, label="Combined TOF")
+        corrected = self._combined[:n] - self._baseline
+        ax.plot(mass_axis[:n], corrected, color="#1f77b4", linewidth=1.6, label="Combined TOF")
         ax.set_facecolor("#f9fbff")
         ax.grid(True, alpha=0.35)
         ax.set_xlabel("Mass [amu]", fontsize=14)
@@ -1041,8 +1042,8 @@ class DustCompositionWindow(QMainWindow):
             ax_time.set_navigate(False)
             ax_time.patch.set_visible(False)
             self._combined_time_axis = ax_time
-        if self._baseline or self.baseline_spin.value() != 0.0:
-            self._baseline_artist = ax.axhline(self._baseline, color="#aa3377", linestyle="--", linewidth=1.2, label="Baseline")
+        if (self._baseline or self.baseline_spin.value() != 0.0) and np.isfinite(self._baseline):
+            self._baseline_artist = ax.axhline(0.0, color="#aa3377", linestyle="--", linewidth=1.2, label="Baseline")
         selected_id = self._selected_line_id
         plotted_any = False
         for line in self._mass_lines:
@@ -1052,7 +1053,7 @@ class DustCompositionWindow(QMainWindow):
                 mass_axis = self._time_to_mass(line.time_axis)
             except Exception:
                 mass_axis = line.time_axis
-            y_values = line.fit_values + self._baseline
+            y_values = line.fit_values
             try:
                 rgba = to_rgba(line.color)
                 base_color = line.color
