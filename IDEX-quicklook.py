@@ -305,26 +305,67 @@ class DocumentationCenter(QDialog):
     def __init__(self, parent: Optional[QWidget] = None, *, initial_query: str = "") -> None:
         super().__init__(parent)
         self.setWindowTitle("SpectrumPY Flight Documentation Center")
-        self.resize(960, 640)
+        self.resize(1024, 680)
         self.setModal(False)
+        self.setStyleSheet(
+            """
+            QDialog {
+                background: #eef2f7;
+            }
+            QLineEdit {
+                font-size: 15px;
+                padding: 8px 10px;
+                border-radius: 6px;
+            }
+            QPushButton {
+                font-size: 15px;
+                padding: 8px 18px;
+                border-radius: 6px;
+            }
+            QListWidget {
+                font-size: 15px;
+                border: 1px solid #cbd5e0;
+                border-radius: 10px;
+            }
+            QListWidget::item {
+                padding: 8px 10px;
+            }
+            QListWidget::item:selected {
+                background: #2563eb;
+                color: white;
+            }
+            QLabel#docHeading {
+                font-size: 28px;
+                font-weight: 600;
+            }
+            QLabel#docDescription {
+                font-size: 15px;
+                color: #475569;
+            }
+            QLabel#docStatus {
+                font-size: 14px;
+                color: #475569;
+            }
+            """
+        )
         self._documents = _DOCUMENTATION_ENTRIES
         self._current_entry: Optional[DocumentationEntry] = None
         self._current_query: str = ""
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(18)
 
         heading = QLabel("SpectrumPY Documentation & Tutorials", self)
         heading.setObjectName("docHeading")
-        heading.setStyleSheet("font-size: 22px; font-weight: 600;")
         layout.addWidget(heading)
 
         description = QLabel(
             "Search the bundled README and guides, or browse tutorials with a single click.",
             self,
         )
-        description.setStyleSheet("font-size: 14px; color: #4a5568;")
+        description.setObjectName("docDescription")
+        description.setWordWrap(True)
         layout.addWidget(description)
 
         search_row = QHBoxLayout()
@@ -350,7 +391,7 @@ class DocumentationCenter(QDialog):
         layout.addLayout(search_row)
 
         self.result_label = QLabel("Browse documentation", self)
-        self.result_label.setStyleSheet("font-size: 13px; color: #4a5568;")
+        self.result_label.setObjectName("docStatus")
         layout.addWidget(self.result_label)
 
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
@@ -360,13 +401,80 @@ class DocumentationCenter(QDialog):
         self.results = QListWidget(splitter)
         self.results.setAlternatingRowColors(True)
         self.results.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        self.results.setMinimumWidth(280)
+        self.results.setMinimumWidth(320)
         self.results.itemSelectionChanged.connect(self._on_result_selected)
         self.results.itemActivated.connect(self._on_result_activated)
 
         self.viewer = QTextBrowser(splitter)
         self.viewer.setOpenExternalLinks(True)
-        self.viewer.setStyleSheet("font-size: 14px; line-height: 1.5em; background: #fefefe; padding: 12px; border-radius: 12px;")
+        self.viewer.setStyleSheet(
+            """
+            QTextBrowser {
+                font-size: 15px;
+                line-height: 1.7em;
+                background: #f8fafc;
+                border: 1px solid #cbd5e0;
+                border-radius: 14px;
+                padding: 22px;
+            }
+            """
+        )
+        self.viewer.document().setDefaultStyleSheet(
+            """
+            body {
+                font-family: 'Helvetica Neue', Arial, sans-serif;
+                font-size: 15px;
+                line-height: 1.7;
+                color: #1f2937;
+            }
+            h1 { font-size: 26px; margin: 0 0 16px; }
+            h2 { font-size: 22px; margin: 24px 0 12px; }
+            h3 { font-size: 18px; margin: 20px 0 10px; }
+            p { margin: 0 0 14px; }
+            ul, ol { margin: 0 0 14px 24px; }
+            code {
+                font-family: 'SFMono-Regular', Menlo, monospace;
+                background: #e2e8f0;
+                border-radius: 4px;
+                padding: 2px 4px;
+                font-size: 13px;
+            }
+            pre {
+                background: #e2e8f0;
+                border-radius: 10px;
+                padding: 14px;
+                font-size: 13px;
+                margin: 0 0 16px;
+            }
+            table { border-collapse: collapse; }
+            th, td { padding: 6px 10px; }
+            .latex-inline { font-style: italic; }
+            .latex-block { margin: 18px 0; }
+            .latex-cases {
+                display: inline-block;
+                border-left: 3px solid #1d4ed8;
+                padding: 6px 14px;
+                background: #eef2ff;
+                border-radius: 8px;
+            }
+            .latex-cases table { border-spacing: 0; }
+            .latex-cases td { padding: 4px 8px; vertical-align: top; }
+            .latex-operator { font-style: italic; margin-right: 6px; }
+            .latex-frac {
+                display: inline-flex;
+                flex-direction: column;
+                align-items: center;
+                font-size: 0.95em;
+            }
+            .latex-frac > .latex-frac-bar {
+                display: block;
+                width: 100%;
+                border-top: 1px solid currentColor;
+                margin: 2px 0;
+            }
+            .latex-frac > span { display: block; }
+            """
+        )
 
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
@@ -548,6 +656,7 @@ _LATEX_SIMPLE_COMMANDS = {
     ",": "&#8239;",  # thin space
     ";": "&ensp;",
     "!": "",
+    "\\": "<br/>",
 }
 
 
@@ -567,6 +676,78 @@ def _extract_braced(text: str, start: int) -> Tuple[str, int]:
             depth -= 1
         i += 1
     return text[begin:], len(text)
+
+
+def _extract_environment(text: str, start: int, env_name: str) -> Tuple[str, int]:
+    end_token = f"\\end{{{env_name}}}"
+    begin_token = f"\\begin{{{env_name}}}"
+    depth = 1
+    i = start
+    while i < len(text):
+        if text.startswith(begin_token, i):
+            depth += 1
+            i += len(begin_token)
+            continue
+        if text.startswith(end_token, i):
+            depth -= 1
+            if depth == 0:
+                return text[start:i], i + len(end_token)
+            i += len(end_token)
+            continue
+        i += 1
+    return text[start:], len(text)
+
+
+def _prepare_latex_for_mathtext(expr: str) -> Tuple[str, bool]:
+    requires_html = False
+    if "\\begin{cases}" in expr or "\\text{" in expr:
+        requires_html = True
+
+    normalized = expr.replace("\\tfrac", "\\frac").replace("\\dfrac", "\\frac")
+
+    def _replace_command(command: str, transform: Callable[[str], str]) -> None:
+        nonlocal normalized
+        search = f"\\{command}"
+        index = 0
+        while True:
+            idx = normalized.find(search, index)
+            if idx == -1:
+                break
+            j = idx + len(search)
+            while j < len(normalized) and normalized[j].isspace():
+                j += 1
+            if j >= len(normalized) or normalized[j] != "{":
+                index = j
+                continue
+            content, new_index = _extract_braced(normalized, j)
+            replacement = transform(content)
+            normalized = normalized[:idx] + replacement + normalized[new_index:]
+            index = idx + len(replacement)
+
+    _replace_command("operatorname", lambda value: f"\\mathrm{{{value}}}")
+
+    return normalized, requires_html
+
+
+def _cases_environment_to_html(content: str) -> str:
+    rows: List[str] = []
+    for raw_row in re.split(r"\\\\", content):
+        row = raw_row.strip()
+        if not row:
+            continue
+        if "&" in row:
+            lhs, rhs = row.split("&", 1)
+        else:
+            lhs, rhs = row, ""
+        lhs_html = _latex_to_html(lhs.strip()) if lhs.strip() else ""
+        rhs_html = _latex_to_html(rhs.strip()) if rhs.strip() else ""
+        rows.append(
+            f"<tr><td class=\"latex-cases-condition\">{lhs_html}</td><td class=\"latex-cases-result\">{rhs_html}</td></tr>"
+        )
+    if not rows:
+        return ""
+    body = "".join(rows)
+    return f"<div class=\"latex-block latex-cases\"><table>{body}</table></div>"
 
 
 def _latex_to_html(latex: str) -> str:
@@ -597,6 +778,54 @@ def _latex_to_html(latex: str) -> str:
                         result.append(html.escape(content))
                         i = new_index
                         continue
+                if command in ("operatorname", "text"):
+                    if j < length and latex[j] == "{":
+                        content, new_index = _extract_braced(latex, j)
+                        rendered = html.escape(content)
+                        if command == "operatorname":
+                            rendered = f"<span class=\"latex-operator\">{rendered}</span>"
+                        result.append(rendered)
+                        i = new_index
+                        continue
+                if command in ("frac", "tfrac", "dfrac"):
+                    if j < length and latex[j] == "{":
+                        numerator, new_index = _extract_braced(latex, j)
+                        if new_index < length and latex[new_index] == "{":
+                            denominator, final_index = _extract_braced(latex, new_index)
+                            num_html = _latex_to_html(numerator)
+                            den_html = _latex_to_html(denominator)
+                            result.append(
+                                "<span class=\"latex-frac\"><span>"
+                                + num_html
+                                + "</span><span class=\"latex-frac-bar\"></span><span>"
+                                + den_html
+                                + "</span></span>"
+                            )
+                            i = final_index
+                            continue
+                if command == "sqrt":
+                    if j < length and latex[j] == "{":
+                        content, new_index = _extract_braced(latex, j)
+                        inner_html = _latex_to_html(content)
+                        result.append(f"√({inner_html})")
+                        i = new_index
+                        continue
+                if command == "begin":
+                    if j < length and latex[j] == "{":
+                        env_name, env_index = _extract_braced(latex, j)
+                        if env_name == "cases":
+                            env_content, end_index = _extract_environment(latex, env_index, env_name)
+                            cases_html = _cases_environment_to_html(env_content)
+                            result.append(cases_html)
+                            i = end_index
+                            continue
+                if command == "end":
+                    i = j
+                    continue
+                if command in {"exp", "sin", "cos", "tan", "log"}:
+                    result.append(command)
+                    i = j
+                    continue
                 replacement = _LATEX_GREEK_HTML.get(command)
                 if replacement is not None:
                     result.append(replacement)
@@ -659,8 +888,12 @@ def _latex_to_pixmap(latex: str) -> Optional[QPixmap]:
     cached = _LATEX_CACHE.get(latex)
     if cached is not None:
         return cached
+    normalized, requires_html = _prepare_latex_for_mathtext(latex)
+    if requires_html:
+        _LATEX_CACHE[latex] = None
+        return None
     try:
-        ftimage, _ = _MATH_TEXT_PARSER.to_rgba(f"${latex}$", dpi=180)
+        ftimage, _ = _MATH_TEXT_PARSER.to_rgba(f"${normalized}$", dpi=200)
     except Exception as exc:
         print(f"[warn] Failed to render LaTeX '{latex}': {exc}")
         _LATEX_CACHE[latex] = None
