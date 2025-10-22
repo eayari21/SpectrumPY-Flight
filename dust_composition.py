@@ -1399,25 +1399,6 @@ class DustCompositionWindow(QMainWindow):
     # ---- Plotting -------------------------------------------------------
     def _refresh_plot(self, show_combined: Optional[bool] = None, initial: bool = False) -> None:
         show_combined = self.combine_button.isChecked() if show_combined is None else show_combined
-        previous_mass_limits: Optional[Tuple[float, float]] = None
-        previous_signal_limits: Optional[Tuple[float, float]] = None
-        previous_time_limits: Optional[Tuple[float, float]] = None
-        if show_combined and self._combined_axis is not None:
-            try:
-                x_limits = self._combined_axis.get_xlim()
-                y_limits = self._combined_axis.get_ylim()
-                if len(x_limits) == 2:
-                    previous_mass_limits = (float(x_limits[0]), float(x_limits[1]))
-                if len(y_limits) == 2:
-                    previous_signal_limits = (float(y_limits[0]), float(y_limits[1]))
-                if self._combined_time_axis is not None:
-                    time_limits = self._combined_time_axis.get_xlim()
-                    if len(time_limits) == 2:
-                        previous_time_limits = (float(time_limits[0]), float(time_limits[1]))
-            except Exception:
-                previous_mass_limits = None
-                previous_signal_limits = None
-                previous_time_limits = None
         self.figure.clear()
         self._combined_axis = None
         self._combined_time_axis = None
@@ -1428,25 +1409,6 @@ class DustCompositionWindow(QMainWindow):
             ax = self.figure.add_subplot(111)
             self._combined_axis = ax
             self._plot_combined(ax)
-            if previous_mass_limits is not None and math.isfinite(previous_mass_limits[0]) and math.isfinite(previous_mass_limits[1]):
-                if abs(previous_mass_limits[1] - previous_mass_limits[0]) > 0.0:
-                    try:
-                        ax.set_xlim(previous_mass_limits)
-                    except Exception:
-                        pass
-            if previous_signal_limits is not None and math.isfinite(previous_signal_limits[0]) and math.isfinite(previous_signal_limits[1]):
-                if abs(previous_signal_limits[1] - previous_signal_limits[0]) > 0.0:
-                    try:
-                        ax.set_ylim(previous_signal_limits)
-                    except Exception:
-                        pass
-            if previous_time_limits is not None and self._combined_time_axis is not None:
-                if math.isfinite(previous_time_limits[0]) and math.isfinite(previous_time_limits[1]):
-                    if abs(previous_time_limits[1] - previous_time_limits[0]) > 0.0:
-                        try:
-                            self._combined_time_axis.set_xlim(previous_time_limits)
-                        except Exception:
-                            pass
         else:
             self._plot_individual_axes()
         self.canvas.draw_idle()
