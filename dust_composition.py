@@ -428,6 +428,7 @@ class DustCompositionWindow(QMainWindow):
         self._combined_cached_mass: Optional[np.ndarray] = None
         self._baseline = 0.0
         self._mass_params = {"stretch": 1.0, "shift": 0.0}
+        self._mass_params_loaded = False
         self._mass_lines: List[MassLineFit] = []
         self._mass_line_counter = 0
 
@@ -528,32 +529,20 @@ class DustCompositionWindow(QMainWindow):
         try:
             self._mass_params["stretch"] = float(dust_group.attrs.get("MassStretch", 1.0))
             self._mass_params["shift"] = float(dust_group.attrs.get("MassShift", 0.0))
+            self._mass_params_loaded = True
         except Exception:
             self._mass_params = {"stretch": 1.0, "shift": 0.0}
+            self._mass_params_loaded = False
+        table = None
         if MASS_LINES_DATASET in dust_group:
             try:
                 table = dust_group[MASS_LINES_DATASET][()]
             except Exception:
                 table = None
-            if table is not None:
-                for entry in table:
-                    try:
-                        label = entry["label"].decode("utf-8") if hasattr(entry["label"], "decode") else str(entry["label"])
-                        mass_line = MassLineFit(
-                            line_id=int(entry["id"]),
-                            label=label,
-                            mu=float(entry["mu"]),
-                            sigma=float(entry["sigma"]),
-                            lam=float(entry["lam"]),
-                            time_start=float(entry["time_start"]),
-                            time_end=float(entry["time_end"]),
-                            mass_guess=float(entry["mass"]),
-                            abundance=float(entry.get("abundance", 0.0)),
-                        )
-                        self._mass_lines.append(mass_line)
-                        self._mass_line_counter = max(self._mass_line_counter, mass_line.line_id + 1)
-                    except Exception:
-                        continue
+        if table is not None:
+            self._load_mass_line_table(table)
+        if not self._mass_lines:
+            self._load_mass_lines_from_channels(analysis)
         try:
             fits_group = dust_group.get("Fits")
         except Exception:
@@ -569,6 +558,131 @@ class DustCompositionWindow(QMainWindow):
                     except Exception:
                         line.time_axis = np.zeros(0)
                         line.fit_values = np.zeros(0)
+
+    def _load_mass_line_table(self, table: np.ndarray) -> bool:
+        dtype = getattr(table, "dtype", None)
+        if dtype is None or not getattr(dtype, "names", None):
+            return False
+
+        def _get_field(entry: np.void, candidates: Sequence[str], default=None):
+            for name in candidates:
+                if name in entry.dtype.names:
+                    value = entry[name]
+                    if isinstance(value, bytes):
+                        try:
+                            return value.decode("utf-8")
+                        except Exception:
+                            return value.decode("latin-1", "ignore")
+                    return value
+            return default
+
+        def _coerce_float(value, default: float = 0.0) -> float:
+            try:
+                result = float(value)
+            except Exception:
+                return default
+            if math.isfinite(result):
+                return result
+            return default
+
+        mu_mass_pairs: List[Tuple[float, float]] = []
+        loaded_any = False
+        entries = np.atleast_1d(table)
+        for entry in entries:
+            try:
+                label_raw = _get_field(entry, ("label", "name", "species"), default="")
+                label = str(label_raw) if label_raw not in (None, "", b"") else ""
+                line_id = int(_coerce_float(_get_field(entry, ("id", "line_id", "peak_index"), default=self._mass_line_counter)))
+                mu = _coerce_float(_get_field(entry, ("mu", "time_mu", "center"), default=0.0))
+                sigma = _coerce_float(_get_field(entry, ("sigma", "width"), default=0.01))
+                lam = _coerce_float(_get_field(entry, ("lam", "lambda", "tau"), default=1.0), default=1.0)
+                time_start = _coerce_float(
+                    _get_field(entry, ("time_start", "t_start"), default=mu - 3.0 * abs(sigma)),
+                    default=mu - 3.0 * abs(sigma),
+                )
+                time_end = _coerce_float(
+                    _get_field(entry, ("time_end", "t_end"), default=mu + 3.0 * abs(sigma)),
+                    default=mu + 3.0 * abs(sigma),
+                )
+                if not math.isfinite(time_start):
+                    time_start = mu - 3.0 * abs(sigma)
+                if not math.isfinite(time_end) or time_end <= time_start:
+                    time_end = time_start + max(abs(sigma) * 6.0, 1e-6)
+                mass_guess = _coerce_float(_get_field(entry, ("mass", "mass_guess"), default=0.0))
+                abundance = _coerce_float(
+                    _get_field(entry, ("abundance", "signal_amplitude", "area"), default=0.0),
+                    default=0.0,
+                )
+                if not label:
+                    label = nearest_mass_name(mass_guess)
+                line = MassLineFit(
+                    line_id=line_id,
+                    label=label,
+                    mu=mu,
+                    sigma=sigma,
+                    lam=lam,
+                    time_start=time_start,
+                    time_end=time_end,
+                    mass_guess=mass_guess,
+                    abundance=abundance,
+                )
+                self._mass_lines.append(line)
+                self._mass_line_counter = max(self._mass_line_counter, line.line_id + 1)
+                if math.isfinite(mu) and math.isfinite(mass_guess):
+                    mu_mass_pairs.append((mu, mass_guess))
+                loaded_any = True
+            except Exception:
+                continue
+
+        if loaded_any and not self._mass_params_loaded:
+            self._estimate_mass_axis(mu_mass_pairs)
+        return loaded_any
+
+    def _load_mass_lines_from_channels(self, analysis: h5py.Group) -> None:
+        if not isinstance(analysis, h5py.Group):
+            return
+        for channel in ("TOF H", "TOF M", "TOF L"):
+            try:
+                channel_group = analysis.get(channel)
+            except Exception:
+                channel_group = None
+            if not isinstance(channel_group, h5py.Group):
+                continue
+            dataset = channel_group.get(MASS_LINES_DATASET)
+            if dataset is None:
+                continue
+            try:
+                table = dataset[()]
+            except Exception:
+                continue
+            if self._load_mass_line_table(table):
+                break
+
+    def _estimate_mass_axis(self, pairs: Iterable[Tuple[float, float]]) -> None:
+        mu_values: List[float] = []
+        mass_values: List[float] = []
+        for mu, mass in pairs:
+            if math.isfinite(mu) and math.isfinite(mass):
+                mu_values.append(mu)
+                mass_values.append(mass)
+        if len(mu_values) < 2:
+            return
+        mu_arr = np.asarray(mu_values, dtype=float)
+        mass_arr = np.asarray(mass_values, dtype=float)
+        try:
+            A = np.vstack([mu_arr, np.ones_like(mu_arr)]).T
+            result, *_ = np.linalg.lstsq(A, mass_arr, rcond=None)
+            stretch = float(result[0])
+            intercept = float(result[1])
+        except Exception:
+            return
+        if not math.isfinite(stretch) or abs(stretch) < 1.0e-12:
+            return
+        shift = -intercept / stretch
+        self._mass_params["stretch"] = stretch
+        self._mass_params["shift"] = shift
+        self._mass_params_loaded = True
+        self._combined_cached_mass = None
 
     # ---- UI construction ------------------------------------------------
     def _build_controls(self) -> None:
