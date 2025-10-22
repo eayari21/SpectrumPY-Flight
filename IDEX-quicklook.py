@@ -17,6 +17,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
+import html
 import textwrap
 
 try:
@@ -501,6 +502,151 @@ class DocumentationCenter(QDialog):
 
 _MATH_TEXT_PARSER = mathtext.MathTextParser("agg")
 _LATEX_CACHE: Dict[str, Optional[QPixmap]] = {}
+
+_LATEX_GREEK_HTML = {
+    "alpha": "&alpha;",
+    "beta": "&beta;",
+    "gamma": "&gamma;",
+    "delta": "&delta;",
+    "epsilon": "&epsilon;",
+    "zeta": "&zeta;",
+    "eta": "&eta;",
+    "theta": "&theta;",
+    "iota": "&iota;",
+    "kappa": "&kappa;",
+    "lambda": "&lambda;",
+    "mu": "&mu;",
+    "nu": "&nu;",
+    "xi": "&xi;",
+    "pi": "&pi;",
+    "rho": "&rho;",
+    "sigma": "&sigma;",
+    "tau": "&tau;",
+    "upsilon": "&upsilon;",
+    "phi": "&phi;",
+    "chi": "&chi;",
+    "psi": "&psi;",
+    "omega": "&omega;",
+    "Gamma": "&Gamma;",
+    "Delta": "&Delta;",
+    "Theta": "&Theta;",
+    "Lambda": "&Lambda;",
+    "Xi": "&Xi;",
+    "Pi": "&Pi;",
+    "Sigma": "&Sigma;",
+    "Upsilon": "&Upsilon;",
+    "Phi": "&Phi;",
+    "Psi": "&Psi;",
+    "Omega": "&Omega;",
+}
+
+_LATEX_SIMPLE_COMMANDS = {
+    ",": "&#8239;",  # thin space
+    ";": "&ensp;",
+    "!": "",
+}
+
+
+def _extract_braced(text: str, start: int) -> Tuple[str, int]:
+    depth = 0
+    i = start
+    assert text[i] == "{"
+    i += 1
+    begin = i
+    while i < len(text):
+        char = text[i]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            if depth == 0:
+                return text[begin:i], i + 1
+            depth -= 1
+        i += 1
+    return text[begin:], len(text)
+
+
+def _latex_to_html(latex: str) -> str:
+    if not latex:
+        return ""
+
+    result: List[str] = []
+    i = 0
+    length = len(latex)
+
+    while i < length:
+        char = latex[i]
+        if char == "\\":
+            if i + 1 >= length:
+                break
+            next_char = latex[i + 1]
+            if next_char.isalpha():
+                j = i + 2
+                while j < length and latex[j].isalpha():
+                    j += 1
+                command = latex[i + 1 : j]
+                if command in ("left", "right"):
+                    i = j
+                    continue
+                if command == "mathrm":
+                    if j < length and latex[j] == "{":
+                        content, new_index = _extract_braced(latex, j)
+                        result.append(html.escape(content))
+                        i = new_index
+                        continue
+                replacement = _LATEX_GREEK_HTML.get(command)
+                if replacement is not None:
+                    result.append(replacement)
+                elif command == "cdot":
+                    result.append("&middot;")
+                else:
+                    result.append(html.escape("\\" + command))
+                i = j
+                continue
+
+            mapped = _LATEX_SIMPLE_COMMANDS.get(next_char)
+            if mapped is not None:
+                result.append(mapped)
+                i += 2
+                continue
+            if next_char == " ":
+                result.append("&nbsp;")
+                i += 2
+                continue
+            result.append(html.escape(next_char))
+            i += 2
+            continue
+
+        if char in "^_":
+            tag = "sup" if char == "^" else "sub"
+            i += 1
+            if i >= length:
+                break
+            if latex[i] == "{":
+                content, new_index = _extract_braced(latex, i)
+                inner = _latex_to_html(content)
+                result.append(f"<{tag}>{inner}</{tag}>")
+                i = new_index
+            else:
+                inner = _latex_to_html(latex[i])
+                result.append(f"<{tag}>{inner}</{tag}>")
+                i += 1
+            continue
+
+        if char == "{":
+            content, new_index = _extract_braced(latex, i)
+            result.append(_latex_to_html(content))
+            i = new_index
+            continue
+
+        if char == "\n":
+            result.append("<br/>")
+            i += 1
+            continue
+
+        result.append(html.escape(char))
+        i += 1
+
+    return "".join(result)
 
 
 def _latex_to_pixmap(latex: str) -> Optional[QPixmap]:
@@ -2578,8 +2724,9 @@ class FitParameterDialog(QDialog):
         self.formula_label.setStyleSheet("font-size: 16px;")
         self.formula_label.setWordWrap(True)
         self.formula_label.setMinimumHeight(70)
+        self.formula_label.setTextFormat(Qt.TextFormat.RichText)
         self._default_formula_text = "Select a dataset to view its fit function."
-        self.formula_label.setText(self._default_formula_text)
+        self.formula_label.setText(html.escape(self._default_formula_text))
         layout.addWidget(self.formula_label)
 
         chooser_row = QHBoxLayout()
@@ -2741,20 +2888,29 @@ class FitParameterDialog(QDialog):
         self.formula_label.setPixmap(QPixmap())
         self.formula_label.setToolTip("")
         if not channel:
-            self.formula_label.setText(self._default_formula_text)
+            self.formula_label.setText(html.escape(self._default_formula_text))
             return
 
         model = FIT_MODEL_BY_CHANNEL.get(channel)
         if not model or not model.latex:
-            self.formula_label.setText("Fit function preview unavailable for this selection.")
+            self.formula_label.setText(
+                html.escape("Fit function preview unavailable for this selection.")
+            )
             return
 
         pixmap = _latex_to_pixmap(model.latex)
-        if pixmap:
+        if pixmap is not None and not pixmap.isNull():
             self.formula_label.setText("")
             self.formula_label.setPixmap(pixmap)
         else:
-            self.formula_label.setText(model.latex)
+            html_text = _latex_to_html(model.latex)
+            if html_text:
+                self.formula_label.setText(
+                    f"<span style='font-family: "
+                    "\"STIX Two Math\", \"Times New Roman\", serif;'>{html_text}</span>"
+                )
+            else:
+                self.formula_label.setText(html.escape(model.latex))
         self.formula_label.setToolTip(model.latex)
 
     def _set_feedback(self, text: str, *, success: bool):
