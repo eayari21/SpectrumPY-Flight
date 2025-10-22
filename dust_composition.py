@@ -1124,6 +1124,12 @@ class DustCompositionWindow(QMainWindow):
         self.mass_shift_spin.setValue(self._mass_params["shift"])
         self.mass_shift_spin.valueChanged.connect(self._on_mass_params_changed)
         layout.addRow("Shift:", self.mass_shift_spin)
+        self.auto_mass_button = QPushButton("Auto-calc axis", box)
+        self.auto_mass_button.setToolTip(
+            "Estimate the mass-axis stretch and shift using existing mass lines."
+        )
+        self.auto_mass_button.clicked.connect(self._auto_calculate_mass_axis)
+        layout.addRow("", self.auto_mass_button)
         self.add_mass_button = QPushButton("Add Mass Line", box)
         self.add_mass_button.setToolTip("Select a region on the combined plot to fit an EMG mass line.")
         self.add_mass_button.setCheckable(True)
@@ -1351,6 +1357,43 @@ class DustCompositionWindow(QMainWindow):
 
     def _on_baseline_spin_changed(self, value: float) -> None:
         self._set_baseline(float(value))
+
+    def _auto_calculate_mass_axis(self) -> None:
+        pairs: List[Tuple[float, float]] = []
+        for line in self._mass_lines:
+            mu = float(line.mu)
+            mass = float(line.mass_guess)
+            if math.isfinite(mu) and math.isfinite(mass):
+                pairs.append((mu, mass))
+        if len(pairs) < 2:
+            QMessageBox.information(
+                self,
+                "Insufficient Mass Lines",
+                "Add at least two mass lines with valid μ and mass values to estimate the axis.",
+            )
+            return
+        previous = dict(self._mass_params)
+        self._estimate_mass_axis(pairs)
+        stretch = float(self._mass_params.get("stretch", 1.0))
+        shift = float(self._mass_params.get("shift", 0.0))
+        if hasattr(self, "mass_stretch_spin") and hasattr(self, "mass_shift_spin"):
+            self.mass_stretch_spin.blockSignals(True)
+            self.mass_shift_spin.blockSignals(True)
+            self.mass_stretch_spin.setValue(stretch)
+            self.mass_shift_spin.setValue(shift)
+            self.mass_stretch_spin.blockSignals(False)
+            self.mass_shift_spin.blockSignals(False)
+        # If the estimate failed the parameters will remain unchanged; force a refresh anyway.
+        if (
+            not math.isclose(previous.get("stretch", 1.0), stretch, rel_tol=1e-9, abs_tol=1e-9)
+            or not math.isclose(previous.get("shift", 0.0), shift, rel_tol=1e-9, abs_tol=1e-9)
+        ):
+            self._on_mass_params_changed()
+        else:
+            # No change in parameters, but refresh the plot to ensure the UI stays in sync.
+            self._refresh_plot()
+            self._update_tables()
+            self._update_summary()
 
     def _on_mass_params_changed(self) -> None:
         self._mass_params["stretch"] = float(self.mass_stretch_spin.value())
