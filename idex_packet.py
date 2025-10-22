@@ -41,6 +41,11 @@ from idex_variable_definitions import load_variable_definitions
 plt.style.use("seaborn-pastel")
 import numpy as np
 
+try:
+    import cupy as cp  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    cp = None
+
 from datetime import datetime, timedelta, timezone
 
 from scipy.optimize import curve_fit
@@ -1211,53 +1216,104 @@ class IDEXEvent:
 # ||
 # || Parse the high sampling rate data, this
 # || should be 10-bit blocks
-def parse_hs_waveform(waveform_raw: str):
-    """Parse a binary string representing a high sampling-rate waveform.
+def _get_array_module():
+    """Return the array module (NumPy or CuPy) for vectorised bit decoding."""
+
+    if cp is not None:
+        try:  # pragma: no cover - only exercised when a GPU is present
+            cp.cuda.runtime.getDevice()
+        except Exception:
+            return np
+        else:
+            return cp
+    return np
+
+
+def _decode_bitpacked_waveform(
+    waveform_raw: str,
+    skip_bits: int,
+    bits_per_sample: int,
+    samples_per_frame: int,
+    trim_tail: int = 0,
+):
+    """Decode bit-packed waveforms using vectorised NumPy/CuPy operations.
 
     Parameters
     ----------
     waveform_raw
-        Binary string extracted from the packet payload for high gain
-        channels.
-
-    Returns
-    -------
-    list[int]
-        Sequence of data numbers representing the decoded waveform.
+        Binary string extracted from the packet payload.
+    skip_bits
+        Number of pad bits to discard from the beginning of each frame.
+    bits_per_sample
+        Width of each encoded sample in bits.
+    samples_per_frame
+        Number of samples stored in each frame after the pad bits.
+    trim_tail
+        Optional number of decoded samples to drop from the tail.
     """
-    w = bitstring.ConstBitStream(bin=waveform_raw)
-    ints = []
-    while w.pos < len(w):
-        w.read('pad:2')  # skip 2
-        ints += w.readlist(['uint:10']*3)
-    print(len(ints))
-    return ints[:-4]
+
+    if not waveform_raw:
+        return []
+
+    xp = _get_array_module()
+
+    ascii_buffer = np.frombuffer(waveform_raw.encode("ascii"), dtype=np.uint8) - 48
+    if xp is cp:
+        bits = xp.asarray(ascii_buffer)
+    else:
+        bits = ascii_buffer
+
+    frame_width = skip_bits + bits_per_sample * samples_per_frame
+    if frame_width == 0:
+        return []
+
+    frame_count = bits.size // frame_width
+    if frame_count == 0:
+        return []
+
+    trimmed = bits[: frame_count * frame_width]
+    frames = trimmed.reshape(frame_count, frame_width)
+    data_bits = frames[:, skip_bits:]
+    samples = data_bits.reshape(-1, bits_per_sample)
+
+    weights = xp.power(2, xp.arange(bits_per_sample - 1, -1, -1, dtype=xp.int64))
+    decoded = samples.dot(weights)
+
+    raw_length = int(decoded.size)
+    if trim_tail:
+        decoded = decoded[:-trim_tail]
+
+    if xp is cp:  # pragma: no cover - exercised only when a GPU is present
+        decoded = cp.asnumpy(decoded)
+
+    print(raw_length)
+    return decoded.astype(np.int32, copy=False).tolist()
+
+
+def parse_hs_waveform(waveform_raw: str):
+    """Parse a binary string representing a high sampling-rate waveform."""
+
+    return _decode_bitpacked_waveform(
+        waveform_raw,
+        skip_bits=2,
+        bits_per_sample=10,
+        samples_per_frame=3,
+        trim_tail=4,
+    )
 
 # ||
 # ||
 # || Parse the low sampling rate data, this
 # || should be 12-bit blocks
 def parse_ls_waveform(waveform_raw: str):
-    """Parse a binary string representing a low sampling-rate waveform.
+    """Parse a binary string representing a low sampling-rate waveform."""
 
-    Parameters
-    ----------
-    waveform_raw
-        Binary string extracted from the packet payload for low gain
-        channels.
-
-    Returns
-    -------
-    list[int]
-        Sequence of data numbers representing the decoded waveform.
-    """
-    w = bitstring.ConstBitStream(bin=waveform_raw)
-    ints = []
-    while w.pos < len(w):
-        w.read('pad:8')  # skip 2
-        ints += w.readlist(['uint:12']*2)
-    print(len(ints))
-    return ints
+    return _decode_bitpacked_waveform(
+        waveform_raw,
+        skip_bits=8,
+        bits_per_sample=12,
+        samples_per_frame=2,
+    )
 
 # ||
 # ||
