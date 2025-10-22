@@ -110,90 +110,76 @@ def FitEMG(time, amplitude):
 # || 2) Remove a sinusoidal background (y = c*sin(d*x + e)
 
 def FitTargetSignal(time, targetAmp):
-    x = np.asarray(time)
-    y = np.asarray(targetAmp)
+    time = np.asarray(time, dtype=float)
+    signal = np.asarray(targetAmp, dtype=float)
 
     # || Select only raw noise (where we know the signal is not)
     mask = np.logical_and(time >= -7, time <= -5)
-    print(mask)
+    if not np.any(mask):
+        mask = np.ones_like(time, dtype=bool)
 
-    baselineraw = y[mask]
+    baselineraw = signal[mask]
     baselinedomain = time[mask]
 
     # || Remove Linear Background
-
     try:
-        # slopeguess = (baselineraw[len(baselineraw)-1] - baselineraw[0]) / (baselinedomain[len(baselinedomain-1)] - baselinedomain[0])
         slopeguess = 0
-        linparam, lin_cov = curve_fit(LinearFit, baselinedomain, baselineraw, p0=[slopeguess,0], maxfev=100_000)
-        linearbase = LinearFit(time, linparam[0], linparam[1])
-        # y -= linearbase
-        y = detrend(y)
-    except:
-        print(f"Linear background not found.")
-        linearbase = None
-
+        curve_fit(LinearFit, baselinedomain, baselineraw, p0=[slopeguess, 0], maxfev=100_000)
+        signal = detrend(signal)
+    except Exception:
+        print("Linear background not found.")
 
     # || Remove Sine Wave Background
+    try:
+        baseline_segment = signal[mask]
+        if baseline_segment.size:
+            sineparam, _ = curve_fit(
+                SineFit,
+                baselinedomain,
+                baseline_segment,
+                p0=[float(np.max(baseline_segment)), 7000, 45],
+                maxfev=100_000,
+            )
+            sinebase = SineFit(time, sineparam[0], sineparam[1], sineparam[2])
+            signal = signal - sinebase
+    except Exception:
+        print("Sinusoidal background not found.")
 
     try:
-        baselinedelined = y[basedex]
-        sineparam, sine_cov = curve_fit(SineFit, baselinedomain, baselinedelined, p0=[max(baselinedelined), 7000, 45], maxfev=100_000)
-        sinebase = SineFit(time, sineparam[0], sineparam[1], sineparam[2])
-        y -= sinebase
-        y = butter_lowpass_filter(y, time)
+        signal = butter_lowpass_filter(signal, time)
+    except Exception:
+        print("Low-pass filtering failed.")
 
+    filtered_full = np.asarray(signal, dtype=float)
 
-    except:
-        print(f"Sinusoidal background not found.")
-        sinebase=None
+    fit_time = time[mask]
+    filtered_segment = filtered_full[mask]
 
+    pre = -2.0  # Before image charge
+    baseline_mask = fit_time < pre
+    yBaseline = np.where(baseline_mask, filtered_segment, np.nan)
+    baseline_mean = float(np.nanmean(yBaseline)) if np.any(baseline_mask) else 0.0
 
-    # print(f"idx = {idx}")
-    x = time[mask]
-    y = y[mask]
-    pre = -2.0 # Before image charge
-    # print(f"*** y is of type {type(y)}")
-    # Assuming x and y are numpy arrays and `pre` is the threshold
-    yBaseline = np.where(x < pre, y, np.nan)  # Set elements of y to nan where x >= pre
-    yImage = y[(x >= pre) & (x < 0.0)]
-    ionError = np.std(yBaseline)
-    ionErrorVector = pd.DataFrame([np.nan] * len(yBaseline))
-    ionMean = yBaseline.mean()
-    yBaseline -= ionMean
-    parameters = []
+    ionTime = np.array([float(t) for t in fit_time])
+    ionAmp = np.array([float(val) for val in filtered_segment])
 
-    ionTime = np.array([float(x) for x in x])
-    ionAmp = np.array([float(y) for y in y])
-
-    print(f"Calculating Target Fit.")
+    print("Calculating Target Fit.")
     # || Initial Guess for the parameters of the ion grid signal
 
-    t0 = 0.0                         # P[0] time of impact
-    c = 0.                           # P[1] Constant offset
-    # b = np.abs(min(yImage))     # P[2] Image amplitude
-    # b = .01
-
-    # s = 4.e-6                        # P[3] Image pulse width
-    A  = max(ionAmp)  # np.abs(min(ionAmp) - max(ionAmp))     # P[4] amplitude (v)
-    # A = .05
-
-    t1 = .371                         # P[5] rise  time (s)
-    t2 = .371                          # P[6] discharge time (s)
-    c = 0
-
-
+    t0 = 0.0
+    c = 0.0
+    A = max(ionAmp) if ionAmp.size else 0.0
+    t1 = 0.371
+    t2 = 0.371
 
     param, param_cov = curve_fit(IDEXIonGrid, ionTime, ionAmp, p0=[t0, c, A, t1, t2], maxfev=100_000)
 
+    fit_slice = IDEXIonGrid(ionTime, param[0], param[1], param[2], param[3], param[4])
+    fit_curve_full = np.full_like(filtered_full, np.nan, dtype=float)
+    fit_curve_full[mask] = fit_slice
+    sig_amp = float(np.nanmax(fit_slice) - baseline_mean) if fit_slice.size else 0.0
 
-
-    result = IDEXIonGrid(ionTime, param[0], param[1], param[2], param[3], param[4])
-    sig_amp = max(result) - yBaseline.mean()
-
-
-
-    return(param, param_cov, sig_amp)
+    return param, param_cov, sig_amp, time.astype(float), filtered_full, fit_curve_full
 
 
 # ||
@@ -945,10 +931,13 @@ class IDEXEvent:
 
 
                 if k[1] in ['Target L', 'Target H', 'Ion Grid']:  # Fit target and ion grid signals
-                    param, param_cov, sig_amp = FitTargetSignal(self.lstime, v)
+                    param, param_cov, sig_amp, fit_time, filtered_signal, fit_curve = FitTargetSignal(self.lstime, v)
                     create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}FitParams", data=np.array(param))
-                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}MassEstimate", data=sig_amp)
-                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}ImpactCharge", data=sig_amp)
+                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]} Fit Time", data=np.asarray(fit_time))
+                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]} Fit Result", data=np.asarray(fit_curve))
+                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]} Filtered Signal", data=np.asarray(filtered_signal))
+                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}MassEstimate", data=np.array([sig_amp]))
+                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}ImpactCharge", data=np.array([sig_amp]))
 
 
             else:
