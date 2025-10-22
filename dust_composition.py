@@ -432,6 +432,7 @@ class DustCompositionWindow(QMainWindow):
         self._mass_line_counter = 0
 
         self._combined_axis = None
+        self._combined_time_axis = None
         self._baseline_artist = None
         self._span_selector: Optional[SpanSelector] = None
         self._in_baseline_mode = False
@@ -776,8 +777,12 @@ class DustCompositionWindow(QMainWindow):
             return
         if event is None or event.ydata is None:
             return
-        if self.combine_button.isChecked() and self._combined_axis and event.inaxes != self._combined_axis:
-            return
+        if self.combine_button.isChecked() and self._combined_axis:
+            valid_axes = {self._combined_axis}
+            if self._combined_time_axis is not None:
+                valid_axes.add(self._combined_time_axis)
+            if event.inaxes not in valid_axes:
+                return
         self._set_baseline(float(event.ydata), from_user=True)
 
     def _on_mass_region_selected(self, xmin: float, xmax: float) -> None:
@@ -842,6 +847,7 @@ class DustCompositionWindow(QMainWindow):
         show_combined = self.combine_button.isChecked() if show_combined is None else show_combined
         self.figure.clear()
         self._combined_axis = None
+        self._combined_time_axis = None
         self._baseline_artist = None
         if show_combined:
             if self._combined is None:
@@ -892,6 +898,7 @@ class DustCompositionWindow(QMainWindow):
             return
         mass_axis = self._combined_mass_axis()
         n = min(self._combined.size, mass_axis.size)
+        ax.set_zorder(2)
         ax.plot(mass_axis[:n], self._combined[:n], color="#1f77b4", linewidth=1.6, label="Combined TOF")
         ax.set_facecolor("#f9fbff")
         ax.grid(True, alpha=0.35)
@@ -902,6 +909,7 @@ class DustCompositionWindow(QMainWindow):
             ax_time = ax.twiny()
             ax_time.set_xlim(self._time_axis.min(), self._time_axis.max())
             ax_time.set_xlabel("Time [µs]", fontsize=13)
+            ax_time.set_zorder(1)
             # Ensure the auxiliary time axis does not intercept mouse events that
             # are intended for the mass axis.  When the twinned axis remains
             # interactive Matplotlib reports the mouse events against it instead
@@ -911,6 +919,7 @@ class DustCompositionWindow(QMainWindow):
             # attached.
             ax_time.set_navigate(False)
             ax_time.patch.set_visible(False)
+            self._combined_time_axis = ax_time
         if self._baseline or self.baseline_spin.value() != 0.0:
             self._baseline_artist = ax.axhline(self._baseline, color="#aa3377", linestyle="--", linewidth=1.2, label="Baseline")
         for line in self._mass_lines:
