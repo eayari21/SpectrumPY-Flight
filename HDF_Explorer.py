@@ -1104,7 +1104,7 @@ class HDFDataExplorer(QWidget):
         if indices is None:
             return
         chosen = event.ind
-        if not chosen:
+        if chosen is None or len(chosen) == 0:
             return
         idx = indices[chosen[0]]
         if idx >= len(self.data_store.events):
