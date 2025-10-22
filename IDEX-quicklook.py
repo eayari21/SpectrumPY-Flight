@@ -2802,18 +2802,44 @@ class MainWindow(QMainWindow):
 
         base_plotted = False
         reason: Optional[str] = None
-        if time_data is None or value_data is None:
-            reason = "Missing data"
-        else:
-            t = _to_1d(time_data)
-            y = _to_1d(value_data)
-            n = min(len(t), len(y))
-            if n == 0:
-                reason = "Empty dataset"
+
+        use_filtered = False
+        filtered_time_data: Optional[np.ndarray] = None
+        filtered_value_data: Optional[np.ndarray] = None
+        if self._show_fit.get(channel):
+            filtered_value_data = self._get_dataset(event_name, f"Analysis/{channel} Filtered Signal")
+            filtered_time_data = self._get_dataset(event_name, f"Analysis/{channel} Fit Time")
+            if filtered_time_data is None or filtered_value_data is None:
+                filtered_time_data = None
+                filtered_value_data = None
             else:
-                label = channel if overlay_mode else None
-                ax.plot(t[:n], y[:n], label=label)
-                base_plotted = True
+                filtered_time = _to_1d(filtered_time_data)
+                filtered_values = _to_1d(filtered_value_data)
+                n = min(len(filtered_time), len(filtered_values))
+                if n:
+                    times = np.asarray(filtered_time[:n], dtype=float)
+                    values = np.asarray(filtered_values[:n], dtype=float)
+                    scale = FIT_SCALE_MULTIPLIERS.get(channel, 1.0)
+                    if scale != 1.0:
+                        values = values * scale
+                    label = channel if overlay_mode else None
+                    ax.plot(times, values, label=label)
+                    base_plotted = True
+                    use_filtered = True
+
+        if not use_filtered:
+            if time_data is None or value_data is None:
+                reason = "Missing data"
+            else:
+                t = _to_1d(time_data)
+                y = _to_1d(value_data)
+                n = min(len(t), len(y))
+                if n == 0:
+                    reason = "Empty dataset"
+                else:
+                    label = channel if overlay_mode else None
+                    ax.plot(t[:n], y[:n], label=label)
+                    base_plotted = True
 
         fit_plotted = self._plot_fit(ax, event_name, channel, overlay_mode)
 
@@ -2892,11 +2918,18 @@ class MainWindow(QMainWindow):
 
     def _iter_fit_curves(self, event_name: str, channel: str, data: FitData):
         yielded = False
+        skip_baseline = False
+        if self._show_fit.get(channel):
+            filtered = self._get_dataset(event_name, f"Analysis/{channel} Filtered Signal")
+            if filtered is not None:
+                filtered_arr = _to_1d(filtered)
+                if filtered_arr.size:
+                    skip_baseline = True
         for label, _time_path, _value_path, time_values, fit_values in data.iter_time_result_pairs():
             times = np.asarray(time_values, dtype=float)
             values = np.asarray(fit_values, dtype=float)
             baseline_offset = self._estimate_baseline(event_name, channel, times)
-            if baseline_offset:
+            if baseline_offset and not skip_baseline:
                 values = values + baseline_offset
             n = min(len(times), len(values))
             if n == 0:
@@ -2943,7 +2976,7 @@ class MainWindow(QMainWindow):
             if scale != 1.0:
                 fit_values = fit_values * scale
             baseline_offset = self._estimate_baseline(event_name, channel, base_time)
-            if baseline_offset:
+            if baseline_offset and not skip_baseline:
                 fit_values = fit_values + baseline_offset
 
             label = _label_from_param_path(path)
