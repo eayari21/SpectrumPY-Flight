@@ -1041,10 +1041,29 @@ class IDEXEvent:
 
                 create_or_replace_dataset(raw_group, channel_name, data=raw_values)
 
+                # -- Legacy compatibility -------------------------------------------------
+                # Older quicklook tooling expects waveforms to live directly under the
+                # event group (e.g. ``/1/TOF H``) and for the sampling axes to be stored
+                # using the historic dataset names.  Preserve those layouts alongside the
+                # structured hierarchy to keep both generations of software working.
+                legacy_dataset = create_or_replace_dataset(event_group, channel_name, data=converted_values)
+                legacy_dataset.attrs['units'] = dataset_units
+                if channel_name in conversion_factors:
+                    legacy_dataset.attrs['conversion_factor'] = conversion_factors[channel_name]
                 if channel_name.startswith('TOF'):
                     create_dataset_if_not_exists(time_group, 'HighSampling', data=np.asarray(self.hstime, dtype=float))
+                    create_dataset_if_not_exists(
+                        event_group,
+                        'Time (high sampling)',
+                        data=np.asarray(self.hstime, dtype=float),
+                    )
                 else:
                     create_dataset_if_not_exists(time_group, 'LowSampling', data=np.asarray(self.lstime, dtype=float))
+                    create_dataset_if_not_exists(
+                        event_group,
+                        'Time (low sampling)',
+                        data=np.asarray(self.lstime, dtype=float),
+                    )
 
                 event_flags = self.analysis_flags[int(event_id)]
                 if raw_values.size and raw_values.max() >= _adc_limit(channel_name):
@@ -1145,14 +1164,48 @@ class IDEXEvent:
                         fit_result = None
 
                     if param is not None:
-                        create_dataset_if_not_exists(channel_analysis_group, 'FitParams', data=np.asarray(param, dtype=float))
+                        param_array = np.asarray(param, dtype=float)
+                        create_dataset_if_not_exists(channel_analysis_group, 'FitParams', data=param_array)
+                        create_dataset_if_not_exists(
+                            analysis_group,
+                            f"{channel_name}FitParams",
+                            data=param_array,
+                        )
                     create_dataset_if_not_exists(channel_analysis_group, 'MassEstimate', data=np.asarray([sig_amp]))
                     create_dataset_if_not_exists(channel_analysis_group, 'ImpactCharge', data=np.asarray([sig_amp]))
+                    create_dataset_if_not_exists(
+                        analysis_group,
+                        f"{channel_name}MassEstimate",
+                        data=np.asarray([sig_amp]),
+                    )
+                    create_dataset_if_not_exists(
+                        analysis_group,
+                        f"{channel_name}ImpactCharge",
+                        data=np.asarray([sig_amp]),
+                    )
                     if fit_time is not None and fit_signal is not None:
-                        create_dataset_if_not_exists(channel_analysis_group, 'FitTime', data=np.asarray(fit_time, dtype=float))
-                        create_dataset_if_not_exists(channel_analysis_group, 'FitData', data=np.asarray(fit_signal, dtype=float))
+                        fit_time_array = np.asarray(fit_time, dtype=float)
+                        fit_signal_array = np.asarray(fit_signal, dtype=float)
+                        create_dataset_if_not_exists(channel_analysis_group, 'FitTime', data=fit_time_array)
+                        create_dataset_if_not_exists(channel_analysis_group, 'FitData', data=fit_signal_array)
+                        create_dataset_if_not_exists(
+                            analysis_group,
+                            f"{channel_name}FitTime",
+                            data=fit_time_array,
+                        )
+                        create_dataset_if_not_exists(
+                            analysis_group,
+                            f"{channel_name}FitData",
+                            data=fit_signal_array,
+                        )
                     if fit_result is not None:
-                        create_dataset_if_not_exists(channel_analysis_group, 'FitResult', data=np.asarray(fit_result, dtype=float))
+                        fit_result_array = np.asarray(fit_result, dtype=float)
+                        create_dataset_if_not_exists(channel_analysis_group, 'FitResult', data=fit_result_array)
+                        create_dataset_if_not_exists(
+                            analysis_group,
+                            f"{channel_name}FitResult",
+                            data=fit_result_array,
+                        )
 
             string_dtype = h5py.string_dtype(encoding='utf-8')
             for event_id, flags in self.analysis_flags.items():
