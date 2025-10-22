@@ -1789,8 +1789,10 @@ class MainWindow(QMainWindow):
 
         for btn in self._primary_channel_buttons:
             btn.setMinimumWidth(reference_width)
+            btn.setMaximumWidth(reference_width)
+            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             if reference_height > 0:
-                btn.setMinimumHeight(max(btn.minimumHeight(), reference_height))
+                btn.setFixedHeight(max(btn.minimumHeight(), reference_height))
 
     def _reset_layout_engine(self) -> None:
         """Re-enable Matplotlib's constrained layout after clearing the figure."""
@@ -2171,6 +2173,10 @@ class MainWindow(QMainWindow):
     def plot_event(self, event_name: Optional[str]):
         self.figure.clear()
         self._reset_layout_engine()
+        try:
+            self.figure.set_constrained_layout_pads(wspace=0.06, hspace=0.28)
+        except Exception:
+            pass
 
         if not self._data_source or not event_name:
             self._current_event = None
@@ -2220,6 +2226,8 @@ class MainWindow(QMainWindow):
 
         overlay_mode = self.overlay_button.isChecked()
 
+        axes: List[Any] = []
+
         try:
             if overlay_mode:
                 families: List[Tuple[str, List[str]]] = []
@@ -2245,6 +2253,7 @@ class MainWindow(QMainWindow):
                 else:
                     for idx, (family, channels) in enumerate(families, start=1):
                         ax = self.figure.add_subplot(len(families), 1, idx)
+                        axes.append(ax)
                         plotted_any = False
                         for channel in channels:
                             plotted_any |= self._plot_channel(ax, event_name, channel, overlay_mode=True, missing_channels=missing)
@@ -2266,9 +2275,10 @@ class MainWindow(QMainWindow):
                     )
                     ax.axis("off")
                 else:
-                    grid = self.figure.add_gridspec(len(ordered), 1)
+                    grid = self.figure.add_gridspec(len(ordered), 1, hspace=0.3)
                     for idx, channel in enumerate(ordered):
                         ax = self.figure.add_subplot(grid[idx, 0])
+                        axes.append(ax)
                         plotted_any = self._plot_channel(ax, event_name, channel, overlay_mode=False, missing_channels=missing)
                         next_family = None
                         if idx + 1 < len(ordered):
@@ -2287,6 +2297,12 @@ class MainWindow(QMainWindow):
             ax = self.figure.add_subplot(111)
             ax.text(0.5, 0.5, f"Plot error:\n{exc}", ha="center", va="center", transform=ax.transAxes, fontsize=16)
             ax.axis("off")
+        else:
+            if axes:
+                try:
+                    self.figure.align_ylabels(axes)
+                except Exception:
+                    pass
 
         self.canvas.draw_idle()
         self.update_status_text(missing)
