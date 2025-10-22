@@ -11,6 +11,8 @@ import os
 import sys
 import argparse
 import tempfile
+import base64
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -81,7 +83,7 @@ from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as Navigation
 # --------- Qt binding-agnostic imports (prefer PySide6, fallback PyQt6) ---------
 _QT = None
 try:
-    from PySide6.QtCore import Qt, QSize, QTimer, QUrl
+    from PySide6.QtCore import Qt, QSize, QTimer, QUrl, QBuffer, QIODevice
     from PySide6.QtGui import QAction, QFont, QIcon, QPixmap, QImage, QTextCursor, QTextDocument
     from PySide6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
@@ -92,7 +94,7 @@ try:
     )
     _QT = "PySide6"
 except Exception:
-    from PyQt6.QtCore import Qt, QSize, QTimer, QUrl
+    from PyQt6.QtCore import Qt, QSize, QTimer, QUrl, QBuffer, QIODevice
     from PyQt6.QtGui import QAction, QFont, QIcon, QPixmap, QImage, QTextCursor, QTextDocument
     from PyQt6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
@@ -449,8 +451,9 @@ class DocumentationCenter(QDialog):
         if hasattr(document, "setBaseUrl"):
             document.setBaseUrl(QUrl.fromLocalFile(str(entry.path.parent)))
         header = f"**{entry.display_name}**  \n`{entry.relative_path}`\n\n{entry.text}"
+        rendered = _inject_latex_images(header)
         if hasattr(self.viewer, "setMarkdown"):
-            self.viewer.setMarkdown(header)
+            self.viewer.setMarkdown(rendered)
         else:
             plain = f"{entry.display_name}\n{entry.relative_path}\n\n{entry.text}"
             self.viewer.setPlainText(plain)
@@ -669,6 +672,79 @@ def _latex_to_pixmap(latex: str) -> Optional[QPixmap]:
     pixmap = QPixmap.fromImage(image.copy())
     _LATEX_CACHE[latex] = pixmap
     return pixmap
+
+
+def _pixmap_to_data_uri(pixmap: QPixmap) -> Optional[str]:
+    if pixmap.isNull():
+        return None
+    buffer = QBuffer()
+    if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
+        return None
+    if not pixmap.save(buffer, b"PNG"):
+        buffer.close()
+        return None
+    data = bytes(buffer.data())
+    buffer.close()
+    encoded = base64.b64encode(data).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
+_CODE_BLOCK_PATTERN = re.compile(r"```.+?```", re.DOTALL)
+_INLINE_CODE_PATTERN = re.compile(r"`[^`\n]+`")
+_LATEX_BLOCK_PATTERN = re.compile(r"(?<!\\)\$\$(.+?)(?<!\\)\$\$", re.DOTALL)
+_LATEX_INLINE_PATTERN = re.compile(r"(?<!\\)\$(.+?)(?<!\\)\$")
+
+
+def _render_latex_fragment(latex: str, *, inline: bool) -> str:
+    expr = latex.strip()
+    if not expr:
+        return ""
+    pixmap = _latex_to_pixmap(expr)
+    if pixmap is not None and not pixmap.isNull():
+        data_uri = _pixmap_to_data_uri(pixmap)
+        if data_uri:
+            style = "vertical-align: middle;" if inline else "display: block; margin: 12px auto;"
+            return f"<img src=\"{data_uri}\" style=\"{style}\" alt=\"{html.escape(expr)}\"/>"
+    html_text = _latex_to_html(expr)
+    if html_text:
+        if inline:
+            return f"<span class=\"latex-inline\">{html_text}</span>"
+        return f"<div class=\"latex-block\" style=\"text-align: center;\">{html_text}</div>"
+    return html.escape(expr)
+
+
+def _inject_latex_images(markdown_text: str) -> str:
+    if "$" not in markdown_text:
+        return markdown_text
+
+    placeholders: Dict[str, str] = {}
+    counter = 0
+
+    def _store_placeholder(match: re.Match) -> str:
+        nonlocal counter
+        key = f"\ufff0DOCPLACEHOLDER{counter}\uf8ff"
+        counter += 1
+        placeholders[key] = match.group(0)
+        return key
+
+    text = _CODE_BLOCK_PATTERN.sub(_store_placeholder, markdown_text)
+    text = _INLINE_CODE_PATTERN.sub(_store_placeholder, text)
+
+    def _replace_block(match: re.Match) -> str:
+        fragment = _render_latex_fragment(match.group(1), inline=False)
+        return f"\n\n{fragment}\n\n"
+
+    text = _LATEX_BLOCK_PATTERN.sub(_replace_block, text)
+
+    def _replace_inline(match: re.Match) -> str:
+        return _render_latex_fragment(match.group(1), inline=True)
+
+    text = _LATEX_INLINE_PATTERN.sub(_replace_inline, text)
+
+    if placeholders:
+        pattern = re.compile("|".join(re.escape(key) for key in placeholders))
+        text = pattern.sub(lambda m: placeholders[m.group(0)], text)
+    return text
 
 
 def _mass_identifier_from_path(path: str) -> Optional[str]:
