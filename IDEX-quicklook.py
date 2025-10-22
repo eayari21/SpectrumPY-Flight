@@ -2930,16 +2930,11 @@ class MainWindow(QMainWindow):
                     continue
 
             param_array = _coerce_parameter_values(raw_params)
-            if param_array is None or param_array.size < len(model.parameter_labels):
+            if param_array is None:
                 continue
 
-            first = np.asarray(param_array[: len(model.parameter_labels)], dtype=float)
-            if not np.all(np.isfinite(first)):
-                continue
-
-            try:
-                curve = model.evaluator(base_time, *first)
-            except Exception:
+            curve = _evaluate_fit_curve(channel, base_time, param_array)
+            if curve is None:
                 continue
 
             fit_values = np.asarray(curve, dtype=float)
