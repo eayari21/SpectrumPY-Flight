@@ -130,7 +130,7 @@ DUST_GROUP = "DustComposition"
 MASS_LINES_DATASET = "MassLines"
 
 
-def _emg_model(time_values: np.ndarray, mu: float, sigma: float, lam: float) -> np.ndarray:
+def _emg_model(time_values: np.ndarray, amplitude: float, mu: float, sigma: float, lam: float) -> np.ndarray:
     """Evaluate an exponentially modified Gaussian (EMG)."""
 
     arr = np.asarray(time_values, dtype=float)
@@ -138,10 +138,71 @@ def _emg_model(time_values: np.ndarray, mu: float, sigma: float, lam: float) -> 
         return np.zeros(0, dtype=float)
     safe_sigma = sigma if abs(sigma) > 1.0e-15 else 1.0e-15
     safe_lambda = lam if abs(lam) > 1.0e-15 else 1.0e-15
+    safe_amplitude = float(amplitude)
     with np.errstate(over="ignore", under="ignore", divide="ignore", invalid="ignore"):
         exponent = np.exp((safe_lambda / 2.0) * (2.0 * mu + safe_lambda * safe_sigma**2 - 2.0 * arr))
     argument = (mu + safe_lambda * safe_sigma**2 - arr) / (np.sqrt(2.0) * safe_sigma)
-    return (safe_lambda / 2.0) * exponent * _erfc(argument)
+    return (safe_lambda * safe_amplitude / 2.0) * exponent * _erfc(argument)
+
+
+def _emg_cdf(time_values: np.ndarray, mu: float, sigma: float, lam: float) -> np.ndarray:
+    """Return the cumulative distribution of a unit-area EMG."""
+
+    arr = np.asarray(time_values, dtype=float)
+    if arr.size == 0:
+        return np.zeros(0, dtype=float)
+    safe_sigma = sigma if abs(sigma) > 1.0e-15 else 1.0e-15
+    safe_lambda = lam if abs(lam) > 1.0e-15 else 1.0e-15
+    z = (arr - mu) / safe_sigma
+    with np.errstate(over="ignore", under="ignore", divide="ignore", invalid="ignore"):
+        term1 = 0.5 * _erfc(-z / np.sqrt(2.0))
+        exponent = np.exp(-safe_lambda * (arr - mu) + 0.5 * (safe_lambda * safe_sigma) ** 2)
+        term2 = 0.5 * _erfc(-(z - safe_lambda * safe_sigma) / np.sqrt(2.0))
+    cdf = term1 - exponent * term2
+    return np.clip(cdf, 0.0, 1.0)
+
+
+def _emg_area(
+    amplitude: float,
+    mu: float,
+    sigma: float,
+    lam: float,
+    start: Optional[float] = None,
+    end: Optional[float] = None,
+) -> float:
+    """Return the analytic EMG area between ``start`` and ``end``."""
+
+    if not math.isfinite(amplitude):
+        return 0.0
+    safe_sigma = sigma if abs(sigma) > 1.0e-15 else 1.0e-15
+    safe_lambda = lam if abs(lam) > 1.0e-15 else 1.0e-15
+    start_cdf = 0.0
+    end_cdf = 1.0
+    if start is not None and math.isfinite(start):
+        start_cdf = float(_emg_cdf(np.array([start], dtype=float), mu, safe_sigma, safe_lambda)[0])
+    if end is not None and math.isfinite(end):
+        end_cdf = float(_emg_cdf(np.array([end], dtype=float), mu, safe_sigma, safe_lambda)[0])
+    area = float(amplitude) * (end_cdf - start_cdf)
+    return area
+
+
+def _estimate_amplitude_from_curve(
+    time_axis: np.ndarray, fit_values: np.ndarray, mu: float, sigma: float, lam: float
+) -> float:
+    """Infer the EMG amplitude from sampled ``fit_values``."""
+
+    if time_axis.size == 0 or fit_values.size == 0:
+        return 0.0
+    unit_model = _emg_model(time_axis, 1.0, mu, abs(sigma), abs(lam))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        mask = np.isfinite(unit_model) & np.isfinite(fit_values) & (unit_model > 0)
+        if not np.any(mask):
+            return 0.0
+        ratios = fit_values[mask] / unit_model[mask]
+    ratios = ratios[np.isfinite(ratios)]
+    if ratios.size == 0:
+        return 0.0
+    return float(np.median(ratios))
 
 
 def _contiguous_mask(condition: np.ndarray, min_samples: int) -> np.ndarray:
@@ -251,6 +312,7 @@ class MassLineFit:
     mu: float
     sigma: float
     lam: float
+    amplitude: float
     time_start: float
     time_end: float
     mass_guess: float
@@ -259,8 +321,8 @@ class MassLineFit:
     fit_values: np.ndarray = field(repr=False, default_factory=lambda: np.zeros(0))
     color: str = "#d62728"
 
-    def parameters(self) -> Tuple[float, float, float]:
-        return (self.mu, self.sigma, self.lam)
+    def parameters(self) -> Tuple[float, float, float, float]:
+        return (self.amplitude, self.mu, self.sigma, self.lam)
 
     def as_row(self) -> Sequence[float | str]:
         return (
@@ -269,8 +331,17 @@ class MassLineFit:
             f"{self.mu:.6f}",
             f"{self.sigma:.6f}",
             f"{self.lam:.6f}",
+            f"{self.amplitude:.6f}",
             f"{self.abundance * 100.0:.2f}",
         )
+
+    def window_area(self) -> float:
+        area = _emg_area(self.amplitude, self.mu, abs(self.sigma), abs(self.lam), self.time_start, self.time_end)
+        return max(area, 0.0)
+
+    def total_area(self) -> float:
+        area = _emg_area(self.amplitude, self.mu, abs(self.sigma), abs(self.lam))
+        return max(area, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +391,13 @@ class ManualMassLineDialog(QDialog):
         self.lambda_spin.setValue(float(max(abs(float(defaults.get("lam", 1.0))), 1e-9)))
         form.addRow("λ (µs⁻¹):", self.lambda_spin)
 
+        self.amplitude_spin = QDoubleSpinBox(self)
+        self.amplitude_spin.setDecimals(6)
+        self.amplitude_spin.setRange(0.0, 1e12)
+        self.amplitude_spin.setSingleStep(1e-3)
+        self.amplitude_spin.setValue(float(max(abs(float(defaults.get("amplitude", 1.0))), 1.0e-9)))
+        form.addRow("A (DN·µs):", self.amplitude_spin)
+
         self.start_spin = QDoubleSpinBox(self)
         self.start_spin.setDecimals(6)
         self.start_spin.setRange(-1e6, 1e6)
@@ -358,12 +436,15 @@ class ManualMassLineDialog(QDialog):
         mu = float(self.mu_spin.value())
         sigma = float(self.sigma_spin.value())
         lam = float(self.lambda_spin.value())
+        amplitude = float(self.amplitude_spin.value())
         start = float(self.start_spin.value())
         end = float(self.end_spin.value())
         if sigma <= 0.0:
             raise ValueError("σ must be positive.")
         if lam <= 0.0:
             raise ValueError("λ must be positive.")
+        if amplitude <= 0.0:
+            raise ValueError("A must be positive.")
         if end <= start:
             raise ValueError("End time must be greater than start time.")
         return {
@@ -372,6 +453,7 @@ class ManualMassLineDialog(QDialog):
             "mu": mu,
             "sigma": sigma,
             "lam": lam,
+            "amplitude": amplitude,
             "time_start": start,
             "time_end": end,
         }
@@ -558,6 +640,22 @@ class DustCompositionWindow(QMainWindow):
                     try:
                         line.time_axis = np.asarray(line_group["time"][()], dtype=float)
                         line.fit_values = np.asarray(line_group["values"][()], dtype=float)
+                        if (not math.isfinite(line.amplitude) or line.amplitude <= 0.0) and line.time_axis.size:
+                            inferred = _estimate_amplitude_from_curve(
+                                line.time_axis,
+                                line.fit_values,
+                                line.mu,
+                                line.sigma,
+                                line.lam,
+                            )
+                            if math.isfinite(inferred) and inferred > 0.0:
+                                line.amplitude = inferred
+                            else:
+                                area = float(
+                                    np.trapz(np.clip(line.fit_values, 0.0, None), line.time_axis)
+                                )
+                                if math.isfinite(area) and area > 0.0:
+                                    line.amplitude = area
                     except Exception:
                         line.time_axis = np.zeros(0)
                         line.fit_values = np.zeros(0)
@@ -614,8 +712,14 @@ class DustCompositionWindow(QMainWindow):
                 if not math.isfinite(time_end) or time_end <= time_start:
                     time_end = time_start + max(abs(sigma) * 6.0, 1e-6)
                 mass_guess = _coerce_float(_get_field(entry, ("mass", "mass_guess"), default=0.0))
+                amplitude = _coerce_float(
+                    _get_field(entry, ("amplitude", "A", "area", "signal_amplitude"), default=float("nan")),
+                    default=float("nan"),
+                )
+                if not math.isfinite(amplitude):
+                    amplitude = 0.0
                 abundance = _coerce_float(
-                    _get_field(entry, ("abundance", "signal_amplitude", "area"), default=0.0),
+                    _get_field(entry, ("abundance", "relative_abundance"), default=0.0),
                     default=0.0,
                 )
                 if not label:
@@ -626,6 +730,7 @@ class DustCompositionWindow(QMainWindow):
                     mu=mu,
                     sigma=sigma,
                     lam=lam,
+                    amplitude=amplitude,
                     time_start=time_start,
                     time_end=time_end,
                     mass_guess=mass_guess,
@@ -768,13 +873,14 @@ class DustCompositionWindow(QMainWindow):
         layout = QVBoxLayout(box)
         layout.setSpacing(6)
         self.mass_table = QTableWidget(box)
-        self.mass_table.setColumnCount(6)
+        self.mass_table.setColumnCount(7)
         self.mass_table.setHorizontalHeaderLabels([
             "Label",
             "Mass (amu)",
             "μ (µs)",
             "σ (µs)",
             "λ (µs⁻¹)",
+            "A (DN·µs)",
             "Abundance (%)",
         ])
         header = self.mass_table.horizontalHeader()
@@ -863,6 +969,7 @@ class DustCompositionWindow(QMainWindow):
             mu=float(data.get("mu", 0.0)),
             sigma=float(abs(float(data.get("sigma", 0.01)))),
             lam=float(abs(float(data.get("lam", 1.0)))),
+            amplitude=float(max(abs(float(data.get("amplitude", 1.0))), 1.0e-9)),
             time_start=float(data.get("time_start", 0.0)),
             time_end=float(data.get("time_end", 1.0)),
             mass_guess=float(data.get("mass", 0.0)),
@@ -871,7 +978,7 @@ class DustCompositionWindow(QMainWindow):
         )
         dense_time = np.linspace(line.time_start, line.time_end, 800)
         line.time_axis = dense_time
-        line.fit_values = _emg_model(dense_time, line.mu, abs(line.sigma), abs(line.lam))
+        line.fit_values = _emg_model(dense_time, line.amplitude, line.mu, abs(line.sigma), abs(line.lam))
         self._mass_line_counter += 1
         self._mass_lines.append(line)
         self._selected_line_id = line.line_id
@@ -949,13 +1056,15 @@ class DustCompositionWindow(QMainWindow):
                 line.sigma = float(text)
             elif column == 4:
                 line.lam = float(text)
+            elif column == 5:
+                line.amplitude = float(text)
         except ValueError:
             self._block_table_signals = True
             for col, value in enumerate(line.as_row()):
                 self.mass_table.item(row, col).setText(str(value))
             self._block_table_signals = False
             return
-        if column in (2, 3, 4):
+        if column in (2, 3, 4, 5):
             self._recompute_mass_line(line)
         if column == 1:
             line.label = nearest_mass_name(line.mass_guess)
@@ -1234,12 +1343,23 @@ class DustCompositionWindow(QMainWindow):
         end = mu + span / 2.0
         mass_guess = float(self._time_to_mass(mu))
         label = nearest_mass_name(mass_guess)
+        amplitude = 1.0
+        if self._combined is not None and self._combined.size and self._time_axis.size:
+            try:
+                mask = (self._time_axis >= start) & (self._time_axis <= end)
+                if np.any(mask):
+                    segment = np.clip(self._combined[mask] - self._baseline, 0.0, None)
+                    amplitude = float(np.trapz(segment, self._time_axis[mask]))
+            except Exception:
+                amplitude = 1.0
+        amplitude = max(amplitude, 1.0e-9)
         return {
             "label": label,
             "mass": mass_guess,
             "mu": mu,
             "sigma": sigma,
             "lam": lam,
+            "amplitude": amplitude,
             "time_start": start,
             "time_end": end,
         }
@@ -1267,6 +1387,9 @@ class DustCompositionWindow(QMainWindow):
             mu_guess = float(np.nanmean(x))
         sigma_guess = max(float(np.nanstd(x)), 1.0e-6)
         lam_guess = max(1.0 / max(sigma_guess, 1.0e-6), 1.0e-6)
+        amplitude_guess = float(np.trapz(np.clip(y, 0.0, None), x))
+        if not math.isfinite(amplitude_guess) or amplitude_guess <= 0.0:
+            amplitude_guess = max(float(np.nanmax(np.clip(y, 0.0, None))) * max(time_max - time_min, 1.0e-6), 1.0e-6)
         try:
             from scipy.optimize import curve_fit  # type: ignore
         except Exception as exc:
@@ -1275,20 +1398,21 @@ class DustCompositionWindow(QMainWindow):
 
         try:
             params, _ = curve_fit(
-                lambda t, mu, sigma, lam: _emg_model(t, mu, abs(sigma), abs(lam)),
+                lambda t, amplitude, mu, sigma, lam: _emg_model(t, amplitude, mu, abs(sigma), abs(lam)),
                 x,
                 y,
-                p0=(mu_guess, sigma_guess, lam_guess),
+                p0=(amplitude_guess, mu_guess, sigma_guess, lam_guess),
                 maxfev=20000,
             )
-            mu_fit, sigma_fit, lam_fit = params
+            amplitude_fit, mu_fit, sigma_fit, lam_fit = params
+            amplitude_fit = abs(float(amplitude_fit))
             sigma_fit = abs(float(sigma_fit))
             lam_fit = abs(float(lam_fit))
         except Exception:
             QMessageBox.warning(self, "Fit Failed", "Unable to fit an EMG curve to the selected region.")
             return
         dense_time = np.linspace(time_min, time_max, 800)
-        fit_curve = _emg_model(dense_time, mu_fit, sigma_fit, lam_fit)
+        fit_curve = _emg_model(dense_time, amplitude_fit, mu_fit, sigma_fit, lam_fit)
         mass_guess = float(self._time_to_mass(mu_fit))
         label = nearest_mass_name(mass_guess)
         line = MassLineFit(
@@ -1297,6 +1421,7 @@ class DustCompositionWindow(QMainWindow):
             mu=float(mu_fit),
             sigma=float(sigma_fit),
             lam=float(lam_fit),
+            amplitude=float(amplitude_fit),
             time_start=float(time_min),
             time_end=float(time_max),
             mass_guess=mass_guess,
@@ -1315,7 +1440,8 @@ class DustCompositionWindow(QMainWindow):
 
     def _recompute_mass_line(self, line: MassLineFit) -> None:
         dense_time = np.linspace(line.time_start, line.time_end, 800)
-        fit_curve = _emg_model(dense_time, line.mu, abs(line.sigma), abs(line.lam))
+        line.amplitude = max(abs(float(line.amplitude)), 0.0)
+        fit_curve = _emg_model(dense_time, line.amplitude, line.mu, abs(line.sigma), abs(line.lam))
         line.time_axis = dense_time
         line.fit_values = fit_curve
         line.mass_guess = float(self._time_to_mass(line.mu))
@@ -1351,10 +1477,7 @@ class DustCompositionWindow(QMainWindow):
         positive = np.clip(baseline_corrected, 0.0, None)
         total_area = float(np.trapz(positive, self._time_axis)) if self._time_axis.size else 0.0
         for line in self._mass_lines:
-            if line.time_axis.size and line.fit_values.size:
-                area = np.trapz(np.clip(line.fit_values, 0.0, None), line.time_axis)
-            else:
-                area = 0.0
+            area = line.window_area() if line.time_end > line.time_start else 0.0
             if total_area > 0:
                 line.abundance = float(max(area, 0.0) / total_area)
             else:
@@ -1370,7 +1493,7 @@ class DustCompositionWindow(QMainWindow):
                     item = QTableWidgetItem()
                     self.mass_table.setItem(row, col, item)
                 item.setText(str(value))
-                if col == 5:
+                if col == 6:
                     flags = item.flags()
                     item.setFlags(flags & ~Qt.ItemFlag.ItemIsEditable)
         self.mass_table.resizeColumnsToContents()
@@ -1457,9 +1580,11 @@ class DustCompositionWindow(QMainWindow):
                     ("mu", "f8"),
                     ("sigma", "f8"),
                     ("lam", "f8"),
+                    ("amplitude", "f8"),
                     ("time_start", "f8"),
                     ("time_end", "f8"),
                     ("mass", "f8"),
+                    ("area", "f8"),
                     ("abundance", "f8"),
                 ])
                 for idx, line in enumerate(self._mass_lines):
@@ -1469,9 +1594,11 @@ class DustCompositionWindow(QMainWindow):
                         line.mu,
                         line.sigma,
                         line.lam,
+                        line.total_area(),
                         line.time_start,
                         line.time_end,
                         line.mass_guess,
+                        line.window_area(),
                         line.abundance,
                     )
                 _write_dataset(dust_group, MASS_LINES_DATASET, table)
