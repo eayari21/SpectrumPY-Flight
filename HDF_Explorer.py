@@ -721,26 +721,66 @@ class HDFDataExplorer(QWidget):
             times_series = self.data_store.arrays.get(time_key, []) if time_key else None
 
             plotted = False
-            for idx, value in enumerate(values_series):
-                if value is None or value.size == 0:
-                    continue
-                times = None
-                if times_series:
+            if times_series:
+                for idx, value in enumerate(values_series):
+                    if value is None or value.size == 0:
+                        continue
                     times = times_series[idx] if idx < len(times_series) else None
-                    if times is not None and times.size != value.size:
-                        times = None
-                if times is not None:
+                    if times is None or times.size != value.size:
+                        continue
                     axis.plot(times, value, linewidth=1.0, label=f"Event {self.data_store.events[idx].event_name}")
-                else:
-                    axis.plot(value, linewidth=1.0, label=f"Event {self.data_store.events[idx].event_name}")
-                plotted = True
+                    plotted = True
 
-            if plotted:
-                axis.legend(loc="upper right", fontsize=8)
-                axis.set_xlabel("Time" if time_key else "Sample index")
-                axis.set_ylabel(key)
-            else:
-                axis.text(0.5, 0.5, "No timeseries values found for selection.", ha="center", va="center", transform=axis.transAxes)
+                if plotted:
+                    axis.legend(loc="upper right", fontsize=8)
+                    axis.set_xlabel("Time")
+                    axis.set_ylabel(key)
+
+            if not plotted:
+                epochs = np.array(
+                    [event.epoch if event.epoch is not None else np.nan for event in self.data_store.events],
+                    dtype=float,
+                )
+                epoch_values: List[float] = []
+                epoch_times: List[float] = []
+
+                for idx, value in enumerate(values_series):
+                    if value is None or value.size == 0 or idx >= epochs.size:
+                        continue
+                    epoch = epochs[idx]
+                    if not math.isfinite(epoch):
+                        continue
+                    flattened = np.asarray(value, dtype=float).ravel()
+                    finite = flattened[np.isfinite(flattened)]
+                    if finite.size == 0:
+                        continue
+                    epoch_times.append(epoch)
+                    epoch_values.append(float(np.mean(finite)))
+
+                if epoch_times:
+                    order = np.argsort(epoch_times)
+                    ordered_epochs = np.asarray(epoch_times)[order]
+                    ordered_values = np.asarray(epoch_values)[order]
+                    axis.plot(
+                        ordered_epochs,
+                        ordered_values,
+                        marker="o",
+                        markersize=5,
+                        linewidth=1.4,
+                        color="#2563eb",
+                    )
+                    axis.set_xlabel("Epoch")
+                    axis.set_ylabel(key)
+                    plotted = True
+                else:
+                    axis.text(
+                        0.5,
+                        0.5,
+                        "No timeseries or epoch-aligned values found for selection.",
+                        ha="center",
+                        va="center",
+                        transform=axis.transAxes,
+                    )
 
         axis.set_title("Timeseries view", fontsize=14, fontweight="bold")
         self.canvas.draw_idle()
