@@ -15,6 +15,7 @@ from PyQt6.QtGui import QFont, QIcon, QPixmap, QResizeEvent
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -129,10 +130,21 @@ class LaunchWindow(QMainWindow):
             self.setWindowIcon(QIcon(str(logo_path)))
 
         central = QWidget(self)
+        central.setObjectName("centralWidget")
         self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
-        layout.setSpacing(18)
-        layout.setContentsMargins(32, 32, 32, 32)
+
+        outer_layout = QVBoxLayout(central)
+        outer_layout.setSpacing(0)
+        outer_layout.setContentsMargins(48, 48, 48, 48)
+
+        card = QFrame()
+        card.setObjectName("launchCard")
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        card.setMaximumWidth(840)
+
+        layout = QVBoxLayout(card)
+        layout.setSpacing(24)
+        layout.setContentsMargins(48, 48, 48, 48)
 
         if logo_path:
             logo_pixmap = _load_scaled_pixmap(logo_path)
@@ -147,6 +159,7 @@ class LaunchWindow(QMainWindow):
         title_font.setBold(True)
         title_label.setFont(title_font)
         title_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        title_label.setObjectName("launchTitle")
         layout.addWidget(title_label)
 
         author_label = QLabel(f"by {APP_AUTHOR}")
@@ -154,15 +167,24 @@ class LaunchWindow(QMainWindow):
         author_font.setPointSize(14)
         author_label.setFont(author_font)
         author_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        author_label.setStyleSheet("color: #475569;")
         layout.addWidget(author_label)
 
         instrument_path = _find_image(INSTRUMENT_IMAGE_CANDIDATES)
         if instrument_path:
             instrument_pixmap = _load_scaled_pixmap(instrument_path)
             if instrument_pixmap:
+                instrument_container = QFrame()
+                instrument_container.setObjectName("instrumentFrame")
+                instrument_container_layout = QVBoxLayout(instrument_container)
+                instrument_container_layout.setContentsMargins(16, 16, 16, 16)
+                instrument_container_layout.setSpacing(0)
+
                 instrument_label = ResponsiveImageLabel(minimum_height=260)
                 instrument_label.setPixmap(instrument_pixmap)
-                layout.addWidget(instrument_label)
+                instrument_container_layout.addWidget(instrument_label)
+
+                layout.addWidget(instrument_container)
 
         description = QLabel(
             "Select a science data product to begin. Once a file is selected you can choose "
@@ -170,10 +192,13 @@ class LaunchWindow(QMainWindow):
         )
         description.setWordWrap(True)
         description.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        description.setStyleSheet("font-size: 14px;")
+        description.setStyleSheet(
+            "font-size: 15px; line-height: 1.5; color: #334155; padding: 0 12px;"
+        )
         layout.addWidget(description)
 
         file_row = QHBoxLayout()
+        file_row.setSpacing(16)
         self.file_edit = QLineEdit()
         self.file_edit.setPlaceholderText("Choose a CDF/HDF5/trace file to work with")
         self.file_edit.setReadOnly(True)
@@ -216,6 +241,59 @@ class LaunchWindow(QMainWindow):
         footer.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         footer.setStyleSheet("color: #4a5568; font-size: 12px;")
         layout.addWidget(footer)
+
+        outer_layout.addStretch(1)
+        outer_layout.addWidget(card, alignment=Qt.AlignmentFlag.AlignHCenter)
+        outer_layout.addStretch(1)
+
+        self.setStyleSheet(
+            """
+            QWidget#centralWidget {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                            stop:0 #0f172a, stop:1 #1e293b);
+            }
+            QFrame#launchCard {
+                background: rgba(255, 255, 255, 0.96);
+                border-radius: 24px;
+            }
+            QFrame#instrumentFrame {
+                background: #0f172a;
+                border-radius: 18px;
+            }
+            QLabel {
+                color: #1a202c;
+            }
+            QLabel#launchTitle {
+                color: #0b1120;
+            }
+            QPushButton {
+                background-color: #2563eb;
+                color: white;
+                border: none;
+                border-radius: 12px;
+                padding: 12px 24px;
+                font-size: 15px;
+                font-weight: 600;
+            }
+            QPushButton:disabled {
+                background-color: #94a3b8;
+                color: rgba(255, 255, 255, 0.85);
+            }
+            QPushButton:hover:!disabled {
+                background-color: #1d4ed8;
+            }
+            QPushButton:pressed:!disabled {
+                background-color: #1e40af;
+            }
+            QLineEdit {
+                background: rgba(15, 23, 42, 0.04);
+                border: 1px solid rgba(15, 23, 42, 0.12);
+                border-radius: 12px;
+                padding: 0 16px;
+                font-size: 14px;
+            }
+            """
+        )
 
     # ------------------------------------------------------------------
     def select_file(self) -> None:
