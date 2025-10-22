@@ -45,7 +45,6 @@ from datetime import datetime, timedelta, timezone
 
 from scipy.optimize import curve_fit
 from scipy.signal import detrend, butter, filtfilt, find_peaks
-from scipy.integrate import quad
 from scipy.special import erfc
 
 
@@ -73,22 +72,36 @@ def IDEXIonGrid(x, P0, P1, P4, P5, P6):
     return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
 
 # Define the EMG function
-def EMG(x, mu, sigma, lam):
+def EMG(x, amplitude, mu, sigma, lam):
     """Return the exponentially modified Gaussian evaluated at ``x``.
 
     Parameters
     ----------
     x
         Time coordinate.
-    mu, sigma, lam
-        Exponentially modified Gaussian parameters (mean, standard
+    amplitude, mu, sigma, lam
+        Exponentially modified Gaussian parameters (area, mean, standard
         deviation, and exponential decay rate).
     """
 
-    prefactor = lam / 2
+    sigma = abs(sigma) if abs(sigma) > 1.0e-15 else 1.0e-15
+    lam = abs(lam) if abs(lam) > 1.0e-15 else 1.0e-15
+    prefactor = (lam * amplitude) / 2
     exponent = np.exp((lam / 2) * (2 * mu + lam * sigma**2 - 2 * x))
     erfc_part = erfc((mu + lam * sigma**2 - x) / (np.sqrt(2) * sigma))
     return prefactor * exponent * erfc_part
+
+
+def EMG_CDF(x, mu, sigma, lam):
+    """Return the cumulative distribution function of a unit EMG."""
+
+    sigma = abs(sigma) if abs(sigma) > 1.0e-15 else 1.0e-15
+    lam = abs(lam) if abs(lam) > 1.0e-15 else 1.0e-15
+    z = (x - mu) / sigma
+    first = 0.5 * erfc(-z / np.sqrt(2.0))
+    exponent = np.exp(-lam * (x - mu) + 0.5 * (lam * sigma) ** 2)
+    second = 0.5 * erfc(-(z - lam * sigma) / np.sqrt(2.0))
+    return np.clip(first - exponent * second, 0.0, 1.0)
 
 # Function to calculate the area under the EMG fit curve
 def calculate_area_under_emg(x_slice, param):
@@ -108,16 +121,19 @@ def calculate_area_under_emg(x_slice, param):
         Estimated area under the curve for the selected slice.
     """
 
-    if(type(param) is not int):
-        # Extract EMG fit parameters: mu, sigma, lam
-        mu, sigma, lam = param
-
-        # Perform numerical integration using scipy.integrate.quad
-        area, error = quad(EMG, x_slice[0], x_slice[-1], args=(mu, sigma, lam))
-
-        return area
-    else:
-        return 0.0
+    if isinstance(param, (list, tuple, np.ndarray)) and len(param) >= 4:
+        amplitude, mu, sigma, lam = param[:4]
+        if len(x_slice) == 0:
+            return 0.0
+        start = float(np.min(x_slice))
+        end = float(np.max(x_slice))
+        if not np.isfinite(start) or not np.isfinite(end) or end <= start:
+            return 0.0
+        cdf_start = EMG_CDF(start, mu, sigma, lam)
+        cdf_end = EMG_CDF(end, mu, sigma, lam)
+        area = float(amplitude) * float(cdf_end - cdf_start)
+        return float(area)
+    return 0.0
 
 # Helper function to create dataset if it doesn't exist
 def create_dataset_if_not_exists(hdf5_file, dataset_path, data):
@@ -188,16 +204,30 @@ def FitEMG(time, amplitude):
     # || Initial Guess for the parameters of the EMG
     mu_guess = x[np.argmax(y)]  # Initial guess for the mean
     sigma_guess = np.std(x) / 10  # Initial guess for standard deviation
-    lam_guess = 1 / (x[-1] - x[0])  # Initial guess for decay rate
+    lam_guess = 1 / max(x[-1] - x[0], 1.0e-6)  # Initial guess for decay rate
+    area_guess = np.trapz(np.clip(y, 0.0, None), x)
+    if not np.isfinite(area_guess) or area_guess <= 0:
+        area_guess = max(np.max(np.clip(y, 0.0, None)) * max(x[-1] - x[0], 1.0e-6), 1.0e-6)
 
-    p0 = [mu_guess, sigma_guess, lam_guess]  # Initial parameter guesses
+    p0 = [area_guess, mu_guess, sigma_guess, lam_guess]  # Initial parameter guesses
 
     # Fit the data using curve_fit
     try:
-        param, param_cov = curve_fit(EMG, x, y, p0=p0, maxfev=100_000)
+        param, param_cov = curve_fit(
+            lambda t, area, mu, sigma, lam: EMG(t, area, mu, sigma, lam),
+            x,
+            y,
+            p0=p0,
+            maxfev=100_000,
+        )
 
         # Generate the fitted curve
-        result = EMG(x, *param)
+        area_fit, mu_fit, sigma_fit, lam_fit = param
+        area_fit = abs(float(area_fit))
+        sigma_fit = abs(float(sigma_fit))
+        lam_fit = abs(float(lam_fit))
+        param = np.array([area_fit, mu_fit, sigma_fit, lam_fit])
+        result = EMG(x, area_fit, mu_fit, sigma_fit, lam_fit)
         sig_amp = max(result) - np.mean(y)
 
         return param, param_cov, sig_amp, result
@@ -961,6 +991,7 @@ class IDEXEvent:
             ('mu', np.float64),
             ('sigma', np.float64),
             ('lambda', np.float64),
+            ('amplitude', np.float64),
             ('signal_amplitude', np.float64),
             ('abundance', np.float64),
             ('fit_success', np.bool_)
@@ -1098,16 +1129,19 @@ class IDEXEvent:
                         # Fit the EMG to the slice
                         print(f"Calculating mass fit for peak {mass_scale[peak]}")
                         param, param_cov, sig_amp, fitted_curve = FitEMG(x_slice, y_slice)
-                        if isinstance(param, np.ndarray) or isinstance(param, list):
+                        if isinstance(param, (np.ndarray, list, tuple)):
+                            param = np.asarray(param, dtype=float)
                             area = calculate_area_under_emg(x_slice, param)
                             print(f"Area under the EMG fit for peak {mass_scale[peak]}: {area}")
-                            fit_results.append((np.asarray(param), sig_amp, x_slice, fitted_curve, area))
+                            fit_results.append((param, sig_amp, x_slice, fitted_curve, area))
+                            area_param, mu_param, sigma_param, lam_param = param
                             mass_line_records.append({
                                 'mass': float(mass_scale[peak]),
                                 'peak_index': int(peak),
-                                'mu': float(param[0]),
-                                'sigma': float(param[1]),
-                                'lambda': float(param[2]),
+                                'mu': float(mu_param),
+                                'sigma': float(sigma_param),
+                                'lambda': float(lam_param),
+                                'amplitude': float(area_param),
                                 'signal_amplitude': float(sig_amp),
                                 'abundance': float(area),
                                 'fit_success': True
@@ -1121,6 +1155,7 @@ class IDEXEvent:
                                 'mu': np.nan,
                                 'sigma': np.nan,
                                 'lambda': np.nan,
+                                'amplitude': np.nan,
                                 'signal_amplitude': np.nan,
                                 'abundance': np.nan,
                                 'fit_success': False
@@ -1130,13 +1165,22 @@ class IDEXEvent:
                             if result is not None:
                                 print(f"result = {result}")
                                 param, sig_amp, x_slice, fitted_curve, area = result
-                                if(type(param) is not int):
-                                    param = param.tolist()
-                                    print(f"Param = {param}")
-                                    print(f"writing fit results for mass {param[0]}")
-                                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}/Masses/{param[0]}FitParams", data=np.array(param))
-                                    print(f"Area under fit for mass {param[0]}: {area}")
-                                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}/Masses/{param[0]}AreaUnderFit", data=np.array([area]))
+                                if isinstance(param, np.ndarray):
+                                    amplitude_param, mu_param, sigma_param, lam_param = param
+                                    output_params = np.array([amplitude_param, mu_param, sigma_param, lam_param])
+                                    print(f"Param = {output_params.tolist()}")
+                                    print(f"writing fit results for mass {mu_param}")
+                                    create_dataset_if_not_exists(
+                                        h,
+                                        f"/{k[0]}/Analysis/{k[1]}/Masses/{mu_param}FitParams",
+                                        data=output_params,
+                                    )
+                                    print(f"Area under fit for mass {mu_param}: {area}")
+                                    create_dataset_if_not_exists(
+                                        h,
+                                        f"/{k[0]}/Analysis/{k[1]}/Masses/{mu_param}AreaUnderFit",
+                                        data=np.array([area]),
+                                    )
 
 
                     if not peaks.size:
