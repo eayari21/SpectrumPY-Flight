@@ -705,6 +705,23 @@ def _prepare_latex_for_mathtext(expr: str) -> Tuple[str, bool]:
 
     normalized = expr.replace("\\tfrac", "\\frac").replace("\\dfrac", "\\frac")
 
+    for macro in (
+        "\\bigl",
+        "\\bigr",
+        "\\biggl",
+        "\\biggr",
+        "\\Bigl",
+        "\\Bigr",
+        "\\Biggl",
+        "\\Biggr",
+        "\\big",
+        "\\Big",
+        "\\bigg",
+        "\\Bigg",
+    ):
+        if macro in normalized:
+            normalized = normalized.replace(macro, "")
+
     def _replace_command(command: str, transform: Callable[[str], str]) -> None:
         nonlocal normalized
         search = f"\\{command}"
@@ -772,17 +789,11 @@ def _latex_to_html(latex: str) -> str:
                 if command in ("left", "right"):
                     i = j
                     continue
-                if command == "mathrm":
-                    if j < length and latex[j] == "{":
-                        content, new_index = _extract_braced(latex, j)
-                        result.append(html.escape(content))
-                        i = new_index
-                        continue
-                if command in ("operatorname", "text"):
+                if command in ("operatorname", "text", "mathrm"):
                     if j < length and latex[j] == "{":
                         content, new_index = _extract_braced(latex, j)
                         rendered = html.escape(content)
-                        if command == "operatorname":
+                        if command in {"operatorname", "mathrm"}:
                             rendered = f"<span class=\"latex-operator\">{rendered}</span>"
                         result.append(rendered)
                         i = new_index
@@ -822,8 +833,15 @@ def _latex_to_html(latex: str) -> str:
                 if command == "end":
                     i = j
                     continue
-                if command in {"exp", "sin", "cos", "tan", "log"}:
+                if command in {"exp", "sin", "cos", "tan", "log", "ln", "min", "max", "sup", "inf"}:
                     result.append(command)
+                    i = j
+                    continue
+                if command in {"left", "right", "big", "Big", "bigg", "Bigg", "bigl", "bigr", "biggl", "biggr", "Bigl", "Bigr", "Biggl", "Biggr"}:
+                    i = j
+                    continue
+                if command in {"quad", "qquad"}:
+                    result.append("&emsp;")
                     i = j
                     continue
                 replacement = _LATEX_GREEK_HTML.get(command)
