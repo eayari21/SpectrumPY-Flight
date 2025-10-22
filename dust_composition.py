@@ -1070,28 +1070,6 @@ class DustCompositionWindow(QMainWindow):
                     zorder=5,
                     label=line.label,
                 )
-                finite_values = np.asarray(y_values, dtype=float)
-                finite_mask = np.isfinite(finite_values)
-                if np.any(finite_mask):
-                    finite_mass = np.asarray(mass_axis, dtype=float)
-                    safe_values = np.where(finite_mask, finite_values, -np.inf)
-                    peak_idx = int(np.argmax(safe_values))
-                    if 0 <= peak_idx < finite_mass.size and np.isfinite(safe_values[peak_idx]):
-                        peak_x = float(finite_mass[peak_idx])
-                        peak_y = float(finite_values[peak_idx])
-                        ax.annotate(
-                            line.label,
-                            xy=(peak_x, peak_y),
-                            xytext=(0, 14),
-                            textcoords="offset points",
-                            ha="center",
-                            va="bottom",
-                            fontsize=12,
-                            fontweight="bold",
-                            color="#111111",
-                            bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=base_color, lw=1.0, alpha=0.9),
-                            zorder=6,
-                        )
             else:
                 faded = (rgba[0], rgba[1], rgba[2], 0.45)
                 ax.plot(
@@ -1103,6 +1081,54 @@ class DustCompositionWindow(QMainWindow):
                     zorder=3,
                     label=line.label,
                 )
+            finite_values = np.asarray(y_values, dtype=float)
+            finite_mask = np.isfinite(finite_values)
+            if not np.any(finite_mask):
+                plotted_any = True
+                continue
+            finite_mass = np.asarray(mass_axis, dtype=float)
+            safe_values = np.where(finite_mask, finite_values, -np.inf)
+            peak_idx = int(np.argmax(safe_values))
+            if not (0 <= peak_idx < finite_mass.size) or not np.isfinite(safe_values[peak_idx]):
+                plotted_any = True
+                continue
+            peak_x = float(finite_mass[peak_idx])
+            peak_y = float(finite_values[peak_idx])
+            label_mass = peak_x if np.isfinite(peak_x) else line.mass_guess
+            if np.isfinite(label_mass):
+                label_mass_text = f"{line.label}@{label_mass:.1f} amu"
+            else:
+                label_mass_text = line.label
+            try:
+                abundance = float(line.abundance)
+            except Exception:
+                abundance = 0.0
+            abundance_text = ""
+            if np.isfinite(abundance):
+                abundance_text = f" ({max(abundance, 0.0) * 100.0:.1f}%)"
+            annotation_text = f"{label_mass_text}{abundance_text}" if label_mass_text else line.label
+            if not annotation_text:
+                plotted_any = True
+                continue
+            annotation_kwargs = dict(
+                xy=(peak_x, peak_y),
+                xytext=(0, 14),
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+                fontsize=12 if line.line_id == selected_id else 11,
+                fontweight="bold" if line.line_id == selected_id else "medium",
+                color="#111111",
+                bbox=dict(
+                    boxstyle="round,pad=0.35",
+                    fc="white",
+                    ec=base_color if line.line_id == selected_id else rgba,
+                    lw=1.0,
+                    alpha=0.9 if line.line_id == selected_id else 0.75,
+                ),
+                zorder=6 if line.line_id == selected_id else 4,
+            )
+            ax.annotate(annotation_text, **annotation_kwargs)
             plotted_any = True
         if plotted_any and len(ax.lines) > 1:
             legend = ax.legend(loc="best", fontsize=10)
