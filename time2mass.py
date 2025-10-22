@@ -18,8 +18,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 # import seaborn as sns
 
+from pathlib import Path
 from matplotlib import colors
-from scipy.optimize import curve_fit
+from scipy.optimize import curve_fit, minimize
 from scipy.signal import find_peaks
 # plt.style.use('seaborn-v0_8-pastel')
 plt.style.use('seaborn-pastel')
@@ -226,200 +227,120 @@ def peak_time2mass(TOF, time):
     plt.show()
 
 def time2mass(TOF, time):
-    """After the baseline correction:
+    r"""Return an optimized mass axis for a TOF waveform.
 
-    1) Make a vector with all zeros and a length of 8189, same as the TOF length of record: t_i
-    2) Make a vector for masses m_i: 1, 2, 3, 4, …… 200 (200 length, and the elements are the integers 1,2, 3,  ... 200)
-    3) Calculate the 200 times (T_i-s)  these masses should show up for a T_off = 0  and stretch A (best guess)
-              T_i = T_off + A*sqrt(m_i) and set the closest t_i =1 to each of the calculated Ti-s, the rest stays zero.
-    4) Calculate the cross-correlation with the original TOF, the max will give you the best lag (T_off) for a given A.
-    5) Use an extrema finder to get to the best A, alternatively, one could try optimizing for the two parameters simultaneously. """
+    The routine estimates the stretch (``A``) and temporal offset (``t0``)
+    parameters in the classic
 
-    print(os.listdir())  # Try to find the mass comb file
-    mass_comb = pd.read_csv("../mass_comb.csv")
+    .. math:: t = t_0 + A \sqrt{m}
 
-    masses = np.round(mass_comb["Mass"],1)
+    relationship by aligning prominent peaks with integer mass numbers from
+    :datafile:`mass_comb.csv`. The optimization keeps the resulting mass scale
+    inside a physically realistic 1–300 amu window (allowing a small buffer up
+    to 400 amu for the heaviest species).
+    """
 
-    time = time - time[0]
-    # plt.plot(time, TOF, label="Time Scale")
-    # plt.show()
+    mass_table = pd.read_csv(Path(__file__).resolve().with_name("mass_comb.csv"))
+    available_masses = np.array(sorted({int(round(m)) for m in mass_table["Mass"] if 0 < m < 400}))
 
-    random_stretch = np.linspace(1400, 1500, 10)
-    shift = []
-    corr = []
-    product = []
+    if len(available_masses) == 0:
+        raise ValueError("No valid masses found in mass_comb.csv")
 
-    for stretch in random_stretch:
+    tof = np.asarray(TOF, dtype=float)
+    time = np.asarray(time, dtype=float)
 
-        # || Step 1): Make a vector with all zeros and a length of 8189, same as the TOF length of record: t_i
-        t_i = np.zeros(len(TOF))
+    time_offset = time - time[0]
+    step = np.median(np.diff(time_offset)) if len(time_offset) > 1 else 0.0
 
-        # || 
-        m_i = np.linspace(1, 200, 200)
-        # Set elements in m_i to zero if they are not in masses
-        # m_i = np.where(np.isin(m_i, masses), m_i, 0)
-        # print(f"m_i = {m_i}, masses = {masses}")
+    # Determine the native time units (seconds or microseconds).
+    if step > 1e-6:
+        scale_to_seconds = 1e-6
+    else:
+        scale_to_seconds = 1.0
 
-        # || Step 3): Calculate the 200 times (T_i-s)  these masses should show up for a T_off = 0  and stretch A (best guess) T_i = T_off + A*sqrt(m_i) and set the closest t_i =1 to each of the calculated Ti-s, the rest stays zero.
+    time_seconds = time_offset * scale_to_seconds
+    time_ns = time_seconds * 1e9
 
-        # Guess a shift of zero
-        T_off = 0
+    # Identify the most prominent peaks in the spectrum.
+    prominence = max(np.ptp(tof) * 0.05, 1.0)
+    peaks, _ = find_peaks(tof, prominence=prominence)
 
-        # Guess a stretch of 1462 ns (electronics)
-        A = stretch
+    if len(peaks) < 3:
+        # Attempt a secondary search with a lower threshold.
+        peaks, _ = find_peaks(tof)
 
-        T_i = T_off + A*np.sqrt(masses)
+    if len(peaks) == 0:
+        # Fallback to a default mapping if no peaks are detected.
+        default_stretch_ns = 1450.0
+        mass_scale = _compute_mass_axis(time_ns, default_stretch_ns, 0.0)
+        return default_stretch_ns, 0.0, mass_scale
 
-        # Loop through the elements of T_i and set corresponding elements in t_i to 1
-        for idx in np.round(T_i).astype(int):
-            # if(0 <= idx < len(t_i) and (t_i[idx] in masses)):
-            if(0 <= idx < len(t_i)):
-                # print(idx)
-                t_i[idx] = 1
+    # Focus on the most intense peaks to drive the calibration.
+    peak_order = np.argsort(tof[peaks])[-min(len(peaks), 20):]
+    peak_times_ns = np.sort(time_ns[peaks][peak_order])
 
-        # || Step 4): Calculate the cross-correlation with the original TOF, the max will give you the best lag (T_off) for a given A.
+    def objective(params):
+        stretch_ns, shift_ns = params
+        if stretch_ns <= 0:
+            return 1e9
 
-        # Cross-correlate T_i with TOF
-        cross_correlation = np.correlate(t_i, TOF, mode='full')
+        shifted = peak_times_ns - shift_ns
+        if np.any(shifted <= 0):
+            return 1e9
 
-        # lags = np.linspace(1, len(cross_correlation), len(cross_correlation))
-        # plt.scatter(lags, cross_correlation)
-        # plt.xlabel("Lags", fontsize=14, fontweight="bold")
-        # plt.ylabel("Correlation", fontsize=14, fontweight="bold")
-        # plt.title(f"Correlation for stretch = {stretch}")
-        # plt.show()
+        masses = (shifted / stretch_ns) ** 2
 
-        # lags = np.linspace(1, len(TOF), len(TOF))
-        # plt.scatter(lags, t_i*TOF)
-        # plt.xlabel("Lags", fontsize=14, fontweight="bold")
-        # plt.ylabel(r"Product $t_{i} \cdot TOF$", fontsize=14, fontweight="bold")
-        # plt.title(f"Product for stretch = {stretch}")
-        # plt.show()
+        # Penalize masses outside the desired operating range.
+        penalty = 0.0
+        penalty += np.sum((1.0 - masses[masses < 1.0]) ** 2)
+        penalty += np.sum((masses[masses > 350.0] - 350.0) ** 2)
 
-        # Find the lag corresponding to the maximum correlation
-        best_lag = np.argmax(cross_correlation)
+        # Match peaks to the nearest known (integer) mass numbers.
+        diffs = masses[:, None] - available_masses[None, :]
+        nearest = available_masses[np.argmin(np.abs(diffs), axis=1)]
+        residual = masses - nearest
 
-        # Filter out lags outside the specified range
-        # if 0 <= best_lag <= 8000:
-        #     shift.append(best_lag)
-        #     corr.append(cross_correlation[np.argmax(cross_correlation)])
-    
+        # Encourage a realistic mass span across the entire waveform.
+        full_shifted = time_ns - shift_ns
+        if np.any(full_shifted > 0):
+            mass_full = (full_shifted[full_shifted > 0] / stretch_ns) ** 2
+            penalty += max(0.0, mass_full.max() - 400.0) ** 2
+            penalty += max(0.0, 1.0 - mass_full.min()) ** 2
+        else:
+            penalty += 1e6
 
-        # t_i = t_i - best_lag
+        return float(np.mean(residual ** 2) + 0.01 * penalty)
 
-        # print(f"||===Best Lag = {best_lag}===||")
-        shift.append(best_lag)
-        # print(f"||===Correlation = {cross_correlation[best_lag]}===||")
-        corr.append(cross_correlation[best_lag])
+    stretch_guess = 1450.0
+    shift_guess = max(0.0, peak_times_ns[0] - stretch_guess * np.sqrt(max(available_masses[0], 1)))
 
-        product.append(np.sum(t_i*TOF))
-        # print(f"||===STRETCH = {stretch}, LAG = {best_lag}, CORRELATION = {cross_correlation[best_lag]}")
+    bounds = [(800.0, 4000.0), (-500.0, max(time_ns[-1], 1000.0))]
+    result = minimize(objective, x0=[stretch_guess, shift_guess], bounds=bounds, method="L-BFGS-B")
 
+    if not result.success:
+        best_stretch_ns, best_shift_ns = stretch_guess, shift_guess
+    else:
+        best_stretch_ns, best_shift_ns = result.x
 
-    print(f"Best correlation = {max(corr)}, best stretch = {random_stretch[np.argmax(corr)]} best lag = {shift[np.argmax(corr)]}")
+    mass_scale = _compute_mass_axis(time_ns, best_stretch_ns, best_shift_ns)
 
-    # t = a*sqrt(m)
+    # Convert the temporal shift to seconds for downstream consumers.
+    shift_seconds = best_shift_ns * 1e-9
 
-    # plt.scatter(random_stretch, corr, c="black", label=r"Stretch parameter $\alpha$")
-    # plt.xlabel(r"Stretch parameter $\alpha \, [\frac{s^{2}}{amu}]$", fontsize=14, fontweight="bold")
-    # plt.ylabel("Correlation", fontsize=14, fontweight="bold")
-    # plt.show()
-
-
-    # plt.scatter(shift, corr, c="red", label=r"Shift parameter $t_{0}$")
-    # plt.xlabel(r"Shift parameter $t_{0}$ [s]", fontsize=14, fontweight="bold")
-    # plt.ylabel("Correlation", fontsize=14, fontweight="bold")
-    # plt.show()
-
-    # plt.scatter(shift, product, c="red", label=r"Shift parameter $t_{0}$")
-    # plt.xlabel(r"Shift parameter $t_{0}$ [s]", fontsize=14, fontweight="bold")
-    # plt.ylabel("Product", fontsize=14, fontweight="bold")
-    # plt.show()
-
-    # samplesize = 1e-9*.75  # Oscilloscope sampling rate
-    samplesize = 0.0038466235767167234e-6  # FM sampling rate (quartz oscillator)
-
-    mass_scale = [((time*1e-6-samplesize*shift[np.argmax(corr)])/(1e-9*random_stretch[np.argmax(corr)]))**2 for time in time]
-    # mass_scale = [((time-samplesize*9416)/(1e-9*1444))**2 for time in time]
-    # mass_scale = [((time*1e3)/(random_stretch[np.argmax(corr)]))**2 for time in time]
-
-    # print("mass scale max/min = ",min(mass_scale), " , ", max(mass_scale))
-    # print(f"&&&&&& mass scale = {mass_scale}")
+    return float(best_stretch_ns), float(shift_seconds), mass_scale
 
 
-    # best_lag is the lag that aligns T_i with TOF for the maximum correlation
+def _compute_mass_axis(time_ns: np.ndarray, stretch_ns: float, shift_ns: float) -> np.ndarray:
+    """Calculate the mass scale ensuring it remains in the physical range."""
 
-    # || Step 5): Use an extrema finder to get to the best A, alternatively, one could try optimizing for the two parameters simultaneously.
+    shifted = time_ns - shift_ns
+    masses = np.empty_like(time_ns, dtype=float)
+    valid = shifted > 0
+    masses[valid] = (shifted[valid] / stretch_ns) ** 2
+    masses[~valid] = 0.0
 
-
-
-    # fig, ax1 = plt.subplots()
-
-    # # Plotting TOF against mass_scale on the main axis
-    # ax1.plot(mass_scale, TOF, 'b-')
-    # ax1.set_xlabel('Mass Scale [amu]', fontsize=14)
-    # ax1.set_ylabel('TOF [dN]', fontsize=14)
-
-    # # Create a secondary x-axis for time
-    # secax = ax1.secondary_xaxis('top')
-    # secax.set_xlabel('Time [s]', fontsize=14)
-
-    # # Define tick positions and compute corresponding time values
-    # best_shift = shift[np.argmax(corr)]*1e-9
-    # best_stretch = random_stretch[np.argmax(corr)]*1e-9
-
-    # # Define tick positions and compute corresponding time values
-    # tick_positions = np.linspace(min(mass_scale), max(mass_scale), num=4)  # Adjust num as needed
-    # tick_labels = [f'{np.sqrt(t * best_stretch**2 + best_shift**2):.2e}' for t in tick_positions]
-
-
-    # secax.set_xticks(tick_positions)
-    # secax.set_xticklabels(tick_labels)
-
-    # plt.title('TOF vs Mass Scale and Time')
-    # plt.grid(True)
-    # plt.show()
-
-    # || Heatap for stretch and shift
-
-    # print('\n'.join(['*'] * 20))
-    # print(f"stretch = {random_stretch}, \n shift = {shift}, \n corr = {corr}")
-    random_stretch = np.array(random_stretch)
-    shift = np.array(shift)
-    # corr_matrix = np.array(corr)
-    
-    # Initialize corr_values array
-    corr_values = np.zeros((len(random_stretch), len(shift)))
-
-    # Compute correlation values
-    for i in range(len(random_stretch)):
-        for j in range(len(shift)):
-
-            # Convert lists to arrays for calculations
-            temp_mass_scale = np.array([(time - samplesize * shift[j]) / (1e-9 * random_stretch[i])**2 for time in time])
-            
-            # Ensure mass_scale is also a NumPy array
-            mass_scale_array = np.array(mass_scale)
-            
-            # Check that temp_mass_scale and mass_scale have the same length
-            if len(temp_mass_scale) != len(mass_scale_array):
-                raise ValueError(f"Length mismatch: temp_mass_scale has length {len(temp_mass_scale)}, but mass_scale has length {len(mass_scale_array)}")
-
-            # Compute the correlation value
-            corr_values[i, j] = np.sum(temp_mass_scale - mass_scale_array)
-
-
-    # Plotting
-    # plt.figure(figsize=(10, 8))
-    # plt.imshow(corr_values, extent=[shift.min(), shift.max(), random_stretch.min(), random_stretch.max()],
-    #         origin='lower', cmap='magma', aspect='auto')
-    # plt.colorbar(label='Correlation Value')
-
-    # plt.ylabel(r'Stretch $\alpha$ [ns]', fontsize=20, fontweight="bold")
-    # plt.xlabel('Shift $t_{0}$ [ns]', fontsize=20, fontweight="bold")
-    # plt.title('Correlation Map', fontsize=20, fontweight="bold")
-    # plt.show()
-    return random_stretch[np.argmax(corr)], samplesize*shift[np.argmax(corr)], mass_scale_array
+    masses = np.clip(masses, 0.0, 400.0)
+    return masses
 
     # ||
     # ||
