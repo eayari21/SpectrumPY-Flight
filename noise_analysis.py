@@ -168,11 +168,14 @@ class NoiseAnalysisWindow(QMainWindow):
 
         layout.addWidget(selection_card)
 
-        self.figure = Figure(figsize=(11, 7), constrained_layout=True)
+        self.figure = Figure(figsize=(11, 8), constrained_layout=True)
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.axes_hist = self.figure.add_subplot(2, 1, 1)
-        self.axes_power = self.figure.add_subplot(2, 1, 2)
+
+        grid = self.figure.add_gridspec(3, 1, height_ratios=[1, 1, 1])
+        self.axes_hist = self.figure.add_subplot(grid[0])
+        self.axes_power = self.figure.add_subplot(grid[1])
+        self.axes_autocorr = self.figure.add_subplot(grid[2])
 
         self.nav_toolbar = NavigationToolbar2QT(self.canvas, self)
         self.nav_toolbar.setStyleSheet("font-size: 13px; padding: 6px;")
@@ -323,6 +326,36 @@ class NoiseAnalysisWindow(QMainWindow):
         self.axes_power.grid(True, alpha=0.3)
         self.axes_power.tick_params(axis="both", labelsize=12, width=1.2, length=6)
 
+        # Autocorrelation function
+        self.axes_autocorr.cla()
+        autocorr_full = np.correlate(detrended, detrended, mode="full")
+        autocorr = autocorr_full[autocorr_full.size // 2 :]
+        if autocorr.size:
+            normalization = np.arange(signal.size, 0, -1, dtype=float)
+            autocorr = autocorr[: normalization.size] / normalization
+            variance = float(np.var(detrended))
+            if variance > 0:
+                autocorr = autocorr / variance
+
+        if autocorr.size:
+            if dt and dt > 0:
+                lags = np.arange(autocorr.size) * dt
+                xlabel = "Lag (time)"
+            else:
+                lags = np.arange(autocorr.size)
+                xlabel = "Lag (samples)"
+            self.axes_autocorr.plot(lags, autocorr, color="#2f9e44", linewidth=2.0)
+            self.axes_autocorr.set_xlim(left=0)
+        else:
+            xlabel = "Lag"
+
+        self.axes_autocorr.set_title(f"{channel} Autocorrelation", fontsize=16, fontweight="bold")
+        self.axes_autocorr.set_xlabel(xlabel)
+        self.axes_autocorr.set_ylabel("Autocorr")
+        self.axes_autocorr.set_facecolor("#f8f9fb")
+        self.axes_autocorr.grid(True, alpha=0.3)
+        self.axes_autocorr.tick_params(axis="both", labelsize=12, width=1.2, length=6)
+
         poisson = float(np.sqrt(abs(np.mean(np.clip(signal, a_min=0.0, a_max=None)))))
         rms = float(np.sqrt(np.mean(detrended**2)))
 
@@ -367,8 +400,9 @@ class NoiseAnalysisWindow(QMainWindow):
     def _clear_axes(self, message: str) -> None:
         self.axes_hist.cla()
         self.axes_power.cla()
+        self.axes_autocorr.cla()
 
-        for ax in (self.axes_hist, self.axes_power):
+        for ax in (self.axes_hist, self.axes_power, self.axes_autocorr):
             ax.set_facecolor("#f8f9fb")
             ax.grid(False)
             ax.text(0.5, 0.5, message, ha="center", va="center", transform=ax.transAxes, fontsize=15)
