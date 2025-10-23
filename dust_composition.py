@@ -26,6 +26,8 @@ from __future__ import annotations
 import csv
 import html
 import math
+import re
+import unicodedata
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -287,6 +289,376 @@ def _load_mass_reference() -> List[Tuple[float, str]]:
 MASS_REFERENCE = _load_mass_reference()
 
 
+ELEMENT_PATTERN = re.compile(r"[A-Z][a-z]?")
+KNOWN_ELEMENTS = {
+    "H",
+    "He",
+    "Li",
+    "Be",
+    "B",
+    "C",
+    "N",
+    "O",
+    "F",
+    "Ne",
+    "Na",
+    "Mg",
+    "Al",
+    "Si",
+    "P",
+    "S",
+    "Cl",
+    "Ar",
+    "K",
+    "Ca",
+    "Sc",
+    "Ti",
+    "V",
+    "Cr",
+    "Mn",
+    "Fe",
+    "Co",
+    "Ni",
+    "Cu",
+    "Zn",
+    "Ga",
+    "Ge",
+    "As",
+    "Se",
+    "Br",
+    "Kr",
+    "Rb",
+    "Sr",
+    "Y",
+    "Zr",
+    "Nb",
+    "Mo",
+    "Tc",
+    "Ru",
+    "Rh",
+    "Pd",
+    "Ag",
+    "Cd",
+    "In",
+    "Sn",
+    "Sb",
+    "Te",
+    "I",
+    "Xe",
+    "Cs",
+    "Ba",
+    "La",
+    "Ce",
+    "Pr",
+    "Nd",
+    "Pm",
+    "Sm",
+    "Eu",
+    "Gd",
+    "Tb",
+    "Dy",
+    "Ho",
+    "Er",
+    "Tm",
+    "Yb",
+    "Lu",
+    "Hf",
+    "Ta",
+    "W",
+    "Re",
+    "Os",
+    "Ir",
+    "Pt",
+    "Au",
+    "Hg",
+    "Tl",
+    "Pb",
+    "Bi",
+    "Po",
+    "At",
+    "Rn",
+    "Fr",
+    "Ra",
+    "Ac",
+    "Th",
+    "Pa",
+    "U",
+    "Np",
+    "Pu",
+    "Am",
+    "Cm",
+    "Bk",
+    "Cf",
+    "Es",
+    "Fm",
+    "Md",
+    "No",
+    "Lr",
+    "Rf",
+    "Db",
+    "Sg",
+    "Bh",
+    "Hs",
+    "Mt",
+    "Ds",
+    "Rg",
+    "Cn",
+    "Nh",
+    "Fl",
+    "Mc",
+    "Lv",
+    "Ts",
+    "Og",
+}
+
+
+def _normalise_formula(formula: str) -> str:
+    simplified = unicodedata.normalize("NFKD", formula or "")
+    ascii_text = simplified.encode("ascii", "ignore").decode("ascii")
+    ascii_text = ascii_text.replace(" ", "")
+    ascii_text = ascii_text.replace("-", "")
+    ascii_text = ascii_text.replace("~", "")
+    ascii_text = ascii_text.replace("_", "")
+    ascii_text = ascii_text.replace(".", "")
+    return ascii_text
+
+
+def _coerce_element(symbol: str) -> Optional[str]:
+    if not symbol:
+        return None
+    if symbol in KNOWN_ELEMENTS:
+        return symbol
+    if len(symbol) == 2 and symbol[1] in {"x", "y", "z"}:
+        base = symbol[0]
+        if base in KNOWN_ELEMENTS:
+            return base
+    if len(symbol) > 1:
+        base = symbol[0]
+        if base in KNOWN_ELEMENTS:
+            return base
+    return symbol if symbol in KNOWN_ELEMENTS else None
+
+
+def _formula_to_elements(formula: str) -> Tuple[str, ...]:
+    tokens = set()
+    cleaned = _normalise_formula(formula)
+    for match in ELEMENT_PATTERN.findall(cleaned):
+        element = _coerce_element(match)
+        if element:
+            tokens.add(element)
+    return tuple(sorted(tokens))
+
+
+@dataclass(frozen=True)
+class SampleDefinition:
+    category: str
+    name: str
+    formula: str
+    elements: Tuple[str, ...]
+
+
+SAMPLE_DATA: Tuple[Tuple[str, str, str], ...] = (
+    ("Silicate", "Forsterite (olivine endmember)", "Mg2SiO4"),
+    ("Silicate", "Fayalite (olivine endmember)", "Fe2SiO4"),
+    ("Silicate", "Olivine (solid solution)", "MgFeSiO"),
+    ("Silicate", "Enstatite (OPX)", "MgSiO"),
+    ("Silicate", "Ferrosilite (OPX)", "FeSiO"),
+    ("Silicate", "Pigeonite (CPX)", "MgFeCaSiO"),
+    ("Silicate", "Diopside (CPX)", "CaMgSiO"),
+    ("Silicate", "Hedenbergite (CPX)", "CaFeSiO"),
+    ("Silicate", "Augite (CPX)", "CaNaMgFeAlTiSiO"),
+    ("Silicate", "Anorthite (feldspar)", "CaAlSiO"),
+    ("Silicate", "Albite (feldspar)", "NaAlSiO"),
+    ("Silicate", "Orthoclase (feldspar)", "KAlSiO"),
+    ("Silicate", "Labradorite (feldspar SS)", "NaCaAlSiO"),
+    ("Silicate", "Quartz / silica polymorphs", "SiO"),
+    ("Silicate", "Amorphous silicate (GEMS-like)", "MgFeSiO"),
+    ("Hydrated silicate", "Serpentine", "MgSiOH"),
+    ("Hydrated silicate", "Saponite (smectite)", "CaMgFeSiAlOH"),
+    ("Hydrated silicate", "Montmorillonite (smectite)", "NaCaAlMgSiOH"),
+    ("Hydrated silicate", "Chlorite", "MgFeAlSiOH"),
+    ("Oxide/Spinel", "Magnetite", "FeO"),
+    ("Oxide/Spinel", "Hematite", "FeO"),
+    ("Oxide/Spinel", "Wollastonite", "FeO"),
+    ("Oxide/Spinel", "Corundum", "AlO"),
+    ("Oxide/Spinel", "Spinel", "MgAlO"),
+    ("Oxide/Spinel", "Chromite", "FeCrO"),
+    ("Oxide/Spinel", "Ilmenite", "FeTiO"),
+    ("Oxide/Spinel", "Rutile", "TiO"),
+    ("Oxide/Spinel", "Periclase", "MgO"),
+    ("Oxide/Spinel", "Hercynite", "FeAlO"),
+    ("Sulfide", "Troilite", "FeS"),
+    ("Sulfide", "Pyrrhotite", "FeS"),
+    ("Sulfide", "Pentlandite", "FeNiS"),
+    ("Sulfide", "Pyrite", "FeS"),
+    ("Sulfide", "Oldhamite", "CaS"),
+    ("Sulfide", "Niningerite", "MgFeS"),
+    ("Sulfide", "Sphalerite", "ZnS"),
+    ("Sulfide", "Galena", "PbS"),
+    ("Sulfide", "Cubanite", "CuFeS"),
+    ("Metal/Alloy", "Fe-Ni metal (kamacite/taenite)", "FeNi"),
+    ("Metal/Alloy", "Kamacite", "FeNi"),
+    ("Metal/Alloy", "Taenite", "FeNi"),
+    ("Metal/Alloy", "Nickel", "Ni"),
+    ("Metal/Alloy", "Cobalt", "Co"),
+    ("Carbide/Nitride/Boride", "Silicon carbide (moissanite)", "SiC"),
+    ("Carbide/Nitride/Boride", "Titanium carbide", "TiC"),
+    ("Carbide/Nitride/Boride", "Graphite intergrowth with TiC (hibonite nodules context)", "CTi"),
+    ("Carbide/Nitride/Boride", "Silicon nitride", "SiN"),
+    ("Carbide/Nitride/Boride", "Titanium nitride", "TiN"),
+    ("Carbide/Nitride/Boride", "Boron carbide (rare)", "BC"),
+    ("Carbonaceous", "Graphite", "C"),
+    ("Carbonaceous", "Nanodiamond / diamond", "C"),
+    ("Carbonaceous", "Amorphous carbon", "C"),
+    ("Organic (simple)", "Polycyclic aromatic hydrocarbons (PAHs)", "CH"),
+    ("Organic (simple)", "Formaldehyde", "CHO"),
+    ("Organic (simple)", "Methanol", "CHO"),
+    ("Organic (simple)", "Formamide", "CHNO"),
+    ("Organic (simple)", "Hydrogen cyanide", "HCN"),
+    ("Organic (simple)", "Acetaldehyde", "CHO"),
+    ("Organic (simple)", "Acetonitrile", "CHN"),
+    ("Ice/Volatile", "Water ice", "HO"),
+    ("Ice/Volatile", "Carbon dioxide ice", "CO"),
+    ("Ice/Volatile", "Carbon monoxide ice", "CO"),
+    ("Ice/Volatile", "Methane ice", "CH"),
+    ("Ice/Volatile", "Ammonia ice", "NH"),
+    ("Ice/Volatile", "Molecular nitrogen ice", "N"),
+    ("Ice/Volatile", "Hydrogen sulfide ice", "HS"),
+    ("Ice/Volatile", "Sulfur dioxide ice", "SO"),
+    ("Carbonate", "Calcite", "CaCO"),
+    ("Carbonate", "Dolomite", "CaMgCO"),
+    ("Carbonate", "Magnesite", "MgCO"),
+    ("Carbonate", "Siderite", "FeCO"),
+    ("Sulfate", "Gypsum", "CaSOH"),
+    ("Sulfate", "Anhydrite", "CaSO"),
+    ("Sulfate", "Jarosite", "KFeSOH"),
+    ("Halide/Salt", "Halite", "NaCl"),
+    ("Halide/Salt", "Sylvite", "KCl"),
+    ("Halide/Salt", "Perchlorate (generic)", "ClO"),
+    ("Phosphate", "Apatite (fluor/hydroxyl/chloroapatite)", "CaPOFClH"),
+    ("Phosphate", "Whitlockite/Merrillite (meteoritic Ca-phosphates)", "CaMgFeNaPOH"),
+    ("Phosphide", "Schreibersite", "FeNiP"),
+    ("Presolar oxide", "Hibonite", "CaAlO"),
+    ("Presolar oxide", "Perovskite", "CaTiO"),
+    ("Presolar oxide", "Spinel (presolar)", "MgAlO"),
+    ("Presolar SiC", "Beta-SiC (mainstream presolar SiC)", "SiC"),
+)
+
+
+SAMPLE_LIBRARY: Tuple[SampleDefinition, ...] = tuple(
+    SampleDefinition(category=category, name=name, formula=formula, elements=_formula_to_elements(formula))
+    for category, name, formula in SAMPLE_DATA
+)
+
+SAMPLE_BY_NAME: Dict[str, SampleDefinition] = {sample.name: sample for sample in SAMPLE_LIBRARY}
+
+
+@dataclass(frozen=True)
+class SampleMatch:
+    sample: SampleDefinition
+    coverage: float
+    score: float
+
+
+@dataclass(frozen=True)
+class MixtureMatch:
+    primary: SampleDefinition
+    secondary: SampleDefinition
+    fractions: Tuple[float, float]
+    coverage: float
+    score: float
+
+
+def _element_weights_from_lines(mass_lines: Sequence["MassLineFit"]) -> Dict[str, float]:
+    weights: Dict[str, float] = {}
+    for line in mass_lines:
+        if not math.isfinite(line.abundance) or line.abundance <= 0.0:
+            continue
+        label = line.label or ""
+        elements = _formula_to_elements(label)
+        if not elements and math.isfinite(line.mass_guess):
+            elements = _formula_to_elements(nearest_mass_name(line.mass_guess))
+        if not elements:
+            continue
+        share = line.abundance / max(len(elements), 1)
+        for element in elements:
+            weights[element] = weights.get(element, 0.0) + share
+    if not weights:
+        return {}
+    normaliser = sum(weights.values())
+    if normaliser <= 0.0:
+        return weights
+    for element in list(weights):
+        weights[element] = max(weights[element] / normaliser, 0.0)
+    return weights
+
+
+def _rank_sample_matches(weights: Dict[str, float], limit: int = 8) -> List[SampleMatch]:
+    if not weights:
+        return []
+    observed_elements = set(weights)
+    matches: List[SampleMatch] = []
+    for sample in SAMPLE_LIBRARY:
+        sample_elements = set(sample.elements)
+        if not sample_elements:
+            continue
+        overlap = sample_elements & observed_elements
+        if not overlap:
+            continue
+        coverage = sum(weights.get(elem, 0.0) for elem in sample_elements)
+        balance = len(overlap) / len(sample_elements)
+        penalty = 0.02 * len(sample_elements - observed_elements)
+        score = max(coverage * (0.5 + 0.5 * balance) - penalty, 0.0)
+        if score <= 0.0:
+            continue
+        matches.append(SampleMatch(sample=sample, coverage=coverage, score=score))
+    matches.sort(key=lambda match: (match.score, match.coverage), reverse=True)
+    return matches[:limit]
+
+
+def _best_mixture_match(weights: Dict[str, float], candidates: Sequence[SampleMatch]) -> Optional[MixtureMatch]:
+    if not weights or len(candidates) < 2:
+        return None
+    observed_elements = set(weights)
+    best: Optional[MixtureMatch] = None
+    best_score = 0.0
+    for idx, first in enumerate(candidates[:-1]):
+        first_elements = set(first.sample.elements)
+        for second in candidates[idx + 1 :]:
+            second_elements = set(second.sample.elements)
+            union = first_elements | second_elements
+            overlap = union & observed_elements
+            if not overlap:
+                continue
+            coverage = sum(weights.get(elem, 0.0) for elem in union)
+            balance = len(overlap) / len(union)
+            score = coverage * (0.5 + 0.5 * balance)
+            if score <= best_score:
+                continue
+            first_contrib = sum(weights.get(elem, 0.0) for elem in first_elements)
+            second_contrib = sum(weights.get(elem, 0.0) for elem in second_elements)
+            total = first_contrib + second_contrib
+            if total <= 0.0:
+                fractions = (0.5, 0.5)
+            else:
+                fractions = (first_contrib / total, second_contrib / total)
+            best = MixtureMatch(
+                primary=first.sample,
+                secondary=second.sample,
+                fractions=fractions,
+                coverage=coverage,
+                score=score,
+            )
+            best_score = score
+    return best
+
+
+def analyse_sample_matches(mass_lines: Sequence["MassLineFit"]) -> Tuple[Optional[SampleMatch], Optional[MixtureMatch]]:
+    weights = _element_weights_from_lines(mass_lines)
+    matches = _rank_sample_matches(weights)
+    best = matches[0] if matches else None
+    mixture = _best_mixture_match(weights, matches[:6]) if matches else None
+    return best, mixture
 SPECIES_CHOICES: List[Tuple[str, float]] = [
     ("1H", 1.008),
     ("2H", 2.014),
@@ -1042,6 +1414,10 @@ class DustCompositionWindow(QMainWindow):
         self._mass_lines: List[MassLineFit] = []
         self._mass_line_counter = 0
         self._selected_line_id: Optional[int] = None
+        self._manual_sample_guess: Optional[str] = None
+        self._auto_sample_match: Optional[SampleMatch] = None
+        self._auto_mixture_match: Optional[MixtureMatch] = None
+        self._block_sample_guess_signal = False
 
         self._combined_axis = None
         self._combined_time_axis = None
@@ -1515,6 +1891,16 @@ class DustCompositionWindow(QMainWindow):
         self.sample_guess_label = QLabel("Sample guess: –", box)
         self.sample_guess_label.setWordWrap(True)
         layout.addWidget(self.sample_guess_label)
+        self.sample_guess_combo = QComboBox(box)
+        self.sample_guess_combo.setEditable(True)
+        self.sample_guess_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.sample_guess_combo.setToolTip("Select a material from the reference library or enter your own description.")
+        self.sample_guess_combo.addItem("Auto (closest match)", userData=None)
+        for sample in SAMPLE_LIBRARY:
+            self.sample_guess_combo.addItem(f"{sample.category} — {sample.name}", userData=sample.name)
+        self.sample_guess_combo.currentIndexChanged.connect(self._on_sample_guess_changed)
+        self.sample_guess_combo.editTextChanged.connect(self._on_sample_guess_text_changed)
+        layout.addWidget(self.sample_guess_combo)
         self.control_layout.addWidget(box)
 
     # ---- Event handlers -------------------------------------------------
@@ -2195,6 +2581,29 @@ class DustCompositionWindow(QMainWindow):
             self.remove_mass_button.setEnabled(has_selection)
         self._refresh_assignment_display()
 
+    def _on_sample_guess_changed(self, index: int) -> None:
+        if self._block_sample_guess_signal:
+            return
+        data = self.sample_guess_combo.itemData(index)
+        if isinstance(data, str) and data:
+            self._manual_sample_guess = data
+        elif index == 0:
+            self._manual_sample_guess = None
+        else:
+            text = self.sample_guess_combo.currentText().strip()
+            self._manual_sample_guess = text or None
+        self._update_summary()
+
+    def _on_sample_guess_text_changed(self, text: str) -> None:
+        if self._block_sample_guess_signal:
+            return
+        cleaned = text.strip()
+        if not cleaned or cleaned.lower() == "auto (closest match)":
+            self._manual_sample_guess = None
+        else:
+            self._manual_sample_guess = cleaned
+        self._update_summary()
+
     def add_mass_line(self, x_min: float, x_max: float) -> None:
         if self._combined is None:
             return
@@ -2395,12 +2804,59 @@ class DustCompositionWindow(QMainWindow):
                     item = QTableWidgetItem()
                     self.summary_table.setItem(row, col, item)
                 item.setText(str(value))
-        if entries:
-            guesses = [f"{line.label} ({line.abundance * 100.0:.1f}%)" for line in entries[:3]]
-            text = "Sample guess: " + ", ".join(guesses)
+        best_match, mixture_match = analyse_sample_matches(entries)
+        self._auto_sample_match = best_match
+        self._auto_mixture_match = mixture_match
+        def _format_match(match: Optional[SampleMatch]) -> Optional[str]:
+            if not match:
+                return None
+            return f"{match.sample.name} ({match.coverage * 100.0:.0f}% elemental match)"
+
+        def _format_mixture(match: Optional[MixtureMatch]) -> Optional[str]:
+            if not match:
+                return None
+            primary_frac = match.fractions[0] * 100.0
+            secondary_frac = match.fractions[1] * 100.0
+            parts = [
+                f"{primary_frac:.0f}% {match.primary.name}",
+                f"{secondary_frac:.0f}% {match.secondary.name}",
+            ]
+            description = " + ".join(parts)
+            if match.coverage > 0.0:
+                description += f" ({match.coverage * 100.0:.0f}% elemental match)"
+            return description
+
+        auto_text = _format_match(best_match)
+        mixture_text = _format_mixture(mixture_match)
+        if self._manual_sample_guess:
+            lines = [f"Sample guess (manual): {self._manual_sample_guess}"]
+            if auto_text:
+                lines.append(f"Auto suggestion: {auto_text}")
+            if mixture_text:
+                lines.append(f"Mixture suggestion: {mixture_text}")
         else:
-            text = "Sample guess: insufficient data"
-        self.sample_guess_label.setText(text)
+            if auto_text:
+                lines = [f"Sample guess: {auto_text}"]
+                if mixture_text:
+                    lines.append(f"Mixture suggestion: {mixture_text}")
+            else:
+                lines = ["Sample guess: insufficient data"]
+        self.sample_guess_label.setText("\n".join(lines))
+        self._block_sample_guess_signal = True
+        if self._manual_sample_guess:
+            index = -1
+            for row in range(1, self.sample_guess_combo.count()):
+                data = self.sample_guess_combo.itemData(row)
+                if isinstance(data, str) and data == self._manual_sample_guess:
+                    index = row
+                    break
+            if index >= 0:
+                self.sample_guess_combo.setCurrentIndex(index)
+            else:
+                self.sample_guess_combo.setEditText(self._manual_sample_guess)
+        else:
+            self.sample_guess_combo.setCurrentIndex(0)
+        self._block_sample_guess_signal = False
 
     # ---- Persistence ----------------------------------------------------
     def _save_to_file(self) -> None:
