@@ -1152,7 +1152,14 @@ class HDFDataExplorer(QWidget):
             if np.count_nonzero(mask) == 0:
                 axis.text(0.5, 0.5, "No epoch/time metadata for selected scalars.", ha="center", va="center", transform=axis.transAxes)
             else:
-                axis.plot(epochs[mask], values[mask], marker="o", markersize=5, linewidth=1.4, color="#2563eb")
+                axis.scatter(
+                    epochs[mask],
+                    values[mask],
+                    s=36,
+                    color="#2563eb",
+                    edgecolors="white",
+                    linewidths=0.5,
+                )
                 axis.set_xlabel("Epoch")
                 axis.set_ylabel(key)
         else:
@@ -1173,7 +1180,16 @@ class HDFDataExplorer(QWidget):
                     times = times_series[idx] if idx < len(times_series) else None
                     if times is None or times.size != value.size:
                         continue
-                    axis.plot(times, value, linewidth=1.0, label=f"Event {self.data_store.events[idx].event_name}")
+                    times_flat = np.asarray(times, dtype=float).ravel()
+                    value_flat = np.asarray(value, dtype=float).ravel()
+                    axis.scatter(
+                        times_flat,
+                        value_flat,
+                        s=25,
+                        label=f"Event {self.data_store.events[idx].event_name}",
+                        edgecolors="white",
+                        linewidths=0.4,
+                    )
                     plotted = True
 
                 if plotted:
@@ -1196,11 +1212,13 @@ class HDFDataExplorer(QWidget):
                         mask = np.isfinite(epochs_flat) & np.isfinite(values_flat)
                         if np.count_nonzero(mask) == 0:
                             continue
-                        axis.plot(
+                        axis.scatter(
                             epochs_flat[mask],
                             values_flat[mask],
-                            linewidth=1.0,
+                            s=25,
                             label=f"Event {self.data_store.events[idx].event_name}",
+                            edgecolors="white",
+                            linewidths=0.4,
                         )
                         plotted = True
 
@@ -1231,13 +1249,13 @@ class HDFDataExplorer(QWidget):
                     order = np.argsort(epoch_times)
                     ordered_epochs = np.asarray(epoch_times)[order]
                     ordered_values = np.asarray(epoch_values)[order]
-                    axis.plot(
+                    axis.scatter(
                         ordered_epochs,
                         ordered_values,
-                        marker="o",
-                        markersize=5,
-                        linewidth=1.4,
+                        s=36,
                         color="#2563eb",
+                        edgecolors="white",
+                        linewidths=0.5,
                     )
                     axis.set_xlabel("Epoch")
                     axis.set_ylabel(key)
