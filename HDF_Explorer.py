@@ -105,6 +105,7 @@ class DataStore:
     arrays: Dict[str, List[Optional[np.ndarray]]] = field(default_factory=dict)
     array_time_keys: Dict[str, Optional[str]] = field(default_factory=dict)
     dataset_paths: Dict[str, str] = field(default_factory=dict)
+    metadata_epoch_key: Optional[str] = None
 
     def append_event(self, record: EventRecord) -> int:
         index = len(self.events)
@@ -688,7 +689,11 @@ class HDFDataExplorer(QWidget):
             if self._slicer_window is not None:
                 self._slicer_window.set_axis_items(scalar_labels)
 
-        timeseries_labels = sorted(self.data_store.scalars.keys()) + sorted(self.data_store.arrays.keys())
+        scalar_labels = sorted(self.data_store.scalars.keys())
+        array_labels = sorted(
+            key for key in self.data_store.arrays.keys() if not _is_time_dataset(key)
+        )
+        timeseries_labels = scalar_labels + array_labels
         if timeseries_labels:
             self.timeseries_combo.blockSignals(True)
             current = self.timeseries_combo.currentText()
@@ -746,25 +751,31 @@ class HDFDataExplorer(QWidget):
                         )
 
                         analysis = group.get("Analysis")
-                        if not isinstance(analysis, h5py.Group):
-                            continue
+                        if isinstance(analysis, h5py.Group):
+                            datasets = self._collect_group_datasets(analysis)
+                            if datasets:
+                                self._process_event_datasets(
+                                    store,
+                                    event_index,
+                                    group_name=f"{group.name}/Analysis",
+                                    datasets=datasets,
+                                )
 
-                        datasets: Dict[str, np.ndarray] = {}
-                        for name, dataset in analysis.items():
-                            if not isinstance(dataset, h5py.Dataset):
-                                continue
-                            try:
-                                data = np.array(dataset[()])
-                            except Exception:
-                                continue
-                            datasets[name] = data
-
-                        self._process_event_datasets(
-                            store,
-                            event_index,
-                            group_name=group.name,
-                            datasets=datasets,
-                        )
+                        metadata = group.get("Metadata")
+                        if isinstance(metadata, h5py.Group):
+                            meta_datasets = self._collect_group_datasets(metadata)
+                            if meta_datasets:
+                                self._process_event_datasets(
+                                    store,
+                                    event_index,
+                                    group_name=f"{group.name}/Metadata",
+                                    datasets=meta_datasets,
+                                    label_prefix="Metadata/",
+                                    category="metadata",
+                                )
+                                epoch_override = self._metadata_epoch_from(meta_datasets)
+                                if epoch_override is not None:
+                                    store.events[event_index].epoch = epoch_override
 
                 continue
 
@@ -799,6 +810,19 @@ class HDFDataExplorer(QWidget):
         return store
 
     # ------------------------------------------------------------------
+    def _collect_group_datasets(self, group: h5py.Group) -> Dict[str, np.ndarray]:
+        datasets: Dict[str, np.ndarray] = {}
+        for name, dataset in group.items():
+            if not isinstance(dataset, h5py.Dataset):
+                continue
+            try:
+                data = np.array(dataset[()])
+            except Exception:
+                continue
+            datasets[name] = data
+        return datasets
+
+    # ------------------------------------------------------------------
     def _extract_epoch(self, group: h5py.Group) -> Optional[float]:
         for name in ("Epoch", "epoch", "EventEpoch"):
             if name in group:
@@ -813,7 +837,56 @@ class HDFDataExplorer(QWidget):
                     value = float(np.ravel(data)[0])
                     if math.isfinite(value):
                         return value
+        metadata = group.get("Metadata")
+        if isinstance(metadata, h5py.Group):
+            meta_datasets = self._collect_group_datasets(metadata)
+            return self._metadata_epoch_from(meta_datasets)
         return None
+
+    # ------------------------------------------------------------------
+    def _metadata_epoch_from(self, datasets: Dict[str, np.ndarray]) -> Optional[float]:
+        for key in ("EPOCH", "Epoch", "epoch", "EventEpoch"):
+            if key in datasets:
+                return self._first_finite_value(datasets[key])
+        for name, array in datasets.items():
+            if "epoch" in name.lower():
+                value = self._first_finite_value(array)
+                if value is not None:
+                    return value
+        return None
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _first_finite_value(array: np.ndarray) -> Optional[float]:
+        if array.size == 0:
+            return None
+        flattened = np.asarray(array, dtype=float).ravel()
+        finite = flattened[np.isfinite(flattened)]
+        if finite.size == 0:
+            return None
+        return float(finite[0])
+
+    # ------------------------------------------------------------------
+    def _event_epoch_series(self) -> np.ndarray:
+        epochs: List[float] = []
+        metadata_key = self.data_store.metadata_epoch_key
+        metadata_series = self.data_store.arrays.get(metadata_key, []) if metadata_key else None
+        for idx, record in enumerate(self.data_store.events):
+            epoch_value = record.epoch
+            if (epoch_value is None or not math.isfinite(epoch_value)) and metadata_series:
+                if idx < len(metadata_series):
+                    candidate = metadata_series[idx]
+                    if candidate is not None:
+                        replacement = self._first_finite_value(candidate)
+                        if replacement is not None:
+                            epoch_value = replacement
+            if epoch_value is None or not math.isfinite(epoch_value):
+                epochs.append(math.nan)
+            else:
+                epochs.append(float(epoch_value))
+        if not epochs:
+            return np.array([])
+        return np.asarray(epochs, dtype=float)
 
     # ------------------------------------------------------------------
     def _process_event_datasets(
@@ -823,28 +896,34 @@ class HDFDataExplorer(QWidget):
         *,
         group_name: str,
         datasets: Dict[str, np.ndarray],
+        label_prefix: str = "",
+        category: str = "analysis",
     ) -> None:
         time_series: Dict[str, np.ndarray] = {}
         value_series: Dict[str, np.ndarray] = {}
 
         for name, array in datasets.items():
-            full_path = f"{group_name}/Analysis/{name}"
-            store.dataset_paths.setdefault(name, full_path)
+            full_path = f"{group_name}/{name}"
+            label = f"{label_prefix}{name}" if label_prefix else name
+            store.dataset_paths.setdefault(label, full_path)
 
             if array.ndim == 0 or array.size == 1:
-                series = store.ensure_scalar_entry(name)
+                series = store.ensure_scalar_entry(label)
                 series[event_index] = float(np.ravel(array)[0])
                 continue
 
             lowered = name.lower()
             if any(suffix in lowered for suffix in FIT_PARAM_SUFFIXES):
-                self._ingest_fit_parameters(store, event_index, name, full_path, array)
+                self._ingest_fit_parameters(store, event_index, label, full_path, array)
                 continue
 
             if _is_time_dataset(name):
-                time_series[name] = np.ravel(array)
+                flattened = np.ravel(array)
+                time_series[label] = flattened
+                if category == "metadata" and store.metadata_epoch_key is None and "epoch" in lowered:
+                    store.metadata_epoch_key = label
             else:
-                value_series[name] = np.array(array)
+                value_series[label] = np.array(array)
 
         for name, arr in value_series.items():
             series = store.ensure_array_entry(name)
@@ -1016,7 +1095,7 @@ class HDFDataExplorer(QWidget):
             return
 
         if key in self.data_store.scalars:
-            epochs = np.array([event.epoch if event.epoch is not None else np.nan for event in self.data_store.events])
+            epochs = self._event_epoch_series()
             values = np.asarray(self.data_store.scalars[key], dtype=float)
             mask = np.isfinite(epochs) & np.isfinite(values)
             if np.count_nonzero(mask) == 0:
@@ -1029,6 +1108,11 @@ class HDFDataExplorer(QWidget):
             values_series = self.data_store.arrays.get(key, [])
             time_key = self.data_store.array_time_keys.get(key)
             times_series = self.data_store.arrays.get(time_key, []) if time_key else None
+            metadata_epoch_series = (
+                self.data_store.arrays.get(self.data_store.metadata_epoch_key, [])
+                if self.data_store.metadata_epoch_key
+                else None
+            )
 
             plotted = False
             if times_series:
@@ -1047,10 +1131,35 @@ class HDFDataExplorer(QWidget):
                     axis.set_ylabel(key)
 
             if not plotted:
-                epochs = np.array(
-                    [event.epoch if event.epoch is not None else np.nan for event in self.data_store.events],
-                    dtype=float,
-                )
+                if metadata_epoch_series:
+                    for idx, value in enumerate(values_series):
+                        if value is None or value.size == 0 or idx >= len(metadata_epoch_series):
+                            continue
+                        epochs_arr = metadata_epoch_series[idx]
+                        if epochs_arr is None or np.size(epochs_arr) == 0:
+                            continue
+                        epochs_flat = np.asarray(epochs_arr, dtype=float).ravel()
+                        values_flat = np.asarray(value, dtype=float).ravel()
+                        if epochs_flat.size != values_flat.size:
+                            continue
+                        mask = np.isfinite(epochs_flat) & np.isfinite(values_flat)
+                        if np.count_nonzero(mask) == 0:
+                            continue
+                        axis.plot(
+                            epochs_flat[mask],
+                            values_flat[mask],
+                            linewidth=1.0,
+                            label=f"Event {self.data_store.events[idx].event_name}",
+                        )
+                        plotted = True
+
+                    if plotted:
+                        axis.legend(loc="upper right", fontsize=8)
+                        axis.set_xlabel("Epoch")
+                        axis.set_ylabel(key)
+
+            if not plotted:
+                epochs = self._event_epoch_series()
                 epoch_values: List[float] = []
                 epoch_times: List[float] = []
 
