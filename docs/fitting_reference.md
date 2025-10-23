@@ -59,6 +59,12 @@ where $\Delta t_1 = d / v$ is the transit across an aperture, $\Delta t_2 = (\el
 
 Within the Qt viewer, each `HDF5DataSource`/`CDFDataSource` instance scans `/event/Analysis` groups for arrays whose normalised names contain `fit`, splitting the products into time bases, best-fit values, and saved parameter vectors. Any manual override applied in the UI is written back via `_recalculate_fit` so follow-up loads replay the revised solution.【F:IDEX-quicklook.py†L1009-L1220】【F:IDEX-quicklook.py†L2303-L2831】
 
+### 1.6 Mass line shape library
+
+Mass composition workflows rely on a shared catalogue of analytic line shapes implemented in `line_shapes.py`. The module provides Gaussian, Lorentzian, Voigt, EMG, double-EMG, HyperEMG, and generalised-normal profiles with consistent area-normalisation so integrated abundances remain comparable across species.【F:line_shapes.py†L17-L126】 The dust composition UI layers additional metadata on top of those primitives—each line shape advertises the parameter labels, tooltips, and any auxiliary controls (for example secondary time constants or weight lists) needed to collect user input.【F:dust_composition.py†L1387-L1478】
+
+When you inspect a mass line, the dialog evaluates the selected shape against a dense time grid, annotates the waveform overlay, and updates abundance estimates by integrating the analytic curve within the chosen time window. Abundances are normalised against the baseline-corrected TOF energy so changing line shapes or tail parameters directly feeds into the percentage summaries and exported tables.【F:dust_composition.py†L3208-L3295】【F:dust_composition.py†L3336-L3484】
+
 ## 2. Command-line entry points
 
 Every script that exposes an `argparse` interface is listed below. Commands assume you are in the repository root and your environment satisfies GUI or packet dependencies as needed.
