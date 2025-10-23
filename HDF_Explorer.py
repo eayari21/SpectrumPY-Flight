@@ -14,7 +14,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import importlib.util
 
@@ -834,8 +834,8 @@ class HDFDataExplorer(QWidget):
                         continue
                     if data.size == 0:
                         continue
-                    value = float(np.ravel(data)[0])
-                    if math.isfinite(value):
+                    value = self._scalar_from_array(data)
+                    if value is not None and math.isfinite(value):
                         return value
         metadata = group.get("Metadata")
         if isinstance(metadata, h5py.Group):
@@ -857,14 +857,63 @@ class HDFDataExplorer(QWidget):
 
     # ------------------------------------------------------------------
     @staticmethod
+    def _coerce_scalar(value: Any) -> Optional[float]:
+        """Attempt to convert *value* to ``float`` without raising."""
+
+        if np.ma.is_masked(value):
+            return None
+        if isinstance(value, np.generic):
+            value = value.item()
+        if isinstance(value, (bytes, bytearray)):
+            try:
+                value = value.decode("utf-8", errors="ignore")
+            except UnicodeDecodeError:
+                return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            try:
+                return float(stripped)
+            except ValueError:
+                return None
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _scalar_from_array(array: np.ndarray) -> Optional[float]:
+        if array.size == 0:
+            return None
+        if np.ma.isMaskedArray(array):
+            compressed = array.compressed()
+            if compressed.size == 0:
+                return None
+            raw_value = compressed[0]
+        else:
+            raw_value = np.ravel(array)[0]
+        return HDFDataExplorer._coerce_scalar(raw_value)
+
+    # ------------------------------------------------------------------
+    @staticmethod
     def _first_finite_value(array: np.ndarray) -> Optional[float]:
         if array.size == 0:
             return None
-        flattened = np.asarray(array, dtype=float).ravel()
-        finite = flattened[np.isfinite(flattened)]
-        if finite.size == 0:
-            return None
-        return float(finite[0])
+        if np.ma.isMaskedArray(array):
+            iterable = array.compressed()
+        else:
+            iterable = np.ravel(array)
+        for value in iterable:
+            numeric = HDFDataExplorer._coerce_scalar(value)
+            if numeric is None:
+                continue
+            if math.isfinite(numeric):
+                return numeric
+        return None
 
     # ------------------------------------------------------------------
     def _event_epoch_series(self) -> np.ndarray:
@@ -909,7 +958,9 @@ class HDFDataExplorer(QWidget):
 
             if array.ndim == 0 or array.size == 1:
                 series = store.ensure_scalar_entry(label)
-                series[event_index] = float(np.ravel(array)[0])
+                scalar_value = self._scalar_from_array(array)
+                if scalar_value is not None:
+                    series[event_index] = scalar_value
                 continue
 
             lowered = name.lower()
