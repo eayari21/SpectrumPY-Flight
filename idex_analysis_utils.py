@@ -1,7 +1,7 @@
 """Utility helpers shared between IDEX analysis scripts."""
 from __future__ import annotations
 
-from typing import Dict, Iterable
+from typing import Callable, Dict, Iterable
 
 import numpy as np
 
@@ -20,22 +20,50 @@ RISE_METRIC_SUFFIXES: Dict[str, str] = {
 }
 
 
-def _interpolate_crossing(times: np.ndarray, values: np.ndarray, level: float) -> float:
-    """Return the interpolated time where ``values`` first cross ``level``."""
+def _interpolate_crossing(
+    times: np.ndarray,
+    values: np.ndarray,
+    level: float,
+    *,
+    rising: bool,
+) -> float:
+    """Return the interpolated time where ``values`` first cross ``level``.
+
+    The ``rising`` flag controls whether we look for the first sample on or above
+    (``rising=True``) or on or below (``rising=False``) the requested ``level``.
+    """
     if not np.isfinite(level):
         return float("nan")
 
-    above = np.where(values >= level)[0]
-    if above.size == 0:
+    if rising:
+        crossings = np.where(values >= level)[0]
+
+        def compare(y: float) -> bool:
+            return y < level
+
+    else:
+        crossings = np.where(values <= level)[0]
+
+        def compare(y: float) -> bool:
+            return y > level
+
+    if crossings.size == 0:
         return float("nan")
 
-    idx = int(above[0])
+    idx = int(crossings[0])
     if idx == 0:
         return float(times[0])
 
-    t0 = float(times[idx - 1])
+    prev_idx = idx - 1
+    while prev_idx >= 0 and not compare(values[prev_idx]):
+        prev_idx -= 1
+
+    if prev_idx < 0:
+        return float(times[idx])
+
+    t0 = float(times[prev_idx])
     t1 = float(times[idx])
-    y0 = float(values[idx - 1])
+    y0 = float(values[prev_idx])
     y1 = float(values[idx])
 
     if not np.isfinite(y0) or not np.isfinite(y1):
@@ -54,9 +82,10 @@ def compute_rise_metrics(
 ) -> Dict[str, float]:
     """Compute 10/90 rise metrics for the provided fit curve.
 
-    The threshold levels are defined as 10% and 90% of the peak amplitude of the
-    *baseline adjusted* curve.  This matches the visual requirement in the UI of
-    marking when the fit first reaches a given fraction of its maximum value.
+    The threshold levels are defined as 10% and 90% of the span between the
+    minimum and maximum values of the fit curve.  This matches the visual
+    requirement in the UI of marking when the fit first reaches a given fraction
+    of its full excursion.
     """
     times = np.asarray(list(time), dtype=float)
     values = np.asarray(list(fit_curve), dtype=float)
@@ -83,38 +112,39 @@ def compute_rise_metrics(
     if baseline is None or not np.isfinite(baseline):
         baseline = 0.0
 
-    # Work with a baseline-adjusted signal so percentage thresholds are relative
-    # to the curve's maximum value, as expected for the overlays.  Fallback to
-    # the raw values if the provided baseline does not yield a positive peak.
-    detection_values = values - baseline
+    min_idx = int(np.nanargmin(values))
+    max_idx = int(np.nanargmax(values))
 
-    if not np.any(np.isfinite(detection_values)):
+    min_val = float(values[min_idx])
+    max_val = float(values[max_idx])
+
+    if not (np.isfinite(min_val) and np.isfinite(max_val)):
         return metrics
 
-    peak_idx = int(np.nanargmax(detection_values))
-    detection_peak = detection_values[: peak_idx + 1]
-    times_peak = times[: peak_idx + 1]
+    amplitude = max_val - min_val
+    if amplitude <= 0 or not np.isfinite(amplitude):
+        return metrics
 
-    top = float(np.nanmax(detection_peak))
-    if not np.isfinite(top) or top <= 0:
-        detection_values = values
-        peak_idx = int(np.nanargmax(detection_values))
-        detection_peak = detection_values[: peak_idx + 1]
-        times_peak = times[: peak_idx + 1]
-        top = float(np.nanmax(detection_peak))
-        if not np.isfinite(top) or top <= 0:
-            return metrics
-
-        baseline = 0.0
-        detection_values = detection_peak
+    if min_idx <= max_idx:
+        segment = slice(min_idx, max_idx + 1)
+        low_val = min_val
+        rising = True
     else:
-        detection_values = detection_peak
+        segment = slice(max_idx, min_idx + 1)
+        low_val = min_val
+        rising = False
 
-    level_10 = 0.10 * top
-    level_90 = 0.90 * top
+    times_segment = times[segment]
+    values_segment = values[segment]
 
-    t10 = _interpolate_crossing(times_peak, detection_values, level_10)
-    t90 = _interpolate_crossing(times_peak, detection_values, level_90)
+    if times_segment.size < 2 or values_segment.size < 2:
+        return metrics
+
+    level_10 = low_val + 0.10 * amplitude
+    level_90 = low_val + 0.90 * amplitude
+
+    t10 = _interpolate_crossing(times_segment, values_segment, level_10, rising=rising)
+    t90 = _interpolate_crossing(times_segment, values_segment, level_90, rising=rising)
 
     if np.isfinite(t10):
         metrics["t10"] = float(t10)
