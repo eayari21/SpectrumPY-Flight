@@ -27,6 +27,8 @@ from concurrent.futures import ThreadPoolExecutor
 plt.style.use("seaborn-pastel")
 import numpy as np
 
+from idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
+
 try:
     import cupy as cp  # Optional GPU acceleration
     _HAS_CUPY = True
@@ -327,10 +329,17 @@ def FitTargetSignal(time, targetAmp,
     # Guard
     if time.size != signal.size or time.size == 0:
         # Return empty-like but consistent
-        return (np.array([]), np.empty((0, 0)), np.nan,
-                time.astype(float), signal.astype(float),
-                np.full_like(signal, np.nan, dtype=float),
-                np.nan, np.nan)
+        return {
+            'params': np.array([]),
+            'param_cov': np.empty((0, 0)),
+            'signal_amplitude': np.nan,
+            'time': time.astype(float),
+            'filtered_signal': signal.astype(float),
+            'fit_curve': np.full_like(signal, np.nan, dtype=float),
+            'chi_sq': np.nan,
+            'red_chi': np.nan,
+            'rise_metrics': compute_rise_metrics([], []),
+        }
 
     # Baseline guess (robust)
     baseline_guess = float(np.median(original_signal[:max(5, len(original_signal)//20)]))
@@ -460,10 +469,17 @@ def FitTargetSignal(time, targetAmp,
         except Exception:
             # give up gracefully with NaNs
             nanarr = np.array([np.nan, np.nan, np.nan, np.nan, np.nan])
-            return (nanarr, np.full((5, 5), np.nan), np.nan,
-                    time.astype(float), filtered_full,
-                    np.full_like(filtered_full, np.nan, dtype=float),
-                    np.nan, np.nan)
+            return {
+                'params': nanarr,
+                'param_cov': np.full((5, 5), np.nan),
+                'signal_amplitude': np.nan,
+                'time': time.astype(float),
+                'filtered_signal': filtered_full,
+                'fit_curve': np.full_like(filtered_full, np.nan, dtype=float),
+                'chi_sq': np.nan,
+                'red_chi': np.nan,
+                'rise_metrics': compute_rise_metrics([], []),
+            }
 
     # -- Step 9: compose full fit curve over the full time array (NaN outside fit window)
     fit_slice = IDEXIonGrid(ionTime, *param)
@@ -479,7 +495,18 @@ def FitTargetSignal(time, targetAmp,
     dof = int(np.count_nonzero(valid_mask) - len(param))
     red_chi = float(chi_sq / dof) if dof > 0 and np.isfinite(chi_sq) else np.nan
 
-    return param, param_cov, sig_amp, time.astype(float), filtered_full, fit_curve_full, chi_sq, red_chi
+    rise_metrics = compute_rise_metrics(time.astype(float), fit_curve_full, baseline_mean)
+    return {
+        'params': param,
+        'param_cov': param_cov,
+        'signal_amplitude': sig_amp,
+        'time': time.astype(float),
+        'filtered_signal': filtered_full,
+        'fit_curve': fit_curve_full,
+        'chi_sq': chi_sq,
+        'red_chi': red_chi,
+        'rise_metrics': rise_metrics,
+    }
 
 # ||
 # ||
@@ -1296,8 +1323,16 @@ class IDEXEvent:
 
                     plt.close()
 
-                if analysis['target_fit'] is not None:
-                    param, param_cov, sig_amp, fit_time, filtered_signal, fit_curve, chi_sq, red_chi = analysis['target_fit']
+                target_fit = analysis['target_fit']
+                if target_fit is not None:
+                    param = target_fit.get('params', np.array([]))
+                    fit_time = target_fit.get('time', np.array([]))
+                    fit_curve = target_fit.get('fit_curve', np.array([]))
+                    filtered_signal = target_fit.get('filtered_signal', np.array([]))
+                    sig_amp = target_fit.get('signal_amplitude', np.nan)
+                    chi_sq = target_fit.get('chi_sq', np.nan)
+                    red_chi = target_fit.get('red_chi', np.nan)
+
                     create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}FitParams", data=np.array(param, dtype=float))
                     create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel} Fit Time", data=np.asarray(fit_time, dtype=float))
                     create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel} Fit Result", data=np.asarray(fit_curve, dtype=float))
@@ -1306,6 +1341,14 @@ class IDEXEvent:
                     create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}ImpactCharge", data=np.array([sig_amp], dtype=float))
                     create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}ChiSquared", data=np.array([chi_sq], dtype=float))
                     create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}ReducedChiSquared", data=np.array([red_chi], dtype=float))
+
+                    rise_metrics = target_fit.get('rise_metrics', {})
+                    for key, suffix in RISE_METRIC_SUFFIXES.items():
+                        value = rise_metrics.get(key)
+                        if value is None or not np.isfinite(value):
+                            continue
+                        dataset_path = f"/{event_id}/Analysis/{channel} {suffix}"
+                        create_dataset_if_not_exists(h, dataset_path, data=np.array([value], dtype=float))
             else:
                 h.create_dataset(f"/{event_id}/{channel}", data=data)
 
