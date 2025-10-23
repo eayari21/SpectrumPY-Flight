@@ -169,87 +169,257 @@ def FitEMG(time, amplitude):
 # || 1) Remove a linear baseline (y = a*x + b), and 
 # || 2) Remove a sinusoidal background (y = c*sin(d*x + e)
 
-def FitTargetSignal(time, targetAmp):
+def _robust_sigma(x):
+    """MAD-based robust std."""
+    med = np.median(x)
+    return 1.4826 * np.median(np.abs(x - med))
+
+def _uniform_moving_avg(y, n):
+    if n <= 1:
+        return y.astype(float)
+    c = np.cumsum(np.insert(y, 0, 0.0))
+    out = (c[n:] - c[:-n]) / float(n)
+    # pad to original length (reflect)
+    pad_left = np.full(n // 2, out[0])
+    pad_right = np.full(len(y) - len(out) - len(pad_left), out[-1])
+    return np.concatenate([pad_left, out, pad_right]).astype(float)
+
+def _find_onset_time(time, y, smooth_us=0.8, zthr=4.0):
+    """
+    Detect onset as the first index where smoothed dy/dt exceeds (median + zthr*robust_sigma).
+    Returns np.nan if not found.
+    """
+    time = np.asarray(time, float)
+    y = np.asarray(y, float)
+    if len(time) < 5:
+        return np.nan
+
+    dt = np.median(np.diff(time))
+    if not np.isfinite(dt) or dt <= 0:
+        return np.nan
+
+    # smooth over ~smooth_us
+    n = max(3, int(round(abs(smooth_us / dt))))
+    ys = _uniform_moving_avg(y, n)
+    dy = np.gradient(ys, time)
+
+    mu = np.median(dy)
+    sig = _robust_sigma(dy)
+    if sig <= 0 or not np.isfinite(sig):
+        return np.nan
+
+    z = (dy - mu) / sig
+    idx = np.where(z > zthr)[0]
+    return time[idx[0]] if idx.size else np.nan
+
+def _quietest_window_mask(time, y, win_us=3.0, prefer_left_of=None):
+    """
+    Return a boolean mask selecting the quietest (lowest variance) sliding window of length win_us.
+    If prefer_left_of is provided, prefer windows fully to the left of that time;
+    fall back to global quietest if none exist.
+    """
+    time = np.asarray(time, float)
+    y = np.asarray(y, float)
+    n = len(time)
+    if n == 0:
+        return np.zeros(0, dtype=bool)
+
+    dt = np.median(np.diff(time))
+    k = max(3, int(round(abs(win_us / dt))))  # window length in samples
+    if k >= n:
+        m = np.zeros(n, dtype=bool)
+        m[:] = True
+        return m
+
+    # compute rolling variance (simple, fast)
+    # use cumulative sums for speed
+    y2 = y * y
+    c = np.cumsum(np.insert(y, 0, 0.0))
+    c2 = np.cumsum(np.insert(y2, 0, 0.0))
+    window_var = (c2[k:] - c2[:-k]) / k - ((c[k:] - c[:-k]) / k) ** 2
+
+    # indices denote windows [i, i+k)
+    candidates = np.arange(len(window_var))
+
+    if prefer_left_of is not None:
+        # only windows fully to the left of prefer_left_of
+        left_mask = time[candidates + k - 1] < prefer_left_of
+        left_candidates = candidates[left_mask]
+        if left_candidates.size:
+            i0 = left_candidates[np.argmin(window_var[left_mask])]
+        else:
+            i0 = candidates[np.argmin(window_var)]
+    else:
+        i0 = candidates[np.argmin(window_var)]
+
+    m = np.zeros(n, dtype=bool)
+    m[i0:i0 + k] = True
+    return m
+
+def FitTargetSignal(time, targetAmp,
+                    pre_margin_us=2.0,   # left padding before onset for fit window
+                    post_margin_us=60.0, # right padding after onset for fit window
+                    baseline_win_us=3.0  # baseline window length
+                    ):
+    """
+    Adaptive fit for the target signal. No hard-coded [-7, -5] µs gate.
+    Returns (param, param_cov, sig_amp, time, filtered_full, fit_curve_full, chi_sq, red_chi)
+    """
+
+    # -- inputs as float arrays
     time = np.asarray(time, dtype=float)
     original_signal = np.asarray(targetAmp, dtype=float)
     signal = np.copy(original_signal)
 
-    baseline_guess = float(original_signal[0]) if original_signal.size else 0.0
+    # Guard
+    if time.size != signal.size or time.size == 0:
+        # Return empty-like but consistent
+        return (np.array([]), np.empty((0, 0)), np.nan,
+                time.astype(float), signal.astype(float),
+                np.full_like(signal, np.nan, dtype=float),
+                np.nan, np.nan)
 
-    # || Select only raw noise (where we know the signal is not)
-    mask = np.logical_and(time >= -7, time <= -5)
-    if not np.any(mask):
-        mask = np.ones_like(time, dtype=bool)
+    # Baseline guess (robust)
+    baseline_guess = float(np.median(original_signal[:max(5, len(original_signal)//20)]))
 
-    baselineraw = signal[mask]
-    baselinedomain = time[mask]
+    # -- Step 1: detect onset to guide masks
+    t_onset = _find_onset_time(time, signal, smooth_us=0.8, zthr=4.0)
 
-    # || Remove Linear Background
+    # -- Step 2: choose a baseline/noise segment automatically
+    # Prefer a quiet window *before* the onset; otherwise the global quietest window.
+    if np.isfinite(t_onset):
+        baseline_mask = _quietest_window_mask(time, signal, win_us=baseline_win_us, prefer_left_of=t_onset)
+    else:
+        baseline_mask = _quietest_window_mask(time, signal, win_us=baseline_win_us, prefer_left_of=None)
+
+    baselineraw = signal[baseline_mask]
+    baselinedomain = time[baseline_mask]
+
+    # -- Step 3: remove linear background (fit only on baseline)
     try:
-        slopeguess = 0
-        curve_fit(LinearFit, baselinedomain, baselineraw, p0=[slopeguess, 0], maxfev=100_000)
-        signal = detrend(signal)
+        slopeguess = 0.0
+        # fit y = m*x + b on baseline, then detrend full signal using m,b
+        (m_est, b_est), _ = curve_fit(LinearFit, baselinedomain, baselineraw,
+                                      p0=[slopeguess, float(np.median(baselineraw))],
+                                      maxfev=100_000)
+        signal = signal - LinearFit(time, m_est, b_est)
     except Exception:
-        print("Linear background not found.")
+        # fallback: simple scipy detrend
+        try:
+            signal = detrend(signal)
+        except Exception:
+            # keep as-is
+            pass
 
-    # || Remove Sine Wave Background
+    # -- Step 4: optional sinusoidal background (fit on baseline region only)
     try:
-        baseline_segment = signal[mask]
-        if baseline_segment.size:
-            sineparam, _ = curve_fit(
-                SineFit,
-                baselinedomain,
-                baseline_segment,
-                p0=[float(np.max(baseline_segment)), 7000, 45],
-                maxfev=100_000,
-            )
+        baseline_segment = signal[baseline_mask]
+        if baseline_segment.size > 3:
+            amp0 = float(np.ptp(baseline_segment)) if np.isfinite(np.ptp(baseline_segment)) else float(np.max(np.abs(baseline_segment)))
+            amp0 = amp0 if np.isfinite(amp0) and amp0 > 0 else float(np.std(baseline_segment))
+            p0 = [amp0, 1.0 / max(1e-6, np.median(np.diff(baselinedomain))), 0.0]  # [A, f, phi] crude init
+            sineparam, _ = curve_fit(SineFit, baselinedomain, baseline_segment, p0=p0, maxfev=100_000)
             sinebase = SineFit(time, sineparam[0], sineparam[1], sineparam[2])
             signal = signal - sinebase
     except Exception:
-        print("Sinusoidal background not found.")
+        # ignore sinusoid removal if unstable
+        pass
 
+    # -- Step 5: low-pass filter (if available)
     try:
         signal = butter_lowpass_filter(signal, time)
     except Exception:
-        print("Low-pass filtering failed.")
+        pass
 
     filtered_full = np.asarray(signal, dtype=float)
 
-    fit_time = time[mask]
-    filtered_segment = filtered_full[mask]
+    # -- Step 6: build an adaptive fit window around the onset
+    if np.isfinite(t_onset):
+        fit_left = t_onset - float(pre_margin_us)
+        fit_right = t_onset + float(post_margin_us)
+        fit_mask = (time >= fit_left) & (time <= fit_right)
+        # safety: if the mask is tiny (e.g., onset near boundaries), expand
+        if np.count_nonzero(fit_mask) < max(20, len(time)//50):
+            fit_mask = np.ones_like(time, dtype=bool)
+    else:
+        # fallback to full domain
+        fit_mask = np.ones_like(time, dtype=bool)
 
-    pre = -2.0  # Before image charge
-    baseline_mask = fit_time < pre
-    yBaseline = np.where(baseline_mask, filtered_segment, np.nan)
-    baseline_mean = float(np.nanmean(yBaseline)) if np.any(baseline_mask) else 0.0
+    fit_time = time[fit_mask]
+    filtered_segment = filtered_full[fit_mask]
 
-    ionTime = np.array([float(t) for t in fit_time])
-    ionAmp = np.array([float(val) for val in filtered_segment])
+    # robust baseline within the fit window: use left-most 20% (or ≤ pre_margin_us) of the window
+    if fit_time.size:
+        left_span = min(pre_margin_us, 0.2 * (fit_time[-1] - fit_time[0]) if fit_time[-1] > fit_time[0] else pre_margin_us)
+        base_mask_local = fit_time <= (fit_time[0] + left_span)
+    else:
+        base_mask_local = np.zeros(0, dtype=bool)
 
-    print("Calculating Target Fit.")
-    # || Initial Guess for the parameters of the ion grid signal
+    yBaseline = np.where(base_mask_local, filtered_segment, np.nan)
+    baseline_mean = float(np.nanmean(yBaseline)) if np.any(base_mask_local) else 0.0
 
-    t0 = 0.0
-    amplitude_guess = float(np.nanmax(ionAmp) - baseline_guess) if ionAmp.size else 0.0
-    if not np.isfinite(amplitude_guess) or amplitude_guess <= 0:
-        amplitude_guess = float(np.nanmax(ionAmp)) if ionAmp.size else 0.0
+    ionTime = fit_time.astype(float)
+    ionAmp = filtered_segment.astype(float)
 
+    # -- Step 7: parameter initial guesses for IDEXIonGrid
+    # t0 near onset (if found) in the local coordinates
+    t0 = float(ionTime[0]) if ionTime.size else 0.0
+    if np.isfinite(t_onset):
+        # set t0 close to onset but within window
+        t0 = float(np.clip(t_onset, ionTime[0], ionTime[-1])) if ionTime.size else float(t_onset)
+
+    # amplitude guess: difference between high percentile and baseline
+    if ionAmp.size:
+        hi = np.nanpercentile(ionAmp, 95)
+        amplitude_guess = float(hi - baseline_mean)
+        if not np.isfinite(amplitude_guess) or amplitude_guess <= 0:
+            amplitude_guess = float(np.nanmax(ionAmp) - np.nanmin(ionAmp))
+    else:
+        amplitude_guess = 0.0
+
+    # shape/time constants: keep your defaults but allow wider basin
     t1 = 3.71
     t2 = 37.1
 
-    param, param_cov = curve_fit(
-        IDEXIonGrid,
-        ionTime,
-        ionAmp,
-        p0=[t0, baseline_guess, amplitude_guess, t1, t2],
-        maxfev=100_000,
-    )
+    # baseline for model = baseline_mean (more stable than very first sample)
+    baseline_for_model = baseline_mean if np.isfinite(baseline_mean) else baseline_guess
 
-    fit_slice = IDEXIonGrid(ionTime, param[0], param[1], param[2], param[3], param[4])
+    # -- Step 8: fit
+    try:
+        param, param_cov = curve_fit(
+            IDEXIonGrid,
+            ionTime,
+            ionAmp,
+            p0=[t0, baseline_for_model, amplitude_guess, t1, t2],
+            maxfev=100_000,
+        )
+    except Exception:
+        # fall back: try without strict t0 (use window start) and smaller maxfev
+        try:
+            param, param_cov = curve_fit(
+                IDEXIonGrid,
+                ionTime,
+                ionAmp,
+                p0=[float(ionTime[0]) if ionTime.size else 0.0, baseline_for_model,
+                    max(1e-6, amplitude_guess), t1, t2],
+                maxfev=50_000,
+            )
+        except Exception:
+            # give up gracefully with NaNs
+            nanarr = np.array([np.nan, np.nan, np.nan, np.nan, np.nan])
+            return (nanarr, np.full((5, 5), np.nan), np.nan,
+                    time.astype(float), filtered_full,
+                    np.full_like(filtered_full, np.nan, dtype=float),
+                    np.nan, np.nan)
+
+    # -- Step 9: compose full fit curve over the full time array (NaN outside fit window)
+    fit_slice = IDEXIonGrid(ionTime, *param)
     fit_curve_full = np.full_like(filtered_full, np.nan, dtype=float)
-    fit_curve_full[mask] = fit_slice
+    fit_curve_full[fit_mask] = fit_slice
+
     sig_amp = float(np.nanmax(fit_slice) - baseline_mean) if fit_slice.size else 0.0
 
+    # goodness of fit on the fit window only (valid where model is defined)
     valid_mask = np.isfinite(fit_curve_full)
     residuals = filtered_full[valid_mask] - fit_curve_full[valid_mask]
     chi_sq = float(np.sum(residuals ** 2)) if residuals.size else np.nan
@@ -257,7 +427,6 @@ def FitTargetSignal(time, targetAmp):
     red_chi = float(chi_sq / dof) if dof > 0 and np.isfinite(chi_sq) else np.nan
 
     return param, param_cov, sig_amp, time.astype(float), filtered_full, fit_curve_full, chi_sq, red_chi
-
 
 # ||
 # ||
