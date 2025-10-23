@@ -40,6 +40,7 @@ try:  # pragma: no cover - Qt import guard
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import (
         QAbstractItemView,
+        QCheckBox,
         QComboBox,
         QDialog,
         QDialogButtonBox,
@@ -64,6 +65,7 @@ except Exception:  # pragma: no cover - fallback to PyQt6
     from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import (
         QAbstractItemView,
+        QCheckBox,
         QComboBox,
         QDialog,
         QDialogButtonBox,
@@ -156,6 +158,49 @@ class ExtraFieldSpec:
     maximum: float = 1.0e6
     step: float = 1.0e-3
     tooltip: str = ""
+
+
+@dataclass(frozen=True)
+class RSFPreset:
+    key: str
+    label: str
+    rsf_values: Dict[str, float]
+
+
+@dataclass(frozen=True)
+class RelativeSensitivityResult:
+    enabled: bool
+    values: Dict[int, float]
+    normalised: Dict[int, float]
+
+
+RSF_PRESETS: Tuple[RSFPreset, ...] = (
+    RSFPreset(
+        key="puma_pia",
+        label="PUMA/PIA (Krueger 1996)",
+        rsf_values={"Mg": 3.1, "Si": 1.0, "Fe": 1.1},
+    ),
+    RSFPreset(
+        key="lama_orthopyroxene",
+        label="Orthopyroxene, LAMA (Sternglass 1971)",
+        rsf_values={"Mg": 5.50, "Si": 1.0, "Fe": 1.12},
+    ),
+    RSFPreset(
+        key="suda_olivine_fo87",
+        label="Olivine Fo87, SUDA (Hillier et al. 2018)",
+        rsf_values={"Mg": 4.93, "Si": 1.0, "Fe": 1.50},
+    ),
+    RSFPreset(
+        key="hyperdust_olivine_fo91",
+        label="Olivine Fo91, Hyperdust (this work)",
+        rsf_values={"Mg": 4.97, "Si": 1.0, "Fe": 1.32},
+    ),
+    RSFPreset(
+        key="tofsims",
+        label="TOF SIMS (Stephan 2001)",
+        rsf_values={"Mg": 5.10, "Si": 1.0, "Fe": 2.40},
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -1157,6 +1202,22 @@ def _species_for_label(label: str) -> Optional[Tuple[str, float]]:
     return label.strip(), mass
 
 
+def _infer_element_symbol(label: str) -> Optional[str]:
+    """Best-effort extraction of an elemental symbol from *label*."""
+
+    if not label:
+        return None
+    cleaned = label.strip()
+    # Prefer any explicitly assigned species name if available.
+    token = cleaned.split()[0]
+    token = re.sub(r"[^A-Za-z]", "", token)
+    if not token:
+        return None
+    if len(token) == 1:
+        return token.upper()
+    return token[0].upper() + token[1:].lower()
+
+
 def nearest_mass_name(target: float) -> str:
     """Return the nearest reference species name for ``target`` mass."""
 
@@ -1877,6 +1938,295 @@ class InspectMassLineDialog(QDialog):
         return self._result
 
 # ---------------------------------------------------------------------------
+# Relative sensitivity factors dialog
+# ---------------------------------------------------------------------------
+
+
+class RelativeSensitivityDialog(QDialog):
+    """Dialog allowing users to apply relative sensitivity factors (RSFs)."""
+
+    def __init__(
+        self,
+        parent: QWidget,
+        mass_lines: Sequence[MassLineFit],
+        existing_values: Optional[Dict[int, float]] = None,
+        enabled: bool = False,
+    ):
+        super().__init__(parent)
+        self.setModal(True)
+        self.setWindowTitle("Relative Sensitivity Factors")
+        self.setMinimumSize(720, 520)
+
+        self._result: Optional[RelativeSensitivityResult] = None
+        self._rows: List[Dict[str, object]] = []
+        self._current_values: Dict[int, float] = {}
+        self._current_normalised: Dict[int, float] = {}
+        self._current_total: float = 0.0
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        title = QLabel("Balance relative abundances with RSFs", self)
+        title.setStyleSheet("font-size: 18px; font-weight: 600;")
+        layout.addWidget(title)
+
+        description = QLabel(
+            "Select the fitted mass lines to include, assign RSF weights, and preview the renormalised "
+            "relative abundances. Presets from recent laboratory measurements are provided for "
+            "convenience.",
+            self,
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet("color: #495057;")
+        layout.addWidget(description)
+
+        self.enable_checkbox = QCheckBox("Enable RSF weighting", self)
+        self.enable_checkbox.setChecked(bool(enabled))
+        self.enable_checkbox.toggled.connect(self._on_enable_toggled)
+        layout.addWidget(self.enable_checkbox)
+
+        preset_layout = QHBoxLayout()
+        preset_layout.setSpacing(8)
+        preset_label = QLabel("Preset instrument:", self)
+        preset_label.setStyleSheet("font-weight: 500;")
+        preset_layout.addWidget(preset_label)
+        self.preset_combo = QComboBox(self)
+        self.preset_combo.addItem("Custom values", userData=None)
+        for preset in RSF_PRESETS:
+            self.preset_combo.addItem(preset.label, userData=preset)
+        self.preset_combo.currentIndexChanged.connect(self._on_preset_changed)
+        preset_layout.addWidget(self.preset_combo, stretch=1)
+        layout.addLayout(preset_layout)
+
+        table = QTableWidget(self)
+        table.setColumnCount(7)
+        table.setHorizontalHeaderLabels(
+            [
+                "Use",
+                "Mass line",
+                "Element",
+                "Mass (amu)",
+                "Measured (%)",
+                "RSF",
+                "RSF-normalised (%)",
+            ]
+        )
+        header = table.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.setDefaultSectionSize(128)
+        table.verticalHeader().setVisible(False)
+        table.setAlternatingRowColors(True)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        layout.addWidget(table, stretch=1)
+        self.table = table
+
+        existing_values = existing_values or {}
+
+        for row_index, line in enumerate(mass_lines):
+            table.insertRow(row_index)
+            checkbox = QCheckBox(table)
+            default_checked = line.line_id in existing_values
+            if not existing_values and max(float(line.abundance), 0.0) > 0.0:
+                default_checked = True
+            checkbox.setChecked(default_checked)
+            checkbox.toggled.connect(self._update_adjusted_values)
+            table.setCellWidget(row_index, 0, checkbox)
+
+            label_item = QTableWidgetItem(line.label or f"Line {line.line_id}")
+            label_item.setFlags(label_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            table.setItem(row_index, 1, label_item)
+
+            element_label = line.assigned_species or line.label
+            element_symbol = _infer_element_symbol(element_label)
+            element_item = QTableWidgetItem(element_symbol or "–")
+            element_item.setFlags(element_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            element_item.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
+            table.setItem(row_index, 2, element_item)
+
+            mass_item = QTableWidgetItem(f"{line.mass_guess:.3f}")
+            mass_item.setFlags(mass_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            mass_item.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
+            table.setItem(row_index, 3, mass_item)
+
+            measured_fraction = max(float(line.abundance), 0.0)
+            measured_item = QTableWidgetItem(f"{measured_fraction * 100.0:.2f}")
+            measured_item.setFlags(measured_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            measured_item.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
+            table.setItem(row_index, 4, measured_item)
+
+            spin = QDoubleSpinBox(table)
+            spin.setDecimals(3)
+            spin.setRange(0.0, 20.0)
+            spin.setSingleStep(0.05)
+            spin.setValue(float(existing_values.get(line.line_id, 1.0)))
+            spin.valueChanged.connect(self._update_adjusted_values)
+            table.setCellWidget(row_index, 5, spin)
+
+            adjusted_item = QTableWidgetItem("0.00")
+            adjusted_item.setFlags(adjusted_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            adjusted_item.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
+            table.setItem(row_index, 6, adjusted_item)
+
+            row_info: Dict[str, object] = {
+                "line_id": int(line.line_id),
+                "checkbox": checkbox,
+                "spin": spin,
+                "base_fraction": measured_fraction,
+                "element": element_symbol,
+                "adjust_item": adjusted_item,
+            }
+            self._rows.append(row_info)
+
+        self.summary_label = QLabel("", self)
+        self.summary_label.setWordWrap(True)
+        self.summary_label.setStyleSheet("font-style: italic; color: #495057;")
+        layout.addWidget(self.summary_label)
+
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+        self._on_enable_toggled(bool(enabled))
+
+    def _on_enable_toggled(self, checked: bool) -> None:
+        for row in self._rows:
+            checkbox = row["checkbox"]
+            spin = row["spin"]
+            if isinstance(checkbox, QCheckBox):
+                checkbox.setEnabled(True)
+            if isinstance(spin, QDoubleSpinBox):
+                spin.setEnabled(checked and isinstance(checkbox, QCheckBox) and checkbox.isChecked())
+        self.preset_combo.setEnabled(checked)
+        self._update_adjusted_values()
+
+    def _on_preset_changed(self, index: int) -> None:
+        data = self.preset_combo.itemData(index)
+        if not isinstance(data, RSFPreset):
+            return
+        for row in self._rows:
+            element = row.get("element")
+            spin = row.get("spin")
+            if not isinstance(spin, QDoubleSpinBox):
+                continue
+            if not isinstance(element, str):
+                continue
+            value = data.rsf_values.get(element)
+            if value is None:
+                continue
+            spin.blockSignals(True)
+            spin.setValue(float(value))
+            spin.blockSignals(False)
+        self._update_adjusted_values()
+
+    def _update_adjusted_values(self) -> None:
+        enabled = self.enable_checkbox.isChecked()
+        total = 0.0
+        contributions: Dict[int, float] = {}
+        selected_count = 0
+        for row in self._rows:
+            checkbox = row.get("checkbox")
+            spin = row.get("spin")
+            base_fraction = float(row.get("base_fraction", 0.0))
+            line_id = int(row.get("line_id", -1))
+            include = False
+            if isinstance(checkbox, QCheckBox):
+                include = checkbox.isChecked()
+            if isinstance(spin, QDoubleSpinBox):
+                spin.setEnabled(enabled and include)
+            if not enabled or not include:
+                contributions[line_id] = 0.0
+                continue
+            selected_count += 1
+            rsf = float(spin.value()) if isinstance(spin, QDoubleSpinBox) else 1.0
+            weight = max(base_fraction, 0.0) * max(rsf, 0.0)
+            contributions[line_id] = weight
+            total += weight
+
+        for row in self._rows:
+            line_id = int(row.get("line_id", -1))
+            adjust_item = row.get("adjust_item")
+            if not isinstance(adjust_item, QTableWidgetItem):
+                continue
+            if not enabled:
+                percent = float(row.get("base_fraction", 0.0)) * 100.0
+            else:
+                weight = contributions.get(line_id, 0.0)
+                percent = (weight / total * 100.0) if total > 0.0 else 0.0
+            adjust_item.setText(f"{percent:.2f}")
+
+        if not enabled:
+            self.summary_label.setText("RSFs disabled. Displaying measured relative abundances.")
+            self._current_values = {}
+            self._current_normalised = {}
+            self._current_total = 0.0
+            return
+
+        if selected_count == 0:
+            self.summary_label.setText("Select at least one mass line to apply RSFs.")
+            self._current_values = {}
+            self._current_normalised = {}
+            self._current_total = 0.0
+            return
+
+        if total <= 0.0:
+            self.summary_label.setText(
+                "Selected lines have zero total abundance; RSF weights cannot be normalised yet."
+            )
+        else:
+            self.summary_label.setText(
+                f"RSFs applied to {selected_count} line(s); values renormalised to 100%."
+            )
+
+        values: Dict[int, float] = {}
+        normalised: Dict[int, float] = {}
+        for row in self._rows:
+            checkbox = row.get("checkbox")
+            spin = row.get("spin")
+            line_id = int(row.get("line_id", -1))
+            if not isinstance(checkbox, QCheckBox) or not checkbox.isChecked():
+                continue
+            values[line_id] = float(spin.value()) if isinstance(spin, QDoubleSpinBox) else 1.0
+            weight = contributions.get(line_id, 0.0)
+            normalised[line_id] = (weight / total) if total > 0.0 else 0.0
+
+        self._current_values = values
+        self._current_normalised = normalised
+        self._current_total = total
+
+    def accept(self) -> None:  # type: ignore[override]
+        if self.enable_checkbox.isChecked():
+            if not self._current_values:
+                QMessageBox.warning(
+                    self,
+                    "No Lines Selected",
+                    "Select at least one mass line before enabling RSFs.",
+                )
+                return
+            if self._current_total <= 0.0:
+                QMessageBox.warning(
+                    self,
+                    "Zero Total Abundance",
+                    "The selected lines have zero total abundance and cannot be normalised.",
+                )
+                return
+        enabled = self.enable_checkbox.isChecked()
+        self._result = RelativeSensitivityResult(
+            enabled=enabled,
+            values=dict(self._current_values) if enabled else {},
+            normalised=dict(self._current_normalised) if enabled else {},
+        )
+        super().accept()
+
+    def result_data(self) -> Optional[RelativeSensitivityResult]:
+        return self._result
+
+
+# ---------------------------------------------------------------------------
 # Utility helpers
 # ---------------------------------------------------------------------------
 
@@ -1945,6 +2295,9 @@ class DustCompositionWindow(QMainWindow):
         self._block_table_signals = False
         self._block_selection_signals = False
         self._block_species_assignment = False
+        self._rsf_enabled = False
+        self._rsf_values: Dict[int, float] = {}
+        self._rsf_normalised: Dict[int, float] = {}
 
         self._load_datasets()
         self._load_saved_state()
@@ -2275,6 +2628,7 @@ class DustCompositionWindow(QMainWindow):
         self._build_action_buttons()
         self._build_baseline_controls()
         self._build_mass_axis_controls()
+        self._build_mass_line_tools()
         self._build_mass_assignment_controls()
         self._build_mass_line_table()
         self._build_summary_section()
@@ -2344,11 +2698,23 @@ class DustCompositionWindow(QMainWindow):
         )
         self.auto_mass_button.clicked.connect(self._auto_calculate_mass_axis)
         layout.addRow("", self.auto_mass_button)
+        self.control_layout.addWidget(box)
+
+    def _build_mass_line_tools(self) -> None:
+        box = QGroupBox("Mass Line Tools", self.control_panel)
+        layout = QVBoxLayout(box)
+        layout.setSpacing(6)
         self.add_mass_button = QPushButton("Add Mass Line", box)
         self.add_mass_button.setToolTip("Select a region on the combined plot to fit an EMG mass line.")
         self.add_mass_button.setCheckable(True)
         self.add_mass_button.toggled.connect(self._toggle_mass_line_mode)
-        layout.addRow("", self.add_mass_button)
+        layout.addWidget(self.add_mass_button)
+        self.rsf_button = QPushButton("Relative Sensitivity Factors…", box)
+        self.rsf_button.setToolTip(
+            "Enable and adjust relative sensitivity factors for the currently fitted mass lines."
+        )
+        self.rsf_button.clicked.connect(self._open_relative_sensitivity_dialog)
+        layout.addWidget(self.rsf_button)
         self.control_layout.addWidget(box)
 
     def _build_mass_assignment_controls(self) -> None:
@@ -2428,6 +2794,11 @@ class DustCompositionWindow(QMainWindow):
         header = self.summary_table.horizontalHeader()
         header.setStretchLastSection(True)
         layout.addWidget(self.summary_table)
+        self.rsf_status_label = QLabel("", box)
+        self.rsf_status_label.setWordWrap(True)
+        self.rsf_status_label.setStyleSheet("color: #0b7285; font-style: italic;")
+        self.rsf_status_label.hide()
+        layout.addWidget(self.rsf_status_label)
         self.sample_guess_label = QLabel("Sample guess: –", box)
         self.sample_guess_label.setWordWrap(True)
         layout.addWidget(self.sample_guess_label)
@@ -2474,6 +2845,42 @@ class DustCompositionWindow(QMainWindow):
             self.statusBar().showMessage("Select a region to fit an EMG mass line.", 6000)
         else:
             self.statusBar().clearMessage()
+
+    def _open_relative_sensitivity_dialog(self) -> None:
+        if not self._mass_lines:
+            QMessageBox.information(
+                self,
+                "No Mass Lines",
+                "Fit one or more mass lines before applying relative sensitivity factors.",
+            )
+            return
+        existing = dict(self._rsf_values) if self._rsf_enabled else {}
+        dialog = RelativeSensitivityDialog(
+            self,
+            self._mass_lines,
+            existing_values=existing,
+            enabled=self._rsf_enabled,
+        )
+        result_code = dialog.exec()
+        try:
+            accepted = result_code == QDialog.DialogCode.Accepted  # type: ignore[attr-defined]
+        except Exception:
+            accepted = int(result_code) == int(QDialog.DialogCode.Accepted)
+        if not accepted:
+            return
+        result = dialog.result_data()
+        if result is None:
+            return
+        if result.enabled and result.values:
+            self._rsf_enabled = True
+            self._rsf_values = dict(result.values)
+            self._rsf_normalised = dict(result.normalised)
+            self._recalculate_rsf_normalised()
+        else:
+            self._rsf_enabled = False
+            self._rsf_values.clear()
+            self._rsf_normalised.clear()
+        self._update_summary()
 
     def _prompt_manual_mass_line(self) -> None:
         defaults = self._manual_mass_defaults()
@@ -3284,6 +3691,7 @@ class DustCompositionWindow(QMainWindow):
         if self._combined is None or self._combined.size == 0:
             for line in self._mass_lines:
                 line.abundance = 0.0
+            self._recalculate_rsf_normalised()
             return
         baseline_corrected = self._combined - self._baseline
         positive = np.clip(baseline_corrected, 0.0, None)
@@ -3294,6 +3702,34 @@ class DustCompositionWindow(QMainWindow):
                 line.abundance = float(max(area, 0.0) / total_area)
             else:
                 line.abundance = 0.0
+        self._recalculate_rsf_normalised()
+
+    def _recalculate_rsf_normalised(self) -> None:
+        if not self._rsf_enabled:
+            self._rsf_normalised = {}
+            return
+        valid_ids = {line.line_id for line in self._mass_lines}
+        for line_id in list(self._rsf_values.keys()):
+            if line_id not in valid_ids:
+                del self._rsf_values[line_id]
+        totals: Dict[int, float] = {}
+        total_weight = 0.0
+        for line in self._mass_lines:
+            factor = self._rsf_values.get(line.line_id)
+            if factor is None:
+                continue
+            base_fraction = max(line.abundance, 0.0)
+            weight = base_fraction * max(float(factor), 0.0)
+            totals[line.line_id] = weight
+            total_weight += weight
+        if not totals:
+            self._rsf_enabled = False
+            self._rsf_normalised = {}
+            return
+        if total_weight <= 0.0:
+            self._rsf_normalised = {line_id: 0.0 for line_id in totals}
+            return
+        self._rsf_normalised = {line_id: weight / total_weight for line_id, weight in totals.items()}
 
     def _update_tables(self) -> None:
         self._block_table_signals = True
@@ -3349,16 +3785,29 @@ class DustCompositionWindow(QMainWindow):
         self._update_inspect_button_state()
 
     def _update_summary(self) -> None:
-        entries = sorted(self._mass_lines, key=lambda ln: ln.abundance, reverse=True)
+        if self._rsf_enabled:
+            self._recalculate_rsf_normalised()
+
+        def _display_fraction(line: MassLineFit) -> float:
+            if self._rsf_enabled and self._rsf_normalised:
+                return self._rsf_normalised.get(line.line_id, line.abundance)
+            return line.abundance
+
+        entries = sorted(self._mass_lines, key=_display_fraction, reverse=True)
         self.summary_table.setRowCount(len(entries))
         for row, line in enumerate(entries):
-            for col, value in enumerate((line.label, f"{line.mass_guess:.3f}", f"{line.abundance * 100.0:.2f}")):
+            display_fraction = _display_fraction(line)
+            for col, value in enumerate((line.label, f"{line.mass_guess:.3f}", f"{display_fraction * 100.0:.2f}")):
                 item = self.summary_table.item(row, col)
                 if item is None:
                     item = QTableWidgetItem()
                     self.summary_table.setItem(row, col, item)
                 item.setText(str(value))
-        best_match, mixture_match = analyse_sample_matches(entries)
+        if self._rsf_enabled and self._rsf_normalised:
+            matching_lines = [replace(line, abundance=_display_fraction(line)) for line in self._mass_lines]
+        else:
+            matching_lines = list(self._mass_lines)
+        best_match, mixture_match = analyse_sample_matches(matching_lines)
         self._auto_sample_match = best_match
         self._auto_mixture_match = mixture_match
         def _format_match(match: Optional[SampleMatch]) -> Optional[str]:
@@ -3396,6 +3845,26 @@ class DustCompositionWindow(QMainWindow):
             else:
                 lines = ["Sample guess: insufficient data"]
         self.sample_guess_label.setText("\n".join(lines))
+        if hasattr(self, "rsf_status_label"):
+            if self._rsf_enabled:
+                if self._rsf_normalised:
+                    active = [line_id for line_id, value in self._rsf_normalised.items() if value > 0.0]
+                    selected = len(self._rsf_values)
+                    if active:
+                        message = (
+                            f"Relative sensitivity factors applied to {selected} mass line(s); "
+                            "selected lines are renormalised, others show measured abundances."
+                        )
+                    else:
+                        message = (
+                            "RSF weighting enabled — awaiting non-zero abundances to renormalise values."
+                        )
+                else:
+                    message = "RSF weighting enabled — select lines and factors to apply."
+                self.rsf_status_label.setText(message)
+                self.rsf_status_label.show()
+            else:
+                self.rsf_status_label.hide()
         self._block_sample_guess_signal = True
         if self._manual_sample_guess:
             index = -1
