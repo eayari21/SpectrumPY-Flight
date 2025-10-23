@@ -171,7 +171,10 @@ def FitEMG(time, amplitude):
 
 def FitTargetSignal(time, targetAmp):
     time = np.asarray(time, dtype=float)
-    signal = np.asarray(targetAmp, dtype=float)
+    original_signal = np.asarray(targetAmp, dtype=float)
+    signal = np.copy(original_signal)
+
+    baseline_guess = float(original_signal[0]) if original_signal.size else 0.0
 
     # || Select only raw noise (where we know the signal is not)
     mask = np.logical_and(time >= -7, time <= -5)
@@ -227,12 +230,20 @@ def FitTargetSignal(time, targetAmp):
     # || Initial Guess for the parameters of the ion grid signal
 
     t0 = 0.0
-    c = 0.0
-    A = max(ionAmp) if ionAmp.size else 0.0
-    t1 = 0.371
-    t2 = 0.371
+    amplitude_guess = float(np.nanmax(ionAmp) - baseline_guess) if ionAmp.size else 0.0
+    if not np.isfinite(amplitude_guess) or amplitude_guess <= 0:
+        amplitude_guess = float(np.nanmax(ionAmp)) if ionAmp.size else 0.0
 
-    param, param_cov = curve_fit(IDEXIonGrid, ionTime, ionAmp, p0=[t0, c, A, t1, t2], maxfev=100_000)
+    t1 = 3.71
+    t2 = 37.1
+
+    param, param_cov = curve_fit(
+        IDEXIonGrid,
+        ionTime,
+        ionAmp,
+        p0=[t0, baseline_guess, amplitude_guess, t1, t2],
+        maxfev=100_000,
+    )
 
     fit_slice = IDEXIonGrid(ionTime, param[0], param[1], param[2], param[3], param[4])
     fit_curve_full = np.full_like(filtered_full, np.nan, dtype=float)
