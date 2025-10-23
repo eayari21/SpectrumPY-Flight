@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from math import pi, sqrt
 from typing import Iterable, List
+from scipy.special import erfc as comperror
 
 import numpy as np
 
 try:  # pragma: no cover - NumPy 2 compatibility
     erfc = getattr(np, "erfc")
 except AttributeError:  # pragma: no cover - fallback for very old NumPy
-    erfc = np.special.erfc
+    erfc = comperror
 
 try:  # pragma: no cover - SciPy is optional at runtime
     from scipy.special import wofz as _wofz  # type: ignore
