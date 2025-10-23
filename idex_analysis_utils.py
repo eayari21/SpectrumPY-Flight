@@ -52,7 +52,12 @@ def compute_rise_metrics(
     fit_curve: Iterable[float],
     baseline: float | None = None,
 ) -> Dict[str, float]:
-    """Compute 10/90 rise metrics for the provided fit curve."""
+    """Compute 10/90 rise metrics for the provided fit curve.
+
+    The threshold levels are defined as 10% and 90% of the peak amplitude of the
+    *baseline adjusted* curve.  This matches the visual requirement in the UI of
+    marking when the fit first reaches a given fraction of its maximum value.
+    """
     times = np.asarray(list(time), dtype=float)
     values = np.asarray(list(fit_curve), dtype=float)
 
@@ -76,19 +81,40 @@ def compute_rise_metrics(
     values = values[order]
 
     if baseline is None or not np.isfinite(baseline):
-        window = max(1, int(round(0.1 * values.size)))
-        baseline = float(np.nanmedian(values[:window]))
-    top = float(np.nanmax(values))
-    amplitude = top - baseline
+        baseline = 0.0
 
-    if not np.isfinite(amplitude) or amplitude <= 0:
+    # Work with a baseline-adjusted signal so percentage thresholds are relative
+    # to the curve's maximum value, as expected for the overlays.  Fallback to
+    # the raw values if the provided baseline does not yield a positive peak.
+    detection_values = values - baseline
+
+    if not np.any(np.isfinite(detection_values)):
         return metrics
 
-    level_10 = baseline + 0.10 * amplitude
-    level_90 = baseline + 0.90 * amplitude
+    peak_idx = int(np.nanargmax(detection_values))
+    detection_peak = detection_values[: peak_idx + 1]
+    times_peak = times[: peak_idx + 1]
 
-    t10 = _interpolate_crossing(times, values, level_10)
-    t90 = _interpolate_crossing(times, values, level_90)
+    top = float(np.nanmax(detection_peak))
+    if not np.isfinite(top) or top <= 0:
+        detection_values = values
+        peak_idx = int(np.nanargmax(detection_values))
+        detection_peak = detection_values[: peak_idx + 1]
+        times_peak = times[: peak_idx + 1]
+        top = float(np.nanmax(detection_peak))
+        if not np.isfinite(top) or top <= 0:
+            return metrics
+
+        baseline = 0.0
+        detection_values = detection_peak
+    else:
+        detection_values = detection_peak
+
+    level_10 = 0.10 * top
+    level_90 = 0.90 * top
+
+    t10 = _interpolate_crossing(times_peak, detection_values, level_10)
+    t90 = _interpolate_crossing(times_peak, detection_values, level_90)
 
     if np.isfinite(t10):
         metrics["t10"] = float(t10)
