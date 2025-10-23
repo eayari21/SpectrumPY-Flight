@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 os.environ.pop("QT_DEBUG_PLUGINS", None)
 
+import subprocess
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -203,7 +204,7 @@ class LaunchWindow(QMainWindow):
         file_row = QHBoxLayout()
         file_row.setSpacing(16)
         self.file_edit = QLineEdit()
-        self.file_edit.setPlaceholderText("Choose a CDF/HDF5/trace file to work with")
+        self.file_edit.setPlaceholderText("Choose a CDF/HDF5/trace or packet file to work with")
         self.file_edit.setReadOnly(True)
         self.file_edit.setMinimumHeight(42)
         self.file_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -307,10 +308,11 @@ class LaunchWindow(QMainWindow):
         file_dialog = QFileDialog(self, "Select data file", str(start_dir))
         file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         file_dialog.setNameFilters([
-            "Science Data (*.h5 *.hdf5 *.cdf *.trc)",
+            "Science Data (*.h5 *.hdf5 *.cdf *.trc *.bin)",
             "HDF5 (*.h5 *.hdf5)",
             "CDF (*.cdf)",
             "Trace (*.trc)",
+            "Binary Packets (*.bin)",
             "All files (*)",
         ])
 
@@ -320,12 +322,87 @@ class LaunchWindow(QMainWindow):
                 self._update_selected_path(Path(selected_files[0]))
 
     def _update_selected_path(self, path: Path) -> None:
-        self._selected_path = path
-        self.file_edit.setText(str(path))
-        enables_quicklook = path.suffix.lower() in SUPPORTED_DATA_EXTENSIONS
-        enables_hdf = path.suffix.lower() in {".h5", ".hdf5"}
+        prepared_path = self._prepare_selected_path(path)
+        if prepared_path is None:
+            return
+
+        self._selected_path = prepared_path
+        self.file_edit.setText(str(prepared_path))
+        enables_quicklook = prepared_path.suffix.lower() in SUPPORTED_DATA_EXTENSIONS
+        enables_hdf = prepared_path.suffix.lower() in {".h5", ".hdf5"}
         self.quicklook_button.setEnabled(enables_quicklook)
         self.hdf_button.setEnabled(enables_hdf)
+
+    def _prepare_selected_path(self, path: Path) -> Optional[Path]:
+        suffix = path.suffix.lower()
+        if not suffix or suffix == ".bin":
+            converted = self._convert_packet_file(path)
+            return converted
+        return path
+
+    def _convert_packet_file(self, path: Path) -> Optional[Path]:
+        output_dir = REPO_ROOT / "HDF5"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        produced_path = output_dir / f"{path.name}.h5"
+
+        command = [sys.executable, str(REPO_ROOT / "idex_packet.py"), "--file", str(path)]
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            result = subprocess.run(
+                command,
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            details = exc.stderr or exc.stdout or ""
+            if details:
+                details = details.strip()
+                if len(details) > 1200:
+                    details = details[:1200] + "…"
+            if details:
+                message = (
+                    "idex_packet.py failed to convert the selected packet file.\n\n"
+                    f"Details:\n{details}"
+                )
+            else:
+                message = "idex_packet.py failed to convert the selected packet file."
+            QMessageBox.critical(self, "Conversion failed", message)
+            return None
+        except OSError as exc:
+            QMessageBox.critical(
+                self,
+                "Conversion failed",
+                f"Unable to execute idex_packet.py: {exc}",
+            )
+            return None
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if result.stdout:
+            print(result.stdout)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
+
+        if not produced_path.exists():
+            QMessageBox.critical(
+                self,
+                "Conversion failed",
+                "idex_packet.py finished without producing an HDF5 file.",
+            )
+            return None
+
+        QMessageBox.information(
+            self,
+            "Packet converted",
+            (
+                "The selected packet was converted to HDF5.\n"
+                f"Output file: {produced_path}"
+            ),
+        )
+        return produced_path
 
     # ------------------------------------------------------------------
     def launch_hdf_explorer(self) -> None:
