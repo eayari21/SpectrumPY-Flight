@@ -19,12 +19,20 @@ import shutil
 import struct
 import matplotlib.pyplot as plt
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor
 # try:
 #     plt.style.use("seaborn-pastel")
 # except:
 #     plt.style.use("seaborn-v0_8-pastel")
 plt.style.use("seaborn-pastel")
 import numpy as np
+
+try:
+    import cupy as cp  # Optional GPU acceleration
+    _HAS_CUPY = True
+except Exception:  # pragma: no cover - cupy is optional
+    cp = None
+    _HAS_CUPY = False
 
 from datetime import datetime, timedelta, timezone
 
@@ -82,6 +90,38 @@ def create_dataset_if_not_exists(hdf5_file, dataset_path, data):
         hdf5_file.create_dataset(dataset_path, data=data)
 
 
+def _bitstring_to_ints(waveform_raw: str, pad_bits: int, value_bits: int,
+                       values_per_block: int, trim_tail: int = 0):
+    if not waveform_raw:
+        return []
+
+    block_bits = pad_bits + value_bits * values_per_block
+    ascii_bits = np.frombuffer(waveform_raw.encode('ascii'), dtype=np.uint8) - 48
+    usable = (ascii_bits.size // block_bits) * block_bits
+    if usable == 0:
+        return []
+
+    ascii_bits = ascii_bits[:usable].reshape(-1, block_bits)
+    if pad_bits:
+        ascii_bits = ascii_bits[:, pad_bits:]
+    ascii_bits = ascii_bits.reshape(-1, value_bits).astype(np.int16, copy=False)
+
+    powers = 1 << np.arange(value_bits - 1, -1, -1, dtype=np.int64)
+    if _HAS_CUPY and ascii_bits.size > 32_000:
+        try:
+            ints_gpu = cp.asarray(ascii_bits)
+            powers_gpu = cp.asarray(powers)
+            ints = cp.asnumpy(ints_gpu.dot(powers_gpu))
+        except Exception:
+            ints = ascii_bits.dot(powers)
+    else:
+        ints = ascii_bits.dot(powers)
+
+    if trim_tail and ints.size:
+        ints = ints[:-trim_tail]
+    return ints.tolist()
+
+
 def calculate_chi_squared(observed, model, num_params):
     observed = np.asarray(observed, dtype=float)
     model = np.asarray(model, dtype=float)
@@ -128,15 +168,28 @@ def detect_saturation(signal, min_repeats=3):
     if signal.size < min_repeats:
         return False
 
-    repeat_count = 1
-    for idx in range(1, signal.size):
-        if signal[idx] == signal[idx - 1]:
-            repeat_count += 1
-            if repeat_count >= min_repeats:
-                return True
-        else:
-            repeat_count = 1
-    return False
+    if _HAS_CUPY:
+        try:
+            signal_gpu = cp.asarray(signal)
+            repeats = cp.diff(signal_gpu) == 0
+            if not bool(cp.any(repeats)):
+                return False
+            boundaries = cp.nonzero(cp.diff(cp.concatenate((cp.array([False]), repeats, cp.array([False])))))[0]
+            if boundaries.size == 0:
+                return False
+            run_lengths = cp.asnumpy(boundaries[1::2] - boundaries[::2])
+            return run_lengths.size > 0 and (run_lengths.max() + 1) >= min_repeats
+        except Exception:
+            pass
+
+    repeats = np.diff(signal) == 0
+    if not np.any(repeats):
+        return False
+    changes = np.flatnonzero(np.diff(np.concatenate(([False], repeats, [False]))))
+    if changes.size == 0:
+        return False
+    run_lengths = changes[1::2] - changes[::2]
+    return run_lengths.size > 0 and (run_lengths.max() + 1) >= min_repeats
 
 # Fit routine for EMG
 def FitEMG(time, amplitude):
@@ -1060,75 +1113,37 @@ class IDEXEvent:
 
         event_saturation_flags = {}
 
-        for k, v in waveforms.items():
-            event_id = k[0]
-            event_saturation_flags.setdefault(event_id, False)
-            # Convert degrees to radians for RA and Dec
-            ra_values = np.deg2rad(np.random.uniform(0, 15, size=1))  # e.g., 100 sample points
-            dec_values = np.deg2rad(np.random.uniform(-5, 5, size=1))
+        waveform_items = list(waveforms.items())
 
+        time_lookup = {
+            'TOF H': self.hstime,
+            'TOF M': self.hstime,
+            'TOF L': self.hstime,
+            'Ion Grid': self.lstime,
+            'Target H': self.lstime,
+            'Target L': self.lstime,
+        }
+        target_channels = {'Target L', 'Target H', 'Ion Grid'}
 
-            # Generating random Euler angles (Roll, Pitch, Yaw) for Attitude in radians
-            # Roll, Pitch, Yaw in an L1 orbit: small deviations typically within +/- 0.5 degrees
-            # Converting these to radians for precise control
+        def _prepare_waveform(item):
+            (event_id, channel), data = item
+            analysis = {
+                'key': (event_id, channel),
+                'data': np.asarray(data),
+                'transformed': None,
+                'channel_saturated': False,
+                'snr': None,
+                'mass': None,
+                'target_fit': None,
+                'logs': [],
+            }
 
-            roll_values = np.deg2rad(np.random.uniform(-0.5, 0.5, size=1))
-            pitch_values = np.deg2rad(np.random.uniform(-0.5, 0.5, size=1))
-            yaw_values = np.deg2rad(np.random.uniform(-0.5, 0.5, size=1))
+            if channel in conversion_factors:
+                transformed_data = analysis['data'].astype(float) * conversion_factors[channel]
+                analysis['transformed'] = transformed_data
+                analysis['channel_saturated'] = detect_saturation(analysis['data'])
 
-            # Generating random position and velocity values for Ephemeris in an L1 orbit
-            # Position in km around L1: minor deviations from the L1 point in the Sun-Earth system
-            # Velocity in km/s around L1: typical small velocities in each direction
-
-            position_x = np.random.uniform(1.5e6, 1.52e6, size=1)  # in km, slight offsets from exact L1
-            position_y = np.random.uniform(-2000, 2000, size=1)     # minor deviation in km
-            position_z = np.random.uniform(-2000, 2000, size=1)     # minor deviation in km
-
-            velocity_x = np.random.uniform(-1.0, 1.0, size=1)       # in km/s, small orbital velocity
-            velocity_y = np.random.uniform(-1.0, 1.0, size=1)       # in km/s, minor variations
-            velocity_z = np.random.uniform(-0.5, 0.5, size=1)       # in km/s, typically smaller z-velocity
-
-            # Adding these values under SpiceData
-            create_dataset_if_not_exists(h, f"/{k[0]}/SpiceData/RightAscension", ra_values)
-            create_dataset_if_not_exists(h, f"/{k[0]}/SpiceData/Declination", dec_values)
-            create_dataset_if_not_exists(h, f"/{k[0]}/SpiceData/Attitude/Roll", roll_values)
-            create_dataset_if_not_exists(h, f"/{k[0]}/SpiceData/Attitude/Pitch", pitch_values)
-            create_dataset_if_not_exists(h, f"/{k[0]}/SpiceData/Attitude/Yaw", yaw_values)
-            create_dataset_if_not_exists(h, f"/{k[0]}/SpiceData/Ephemeris/PositionX", position_x)
-            create_dataset_if_not_exists(h, f"/{k[0]}/SpiceData/Ephemeris/PositionY", position_y)
-            create_dataset_if_not_exists(h, f"/{k[0]}/SpiceData/Ephemeris/PositionZ", position_z)
-            create_dataset_if_not_exists(h, f"/{k[0]}/SpiceData/Ephemeris/VelocityX", velocity_x)
-            create_dataset_if_not_exists(h, f"/{k[0]}/SpiceData/Ephemeris/VelocityY", velocity_y)
-            create_dataset_if_not_exists(h, f"/{k[0]}/SpiceData/Ephemeris/VelocityZ", velocity_z)
-
-            # print(np.array(v))
-            # h.create_dataset(k, data=np.array(v, dtype=np.int8))
-            # print(f"Time = {self.header}")
-            if(f"/{k[0]}/Metadata/Epoch" not in h):
-                h.create_dataset(f"/{k[0]}/Metadata/Epoch", data = self.header[(int(k[0]), 'Timestamp')])
-            # Apply transformation based on k[1] (waveform name)
-            if k[1] in conversion_factors:
-                transformed_data = np.array(v) * conversion_factors[k[1]]
-                h.create_dataset(f"/{k[0]}/{k[1]}", data=transformed_data)
-
-                channel_saturated = detect_saturation(v)
-                create_dataset_if_not_exists(
-                    h,
-                    f"/{event_id}/Metadata/{k[1]} Saturated",
-                    data=np.array([int(channel_saturated)], dtype=np.int8),
-                )
-                if channel_saturated:
-                    event_saturation_flags[event_id] = True
-
-                time_lookup = {
-                    'TOF H': self.hstime,
-                    'TOF M': self.hstime,
-                    'TOF L': self.hstime,
-                    'Ion Grid': self.lstime,
-                    'Target H': self.lstime,
-                    'Target L': self.lstime,
-                }
-                time_array = time_lookup.get(k[1])
+                time_array = time_lookup.get(channel)
                 if time_array is not None:
                     min_len = min(len(time_array), len(transformed_data))
                     if min_len > 0:
@@ -1137,91 +1152,167 @@ class IDEXEvent:
                         snr_value = calculate_snr(transformed_data)
                 else:
                     snr_value = calculate_snr(transformed_data)
+                analysis['snr'] = snr_value
+
+                if channel == 'TOF H':
+                    stretch, shift, mass_scale = time2mass(transformed_data, self.hstime)
+                    peaks, _ = find_peaks(transformed_data, prominence=.01)
+                    analysis['logs'].append(f"peaks = {peaks}")
+                    peak_results = []
+                    for idx, peak in enumerate(peaks):
+                        start = max(0, peak - 5)
+                        end = min(len(transformed_data), peak + 6)
+                        x_slice = self.hstime[start:end]
+                        y_slice = transformed_data[start:end]
+                        analysis['logs'].append(f"Analyzing peak {peak}")
+                        analysis['logs'].append(f"x_slice = {x_slice}, y_slice = {y_slice}")
+
+                        mass_value = float(mass_scale[peak]) if peak < len(mass_scale) else np.nan
+                        analysis['logs'].append(f"Calculating mass fit for peak {mass_value}")
+                        param, param_cov, sig_amp, fitted_curve = FitEMG(x_slice, y_slice)
+                        if param is None:
+                            continue
+                        area = calculate_area_under_emg(x_slice, param)
+                        analysis['logs'].append(f"Area under the EMG fit for peak {mass_value}: {area}")
+                        chi_sq, red_chi = calculate_chi_squared(y_slice, fitted_curve, len(param))
+                        if np.isfinite(mass_value):
+                            mass_label = f"Peak{idx}_{mass_value:.6f}"
+                        else:
+                            mass_label = f"Peak{idx}"
+                        peak_results.append({
+                            'mass_label': mass_label,
+                            'param': np.array(param, dtype=float),
+                            'area': float(area),
+                            'fit_time': np.asarray(x_slice, dtype=float),
+                            'fit_result': np.asarray(fitted_curve, dtype=float),
+                            'chi_sq': float(chi_sq),
+                            'red_chi': float(red_chi),
+                            'sig_amp': float(sig_amp),
+                            'mass_value': float(mass_value),
+                        })
+
+                    kappa = np.mean([mass_scale[peak] - np.round(mass_scale[peak], 1) for peak in peaks]) if peaks.size else np.nan
+                    analysis['logs'].append(f"Kappa = {kappa}")
+                    analysis['mass'] = {
+                        'mass_scale': np.array(mass_scale, dtype=float),
+                        'peaks': peaks,
+                        'kappa': float(kappa) if np.isfinite(kappa) else np.nan,
+                        'peak_results': peak_results,
+                        'stretch': stretch,
+                        'shift': shift,
+                    }
+
+            if channel in target_channels:
+                analysis['target_fit'] = FitTargetSignal(self.lstime, analysis['data'])
+
+            return analysis
+
+        max_workers = max(1, min(32, (os.cpu_count() or 1)))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            analyses = list(executor.map(_prepare_waveform, waveform_items))
+
+        for analysis in analyses:
+            (event_id, channel) = analysis['key']
+            data = analysis['data']
+
+            for log in analysis['logs']:
+                print(log)
+
+            event_saturation_flags.setdefault(event_id, False)
+
+            ra_values = np.deg2rad(np.random.uniform(0, 15, size=1))
+            dec_values = np.deg2rad(np.random.uniform(-5, 5, size=1))
+            roll_values = np.deg2rad(np.random.uniform(-0.5, 0.5, size=1))
+            pitch_values = np.deg2rad(np.random.uniform(-0.5, 0.5, size=1))
+            yaw_values = np.deg2rad(np.random.uniform(-0.5, 0.5, size=1))
+            position_x = np.random.uniform(1.5e6, 1.52e6, size=1)
+            position_y = np.random.uniform(-2000, 2000, size=1)
+            position_z = np.random.uniform(-2000, 2000, size=1)
+            velocity_x = np.random.uniform(-1.0, 1.0, size=1)
+            velocity_y = np.random.uniform(-1.0, 1.0, size=1)
+            velocity_z = np.random.uniform(-0.5, 0.5, size=1)
+
+            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/RightAscension", ra_values)
+            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Declination", dec_values)
+            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Attitude/Roll", roll_values)
+            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Attitude/Pitch", pitch_values)
+            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Attitude/Yaw", yaw_values)
+            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Ephemeris/PositionX", position_x)
+            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Ephemeris/PositionY", position_y)
+            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Ephemeris/PositionZ", position_z)
+            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Ephemeris/VelocityX", velocity_x)
+            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Ephemeris/VelocityY", velocity_y)
+            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Ephemeris/VelocityZ", velocity_z)
+
+            if(f"/{event_id}/Metadata/Epoch" not in h):
+                h.create_dataset(f"/{event_id}/Metadata/Epoch", data=self.header[(int(event_id), 'Timestamp')])
+
+            transformed = analysis['transformed']
+            if transformed is not None:
+                h.create_dataset(f"/{event_id}/{channel}", data=transformed)
+                channel_saturated = analysis['channel_saturated']
                 create_dataset_if_not_exists(
                     h,
-                    f"/{event_id}/Analysis/{k[1]}SNR",
-                    data=np.array([snr_value], dtype=float),
+                    f"/{event_id}/Metadata/{channel} Saturated",
+                    data=np.array([int(channel_saturated)], dtype=np.int8),
                 )
+                if channel_saturated:
+                    event_saturation_flags[event_id] = True
 
-                if k[1] in ['TOF H']:  # Calculate mass scale from TOF H arrays (best quality of the 3 gain stages)
-                    stretch, shift, mass_scale = time2mass(transformed_data, self.hstime)
-                    create_dataset_if_not_exists(h, f"/{k[0]}/Mass", data=np.array(mass_scale))
-                    peaks, _ = find_peaks(transformed_data, prominence=.01)
-                    print(f"peaks = {peaks}")
+                if analysis['snr'] is not None:
+                    create_dataset_if_not_exists(
+                        h,
+                        f"/{event_id}/Analysis/{channel}SNR",
+                        data=np.array([analysis['snr']], dtype=float),
+                    )
 
-                    # Plot the data
+                if analysis['mass'] is not None:
+                    mass_data = analysis['mass']
+                    create_dataset_if_not_exists(h, f"/{event_id}/Mass", data=mass_data['mass_scale'])
+
+                    peaks = mass_data['peaks']
                     plt.figure(figsize=(10, 6))
-                    plt.plot(self.hstime, transformed_data, label="Transformed Data", color="blue")
-                    plt.scatter(self.hstime[peaks], transformed_data[peaks], color="red", label="Peaks", marker="x", s=100)
-
-                    # Add labels and legend
+                    plt.plot(self.hstime, transformed, label="Transformed Data", color="blue")
+                    plt.scatter(self.hstime[peaks], transformed[peaks], color="red", label="Peaks", marker="x", s=100)
                     plt.xlabel("Time (hstime)")
                     plt.ylabel("Transformed Data")
                     plt.title("Transformed Data with Detected Peaks")
                     plt.legend()
                     plt.grid(True)
 
-                    # Show the plot
-                    # plt.show()
+                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/kappa", data=np.array([mass_data['kappa']]))
 
-                    kappa = np.mean([mass_scale[peak]-np.round(mass_scale[peak], 1) for peak in peaks])
-                    print(f"Kappa = {kappa}")
-                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/kappa", data=np.array([kappa]))
+                    for peak_result in mass_data['peak_results']:
+                        mass_label = peak_result['mass_label']
+                        base_path = f"/{event_id}/Analysis/{channel}/Masses/{mass_label}"
+                        create_dataset_if_not_exists(h, f"{base_path}/FitParams", data=peak_result['param'])
+                        create_dataset_if_not_exists(h, f"{base_path}/AreaUnderFit", data=np.array([peak_result['area']], dtype=float))
+                        create_dataset_if_not_exists(h, f"{base_path}/FitTime", data=peak_result['fit_time'])
+                        create_dataset_if_not_exists(h, f"{base_path}/FitResult", data=peak_result['fit_result'])
+                        create_dataset_if_not_exists(h, f"{base_path}/ChiSquared", data=np.array([peak_result['chi_sq']], dtype=float))
+                        create_dataset_if_not_exists(h, f"{base_path}/ReducedChiSquared", data=np.array([peak_result['red_chi']], dtype=float))
+                        create_dataset_if_not_exists(h, f"{base_path}/SignalAmplitude", data=np.array([peak_result['sig_amp']], dtype=float))
+                        create_dataset_if_not_exists(h, f"{base_path}/MassValue", data=np.array([peak_result['mass_value']], dtype=float))
 
-                    for idx, peak in enumerate(peaks):
-                        print(f"Analyzing peak {peak}")
-                        start = max(0, peak - 5)
-                        end = min(len(transformed_data), peak + 6)
-                        x_slice = self.hstime[start:end]
-                        y_slice = transformed_data[start:end]
-                        print(f"x_slice = {x_slice}, y_slice = {y_slice}")
+                    plt.close()
 
-                        mass_value = float(mass_scale[peak]) if peak < len(mass_scale) else np.nan
-                        print(f"Calculating mass fit for peak {mass_value}")
-                        param, param_cov, sig_amp, fitted_curve = FitEMG(x_slice, y_slice)
-                        if param is None:
-                            continue
-
-                        area = calculate_area_under_emg(x_slice, param)
-                        print(f"Area under the EMG fit for peak {mass_value}: {area}")
-                        chi_sq, red_chi = calculate_chi_squared(y_slice, fitted_curve, len(param))
-
-                        if np.isfinite(mass_value):
-                            mass_label = f"Peak{idx}_{mass_value:.6f}"
-                        else:
-                            mass_label = f"Peak{idx}"
-
-                        base_path = f"/{event_id}/Analysis/{k[1]}/Masses/{mass_label}"
-                        create_dataset_if_not_exists(h, f"{base_path}/FitParams", data=np.array(param, dtype=float))
-                        create_dataset_if_not_exists(h, f"{base_path}/AreaUnderFit", data=np.array([area], dtype=float))
-                        create_dataset_if_not_exists(h, f"{base_path}/FitTime", data=np.asarray(x_slice, dtype=float))
-                        create_dataset_if_not_exists(h, f"{base_path}/FitResult", data=np.asarray(fitted_curve, dtype=float))
-                        create_dataset_if_not_exists(h, f"{base_path}/ChiSquared", data=np.array([chi_sq], dtype=float))
-                        create_dataset_if_not_exists(h, f"{base_path}/ReducedChiSquared", data=np.array([red_chi], dtype=float))
-                        create_dataset_if_not_exists(h, f"{base_path}/SignalAmplitude", data=np.array([sig_amp], dtype=float))
-                        create_dataset_if_not_exists(h, f"{base_path}/MassValue", data=np.array([mass_value], dtype=float))
-
-
-
-                if k[1] in ['Target L', 'Target H', 'Ion Grid']:  # Fit target and ion grid signals
-                    param, param_cov, sig_amp, fit_time, filtered_signal, fit_curve, chi_sq, red_chi = FitTargetSignal(self.lstime, v)
-                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}FitParams", data=np.array(param, dtype=float))
-                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]} Fit Time", data=np.asarray(fit_time, dtype=float))
-                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]} Fit Result", data=np.asarray(fit_curve, dtype=float))
-                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]} Filtered Signal", data=np.asarray(filtered_signal, dtype=float))
-                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}MassEstimate", data=np.array([sig_amp], dtype=float))
-                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}ImpactCharge", data=np.array([sig_amp], dtype=float))
-                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}ChiSquared", data=np.array([chi_sq], dtype=float))
-                    create_dataset_if_not_exists(h, f"/{k[0]}/Analysis/{k[1]}ReducedChiSquared", data=np.array([red_chi], dtype=float))
-
-
+                if analysis['target_fit'] is not None:
+                    param, param_cov, sig_amp, fit_time, filtered_signal, fit_curve, chi_sq, red_chi = analysis['target_fit']
+                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}FitParams", data=np.array(param, dtype=float))
+                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel} Fit Time", data=np.asarray(fit_time, dtype=float))
+                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel} Fit Result", data=np.asarray(fit_curve, dtype=float))
+                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel} Filtered Signal", data=np.asarray(filtered_signal, dtype=float))
+                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}MassEstimate", data=np.array([sig_amp], dtype=float))
+                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}ImpactCharge", data=np.array([sig_amp], dtype=float))
+                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}ChiSquared", data=np.array([chi_sq], dtype=float))
+                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}ReducedChiSquared", data=np.array([red_chi], dtype=float))
             else:
-                h.create_dataset(f"/{k[0]}/{k[1]}", data=np.array(v))
+                h.create_dataset(f"/{event_id}/{channel}", data=data)
 
-            if(k[1]=='TOF L'):
-                h.create_dataset(f"/{k[0]}/Time (high sampling)", data=self.hstime)
-            if(k[1]=='Ion Grid'):
-                h.create_dataset(f"/{k[0]}/Time (low sampling)", data=self.lstime)
+            if channel == 'TOF L':
+                h.create_dataset(f"/{event_id}/Time (high sampling)", data=self.hstime)
+            if channel == 'Ion Grid':
+                h.create_dataset(f"/{event_id}/Time (low sampling)", data=self.lstime)
         for evt, saturated in event_saturation_flags.items():
             create_dataset_if_not_exists(
                 h,
@@ -1238,13 +1329,9 @@ class IDEXEvent:
 # || should be 10-bit blocks
 def parse_hs_waveform(waveform_raw: str):
     """Parse a binary string representing a high gain waveform"""
-    w = bitstring.ConstBitStream(bin=waveform_raw)
-    ints = []
-    while w.pos < len(w):
-        w.read('pad:2')  # skip 2
-        ints += w.readlist(['uint:10']*3)
+    ints = _bitstring_to_ints(waveform_raw, pad_bits=2, value_bits=10, values_per_block=3, trim_tail=4)
     print(len(ints))
-    return ints[:-4]
+    return ints
 
 # ||
 # ||
@@ -1252,11 +1339,7 @@ def parse_hs_waveform(waveform_raw: str):
 # || should be 12-bit blocks
 def parse_ls_waveform(waveform_raw: str):
     """Parse a binary string representing a low gain waveform"""
-    w = bitstring.ConstBitStream(bin=waveform_raw)
-    ints = []
-    while w.pos < len(w):
-        w.read('pad:8')  # skip 2
-        ints += w.readlist(['uint:12']*2)
+    ints = _bitstring_to_ints(waveform_raw, pad_bits=8, value_bits=12, values_per_block=2)
     print(len(ints))
     return ints
 
