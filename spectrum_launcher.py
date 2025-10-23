@@ -14,11 +14,16 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QDateTime
 from PyQt6.QtGui import QFont, QIcon, QPixmap, QResizeEvent
 from PyQt6.QtWidgets import (
     QApplication,
+    QComboBox,
+    QDateTimeEdit,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
+    QFormLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -32,6 +37,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+import requests
+from datetime import datetime, timezone
+
 from HDF_Explorer import HDFDataExplorer
 from IDEX_quicklook import MainWindow as QuicklookWindow
 
@@ -39,6 +47,7 @@ APP_TITLE = "SpectrumPY: Flight Edition"
 APP_AUTHOR = "Ethan Ayari"
 REPO_ROOT = Path(__file__).resolve().parent
 IMAGES_DIR = REPO_ROOT / "Images"
+DOWNLOADS_DIR = REPO_ROOT / "Data" / "api_downloads"
 
 IMAP_LOGO_CANDIDATES = (
     "IMAP_logo.png",
@@ -115,6 +124,78 @@ class ResponsiveImageLabel(QLabel):
             Qt.TransformationMode.SmoothTransformation,
         )
         super().setPixmap(scaled)
+
+
+def _qt_to_datetime_utc(value: QDateTime) -> datetime:
+    return value.toUTC().toPyDateTime().replace(tzinfo=timezone.utc)
+
+
+def _format_day_of_year(dt: datetime) -> str:
+    return dt.strftime("%Y-%jT%H:%M:%S")
+
+
+def _format_iso_seconds(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class FetchDataDialog(QDialog):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Fetch data via APIs")
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+
+        self.source_combo = QComboBox()
+        self.source_combo.addItem("WebPODA (LASP)", "webpoda")
+        self.source_combo.addItem("SCD Download Portal", "scd")
+        form.addRow("Data source", self.source_combo)
+
+        self.username_edit = QLineEdit()
+        self.username_edit.setPlaceholderText("Enter your username")
+        form.addRow("Username", self.username_edit)
+
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_edit.setPlaceholderText("Enter your password")
+        form.addRow("Password", self.password_edit)
+
+        now_utc = QDateTime.currentDateTimeUtc()
+        self.start_edit = QDateTimeEdit(now_utc)
+        self.start_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss 'UTC'")
+        self.start_edit.setCalendarPopup(True)
+        self.start_edit.setTimeSpec(Qt.TimeSpec.UTC)
+        form.addRow("Start time", self.start_edit)
+
+        self.end_edit = QDateTimeEdit(now_utc)
+        self.end_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss 'UTC'")
+        self.end_edit.setCalendarPopup(True)
+        self.end_edit.setTimeSpec(Qt.TimeSpec.UTC)
+        form.addRow("Stop time", self.end_edit)
+
+        layout.addLayout(form)
+
+        notice = QLabel(
+            "Credentials are used only to perform the download and are not stored."
+        )
+        notice.setWordWrap(True)
+        notice.setStyleSheet("color: #475569; font-size: 12px;")
+        layout.addWidget(notice)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def values(self) -> dict[str, object]:
+        return {
+            "source": self.source_combo.currentData(),
+            "username": self.username_edit.text(),
+            "password": self.password_edit.text(),
+            "start": self.start_edit.dateTime(),
+            "stop": self.end_edit.dateTime(),
+        }
 
 
 class LaunchWindow(QMainWindow):
@@ -217,6 +298,11 @@ class LaunchWindow(QMainWindow):
         file_row.addWidget(browse_button)
 
         layout.addLayout(file_row)
+
+        fetch_button = QPushButton("Fetch data via APIs")
+        fetch_button.setMinimumHeight(42)
+        fetch_button.clicked.connect(self.fetch_data_via_api)
+        layout.addWidget(fetch_button)
 
         button_row = QHBoxLayout()
         button_row.setSpacing(16)
@@ -321,6 +407,80 @@ class LaunchWindow(QMainWindow):
             if selected_files:
                 self._update_selected_path(Path(selected_files[0]))
 
+    def fetch_data_via_api(self) -> None:
+        dialog = FetchDataDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        values = dialog.values()
+        source = str(values.get("source") or "").strip()
+        username = str(values.get("username") or "").strip()
+        password = str(values.get("password") or "")
+        start_qt = values.get("start")
+        stop_qt = values.get("stop")
+
+        if not username or not password:
+            QMessageBox.warning(self, "Missing credentials", "Please enter both a username and password.")
+            return
+
+        if not isinstance(start_qt, QDateTime) or not isinstance(stop_qt, QDateTime):
+            QMessageBox.critical(self, "Invalid input", "Unable to read the requested time range.")
+            return
+
+        start_dt = _qt_to_datetime_utc(start_qt)
+        stop_dt = _qt_to_datetime_utc(stop_qt)
+        if stop_dt <= start_dt:
+            QMessageBox.warning(self, "Invalid time range", "The stop time must be after the start time.")
+            return
+
+        try:
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            if source == "webpoda":
+                downloaded_path = self._download_webpoda(username, password, start_dt, stop_dt)
+            elif source == "scd":
+                downloaded_path = self._download_scd(username, password, start_dt, stop_dt)
+            else:
+                QMessageBox.critical(self, "Unknown source", "Please choose a data source to continue.")
+                return
+        except requests.HTTPError as exc:
+            QMessageBox.critical(
+                self,
+                "Download failed",
+                f"The remote server returned an error: {exc}",
+            )
+            return
+        except requests.RequestException as exc:
+            QMessageBox.critical(
+                self,
+                "Download failed",
+                f"Unable to fetch data from the selected API: {exc}",
+            )
+            return
+        except OSError as exc:
+            QMessageBox.critical(
+                self,
+                "Save failed",
+                f"Unable to save the downloaded file: {exc}",
+            )
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if not downloaded_path:
+            QMessageBox.warning(
+                self,
+                "No data returned",
+                "The selected API did not return any data for the requested interval.",
+            )
+            return
+
+        self._update_selected_path(downloaded_path)
+        QMessageBox.information(
+            self,
+            "Download complete",
+            f"Data downloaded to:\n{downloaded_path}",
+        )
+
     def _update_selected_path(self, path: Path) -> None:
         prepared_path = self._prepare_selected_path(path)
         if prepared_path is None:
@@ -339,6 +499,91 @@ class LaunchWindow(QMainWindow):
             converted = self._convert_packet_file(path)
             return converted
         return path
+
+    def _download_webpoda(
+        self,
+        username: str,
+        password: str,
+        start: datetime,
+        stop: datetime,
+    ) -> Optional[Path]:
+        DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+        query_params = [
+            ("time>=", _format_day_of_year(start)),
+            ("time<", _format_day_of_year(stop)),
+            ("project(time,packet)", ""),
+            ('formatTime("yyyy-DDD\'T\'HH:mm:ss")', ""),
+        ]
+        url = "https://lasp.colorado.edu/ops/imap/poda/dap2/packets/SID1/IDX_SCI.asc"
+
+        total_written = 0
+        filename = f"IDX_SCI_{start.strftime('%Y%m%dT%H%M%S')}_{stop.strftime('%Y%m%dT%H%M%S')}.asc"
+        target = DOWNLOADS_DIR / filename
+
+        with requests.get(url, params=query_params, auth=(username, password), timeout=120, stream=True) as response:
+            response.raise_for_status()
+            with open(target, "wb") as handle:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        handle.write(chunk)
+                        total_written += len(chunk)
+
+        if total_written == 0:
+            if target.exists():
+                target.unlink()
+            return None
+
+        return target
+
+    def _download_scd(
+        self,
+        username: str,
+        password: str,
+        start: datetime,
+        stop: datetime,
+    ) -> Optional[Path]:
+        DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+        params = {
+            "start": _format_iso_seconds(start),
+            "stop": _format_iso_seconds(stop),
+        }
+        url = "https://imap-mission.com/data/download"
+
+        def _extract_filename(header_value: str | None) -> Optional[str]:
+            if not header_value:
+                return None
+            parts = header_value.split("filename=")
+            if len(parts) < 2:
+                return None
+            candidate = parts[1].strip()
+            candidate = candidate.strip('"')
+            candidate = candidate.strip("'")
+            candidate = candidate.strip()
+            return candidate or None
+
+        fallback = f"imap_download_{start.strftime('%Y%m%dT%H%M%S')}_{stop.strftime('%Y%m%dT%H%M%S')}.bin"
+
+        total_written = 0
+        target: Optional[Path] = None
+
+        with requests.get(url, params=params, auth=(username, password), timeout=120, stream=True) as response:
+            response.raise_for_status()
+            filename = _extract_filename(response.headers.get("Content-Disposition")) or fallback
+            target = DOWNLOADS_DIR / filename
+            with open(target, "wb") as handle:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        handle.write(chunk)
+                        total_written += len(chunk)
+
+        if not target:
+            return None
+
+        if total_written == 0 and target.exists():
+            target.unlink()
+            return None
+
+        return target
 
     def _convert_packet_file(self, path: Path) -> Optional[Path]:
         output_dir = REPO_ROOT / "HDF5"
