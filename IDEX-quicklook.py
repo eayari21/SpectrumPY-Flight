@@ -90,7 +90,8 @@ try:
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
         QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
         QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton, QTextBrowser,
-        QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter
+        QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter,
+        QScrollArea, QFrame
     )
     _QT = "PySide6"
 except Exception:
@@ -101,7 +102,8 @@ except Exception:
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
         QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
         QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton, QTextBrowser,
-        QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter
+        QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter,
+        QScrollArea, QFrame
     )
     _QT = "PyQt6"
 
@@ -1843,10 +1845,32 @@ class MainWindow(QMainWindow):
         self.figure = Figure(figsize=(12, 8), constrained_layout=True)
         self.canvas = FigureCanvas(self.figure)
         self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.canvas.setMinimumWidth(800)
+
+        self._plot_container = QWidget(self)
+        self._plot_container.setAutoFillBackground(False)
+        container_layout = QVBoxLayout(self._plot_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+        container_layout.addWidget(self.canvas)
+
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setStyleSheet(
+            """
+            QScrollArea { border: none; background: transparent; }
+            QScrollArea > QWidget > QWidget { background: transparent; }
+            """
+        )
+        self.scroll_area.setWidget(self._plot_container)
+
         self.nav_toolbar = NavigationToolbar(self.canvas, self)
         self.nav_toolbar.setStyleSheet("font-size: 14px; padding: 6px;")
         self.vbox.addWidget(self.nav_toolbar)
-        self.vbox.addWidget(self.canvas)
+        self.vbox.addWidget(self.scroll_area)
 
         self.statusBar().showMessage("Select a data file (HDF5 or CDF) to get started.")
 
@@ -2293,6 +2317,28 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
+    def _update_canvas_geometry(self, axis_count: int) -> None:
+        """Resize the canvas to keep stacked plots readable within a scroll area."""
+
+        axis_count = max(1, axis_count)
+        base_height = 6.5
+        per_axis = 2.6
+        target_height = max(base_height, per_axis * axis_count)
+
+        try:
+            self.figure.set_size_inches(self.figure.get_figwidth(), target_height, forward=True)
+        except Exception:
+            try:
+                self.figure.set_figheight(target_height)
+            except Exception:
+                pass
+
+        target_pixels = int(target_height * self.figure.get_dpi())
+        if target_pixels > 0:
+            self.canvas.setMinimumHeight(target_pixels)
+            self.canvas.resize(self.canvas.width(), target_pixels)
+            self.canvas.updateGeometry()
+
     def open_documentation_center(
         self,
         initial_query: Optional[str] = None,
@@ -2679,6 +2725,7 @@ class MainWindow(QMainWindow):
                 fontsize=18,
             )
             ax.axis("off")
+            self._update_canvas_geometry(1)
             self.canvas.draw_idle()
             self.refresh_fit_controls()
             self.update_status_text()
@@ -2708,6 +2755,7 @@ class MainWindow(QMainWindow):
                 fontsize=18,
             )
             ax.axis("off")
+            self._update_canvas_geometry(1)
             self.canvas.draw_idle()
             self.update_status_text()
             return
@@ -2715,6 +2763,7 @@ class MainWindow(QMainWindow):
         overlay_mode = self.overlay_button.isChecked()
 
         axes: List[Any] = []
+        axis_count = 1
 
         try:
             if overlay_mode:
@@ -2791,7 +2840,9 @@ class MainWindow(QMainWindow):
                     self.figure.align_ylabels(axes)
                 except Exception:
                     pass
+            axis_count = max(len(axes), 1)
 
+        self._update_canvas_geometry(axis_count)
         self.canvas.draw_idle()
         self.update_status_text(missing)
 
