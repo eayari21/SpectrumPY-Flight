@@ -1,0 +1,404 @@
+qt.core.plugin.factoryloader: checking directory path "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/platforms" ...
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/platforms/libqcocoa.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/platforms/libqcocoa.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QPA.QPlatformIntegrationFactoryInterface.5.3",
+    "MetaData": {
+        "Keys": [
+            "cocoa"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QCocoaIntegrationPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("cocoa")
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/platforms/libqminimal.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/platforms/libqminimal.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QPA.QPlatformIntegrationFactoryInterface.5.3",
+    "MetaData": {
+        "Keys": [
+            "minimal"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QMinimalIntegrationPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("minimal")
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/platforms/libqoffscreen.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/platforms/libqoffscreen.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QPA.QPlatformIntegrationFactoryInterface.5.3",
+    "MetaData": {
+        "Keys": [
+            "offscreen"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QOffscreenIntegrationPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("offscreen")
+qt.core.plugin.factoryloader: checking directory path "/opt/anaconda3/envs/idex/bin/platforms" ...
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/platforms/libqcocoa.dylib" loaded library
+qt.core.plugin.factoryloader: checking directory path "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/platformthemes" ...
+qt.core.plugin.factoryloader: checking directory path "/opt/anaconda3/envs/idex/bin/platformthemes" ...
+qt.core.plugin.factoryloader: checking directory path "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/styles" ...
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/styles/libqmacstyle.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/styles/libqmacstyle.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QStyleFactoryInterface",
+    "MetaData": {
+        "Keys": [
+            "macOS"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QMacStylePlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("macos")
+qt.core.plugin.factoryloader: checking directory path "/opt/anaconda3/envs/idex/bin/styles" ...
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/styles/libqmacstyle.dylib" loaded library
+qt.core.plugin.factoryloader: checking directory path "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/iconengines" ...
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/iconengines/libqsvgicon.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/iconengines/libqsvgicon.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QIconEngineFactoryInterface",
+    "MetaData": {
+        "Keys": [
+            "svg",
+            "svgz",
+            "svg.gz"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QSvgIconPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("svg", "svgz", "svg.gz")
+qt.core.plugin.factoryloader: checking directory path "/opt/anaconda3/envs/idex/bin/iconengines" ...
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/iconengines/libqsvgicon.dylib" loaded library
+qt.core.plugin.factoryloader: checking directory path "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats" ...
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqgif.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqgif.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QImageIOHandlerFactoryInterface",
+    "MetaData": {
+        "Keys": [
+            "gif"
+        ],
+        "MimeTypes": [
+            "image/gif"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QGifPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("gif")
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqicns.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqicns.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QImageIOHandlerFactoryInterface",
+    "MetaData": {
+        "Keys": [
+            "icns"
+        ],
+        "MimeTypes": [
+            "image/x-icns"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QICNSPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("icns")
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqico.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqico.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QImageIOHandlerFactoryInterface",
+    "MetaData": {
+        "Keys": [
+            "ico",
+            "cur"
+        ],
+        "MimeTypes": [
+            "image/vnd.microsoft.icon",
+            "image/vnd.microsoft.icon"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QICOPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("ico", "cur")
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqjpeg.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqjpeg.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QImageIOHandlerFactoryInterface",
+    "MetaData": {
+        "Keys": [
+            "jpg",
+            "jpeg"
+        ],
+        "MimeTypes": [
+            "image/jpeg",
+            "image/jpeg"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QJpegPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("jpg", "jpeg")
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqmacheif.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqmacheif.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QImageIOHandlerFactoryInterface",
+    "MetaData": {
+        "Keys": [
+            "heic",
+            "heif"
+        ],
+        "MimeTypes": [
+            "image/heic",
+            "image/heif"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QMacHeifPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("heic", "heif")
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqmacjp2.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqmacjp2.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QImageIOHandlerFactoryInterface",
+    "MetaData": {
+        "Keys": [
+            "jp2"
+        ],
+        "MimeTypes": [
+            "image/jp2",
+            "image/jpx",
+            "image/jpm",
+            "video/mj2"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QMacJp2Plugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("jp2")
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqsvg.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqsvg.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QImageIOHandlerFactoryInterface",
+    "MetaData": {
+        "Keys": [
+            "svg",
+            "svgz"
+        ],
+        "MimeTypes": [
+            "image/svg+xml",
+            "image/svg+xml-compressed"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QSvgPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("svg", "svgz")
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqtga.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqtga.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QImageIOHandlerFactoryInterface",
+    "MetaData": {
+        "Keys": [
+            "tga"
+        ],
+        "MimeTypes": [
+            "image/x-tga"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QTgaPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("tga")
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqtiff.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqtiff.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QImageIOHandlerFactoryInterface",
+    "MetaData": {
+        "Keys": [
+            "tiff",
+            "tif"
+        ],
+        "MimeTypes": [
+            "image/tiff",
+            "image/tiff"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QTiffPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("tiff", "tif")
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqwbmp.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqwbmp.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QImageIOHandlerFactoryInterface",
+    "MetaData": {
+        "Keys": [
+            "wbmp"
+        ],
+        "MimeTypes": [
+            "image/vnd.wap.wbmp"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QWbmpPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("wbmp")
+qt.core.plugin.factoryloader: looking at "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqwebp.dylib"
+qt.core.plugin.loader: Found metadata in lib /opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqwebp.dylib, metadata=
+{
+    "IID": "org.qt-project.Qt.QImageIOHandlerFactoryInterface",
+    "MetaData": {
+        "Keys": [
+            "webp"
+        ],
+        "MimeTypes": [
+            "image/webp"
+        ]
+    },
+    "archlevel": 0,
+    "className": "QWebpPlugin",
+    "debug": false,
+    "version": 393984
+}
+
+
+qt.core.plugin.factoryloader: Got keys from plugin meta data QList("webp")
+qt.core.plugin.factoryloader: checking directory path "/opt/anaconda3/envs/idex/bin/imageformats" ...
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqgif.dylib" loaded library
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqicns.dylib" loaded library
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqico.dylib" loaded library
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqjpeg.dylib" loaded library
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqmacheif.dylib" loaded library
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqmacjp2.dylib" loaded library
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqsvg.dylib" loaded library
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqtga.dylib" loaded library
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqtiff.dylib" loaded library
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqwbmp.dylib" loaded library
+qt.core.library: "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqwebp.dylib" loaded library
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in exp
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in exp
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in exp
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in exp
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in exp
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: invalid value encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in exp
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: invalid value encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/opt/anaconda3/envs/idex/lib/python3.9/site-packages/scipy/optimize/_minpack_py.py:881: OptimizeWarning: Covariance of the parameters could not be estimated
+  warnings.warn('Covariance of the parameters could not be estimated',
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in exp
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: invalid value encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in exp
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: invalid value encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in exp
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: invalid value encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in exp
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: invalid value encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py:55: RuntimeWarning: overflow encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/iconengines/libqsvgicon.dylib" unloaded library (faked)
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqgif.dylib" unloaded library (faked)
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqicns.dylib" unloaded library (faked)
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqico.dylib" unloaded library (faked)
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqjpeg.dylib" unloaded library (faked)
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqmacheif.dylib" unloaded library (faked)
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqmacjp2.dylib" unloaded library (faked)
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqsvg.dylib" unloaded library (faked)
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqtga.dylib" unloaded library (faked)
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqtiff.dylib" unloaded library (faked)
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqwbmp.dylib" unloaded library (faked)
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/imageformats/libqwebp.dylib" unloaded library (faked)
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/platforms/libqcocoa.dylib" unloaded library (faked)
+"/opt/anaconda3/envs/idex/lib/python3.9/site-packages/PyQt6/Qt6/plugins/styles/libqmacstyle.dylib" unloaded library (faked)

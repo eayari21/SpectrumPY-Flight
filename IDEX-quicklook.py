@@ -8,6 +8,7 @@ from __future__ import annotations
 # =====================================================================
 
 import os
+os.environ.pop("QT_DEBUG_PLUGINS", None)
 import sys
 import argparse
 import tempfile

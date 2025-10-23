@@ -6,6 +6,9 @@ user choose which analysis environment to enter.
 
 from __future__ import annotations
 
+import os
+os.environ.pop("QT_DEBUG_PLUGINS", None)
+
 import sys
 from pathlib import Path
 from typing import List, Optional
