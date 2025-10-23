@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import csv
 import html
+import json
 import math
 import re
 import unicodedata
@@ -89,6 +90,16 @@ from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from matplotlib.widgets import SpanSelector
 
+from line_shapes import (
+    double_emg as _line_double_emg,
+    emg as _line_emg,
+    generalized_normal as _line_generalized_normal,
+    gaussian as _line_gaussian,
+    hyper_emg as _line_hyper_emg,
+    lorentzian as _line_lorentzian,
+    voigt as _line_voigt,
+)
+
 # --- ERFC shim compatible with NumPy 1.x/2.x (SciPy optional) ---
 from typing import Union
 import numpy as np
@@ -133,6 +144,176 @@ COMBINED_TIME_DATASET = "CombinedTime"
 ANALYSIS_GROUP = "Analysis"
 DUST_GROUP = "DustComposition"
 MASS_LINES_DATASET = "MassLines"
+
+
+@dataclass(frozen=True)
+class ExtraFieldSpec:
+    key: str
+    label: str
+    widget: str  # "spin" or "text"
+    decimals: int = 6
+    minimum: float = -1.0e6
+    maximum: float = 1.0e6
+    step: float = 1.0e-3
+    tooltip: str = ""
+
+
+@dataclass(frozen=True)
+class LineShapeConfig:
+    key: str
+    display: str
+    formula_html: str
+    amplitude_label: str = "A (DN·µs)"
+    amplitude_tooltip: str = "Integral of the line shape across all time."
+    mu_label: str = "μ (µs)"
+    mu_tooltip: str = "Location of the line centre in microseconds."
+    sigma_label: str = "σ (µs)"
+    sigma_tooltip: str = "Width parameter for the selected shape."
+    sigma_minimum: float = 1.0e-9
+    sigma_step: float = 1.0e-3
+    lam_label: str = "λ (µs⁻¹)"
+    lam_tooltip: str = "Rate parameter controlling the exponential tail."
+    lam_minimum: float = 1.0e-9
+    lam_step: float = 1.0e-3
+    lam_visible: bool = True
+    extras: Tuple[ExtraFieldSpec, ...] = ()
+    legend_label: str = "Fit"
+
+
+def _render_formula(text: str) -> str:
+    return "<span style='font-size:16px;'>" + text + "</span>"
+
+
+LINE_SHAPES: Dict[str, LineShapeConfig] = {
+    "emg": LineShapeConfig(
+        key="emg",
+        display="Exponentially Modified Gaussian (EMG)",
+        formula_html=_render_formula(
+            "<b>f(t)</b> = <b>A</b>·<b>λ</b>/2 · exp((<b>μ</b> − t)·<b>λ</b> + (<b>λ</b>·<b>σ</b>)²/2) · erfc((<b>μ</b> + (<b>λ</b>·<b>σ</b>)² − t)/(√2·<b>σ</b>))"
+        ),
+        lam_tooltip="Inverse of the exponential tail time constant (λ = 1/τ).",
+        legend_label="EMG fit",
+    ),
+    "gaussian": LineShapeConfig(
+        key="gaussian",
+        display="Gaussian",
+        formula_html=_render_formula(
+            "<b>f(t)</b> = <b>A</b> / (<b>σ</b>√{2π}) · exp(−(t − <b>μ</b>)² / (2<b>σ</b>²))"
+        ),
+        lam_visible=False,
+        sigma_tooltip="Standard deviation of the Gaussian core.",
+        legend_label="Gaussian fit",
+    ),
+    "lorentzian": LineShapeConfig(
+        key="lorentzian",
+        display="Lorentzian",
+        formula_html=_render_formula(
+            "<b>f(t)</b> = <b>A</b>/π · <b>γ</b>/((t − <b>μ</b>)² + <b>γ</b>²)"
+        ),
+        sigma_label="γ (µs)",
+        sigma_tooltip="Half-width at half-maximum (HWHM).",
+        lam_visible=False,
+        legend_label="Lorentzian fit",
+    ),
+    "voigt": LineShapeConfig(
+        key="voigt",
+        display="Voigt",
+        formula_html=_render_formula(
+            "Voigt(<b>μ</b>, <b>σ</b>, <b>γ</b>) = Re[w((t − <b>μ</b> + i<b>γ</b>)/(√2<b>σ</b>))] · <b>A</b>/(<b>σ</b>√{2π})"
+        ),
+        sigma_tooltip="Gaussian component width (σ).",
+        lam_label="γ (µs)",
+        lam_tooltip="Lorentzian half-width parameter (γ).",
+        lam_minimum=1.0e-9,
+        legend_label="Voigt fit",
+    ),
+    "double_emg": LineShapeConfig(
+        key="double_emg",
+        display="Double EMG",
+        formula_html=_render_formula(
+            "<b>f(t)</b> = w₁·EMG(<b>τ₁</b>) + (1−w₁)·EMG(<b>τ₂</b>)"
+        ),
+        sigma_tooltip="Shared Gaussian width for both components.",
+        lam_label="τ₁ (µs)",
+        lam_tooltip="Time constant of the first exponential tail (signed).",
+        lam_minimum=-1.0,
+        lam_step=1.0e-3,
+        extras=(
+            ExtraFieldSpec(
+                key="tau2",
+                label="τ₂ (µs):",
+                widget="spin",
+                decimals=6,
+                minimum=-1.0e6,
+                maximum=1.0e6,
+                step=1.0e-3,
+                tooltip="Time constant of the second exponential tail (signed).",
+            ),
+            ExtraFieldSpec(
+                key="weight",
+                label="w₁ (0–1):",
+                widget="spin",
+                decimals=3,
+                minimum=0.0,
+                maximum=1.0,
+                step=0.01,
+                tooltip="Mixing weight applied to the first EMG component.",
+            ),
+        ),
+        legend_label="Double EMG fit",
+    ),
+    "hyper_emg": LineShapeConfig(
+        key="hyper_emg",
+        display="HyperEMG",
+        formula_html=_render_formula(
+            "<b>f(t)</b> = (1−∑w)·G + ∑wₗ·EMG(τₗ) + ∑wᵣ·EMG(τᵣ)"
+        ),
+        sigma_tooltip="Core Gaussian width shared across all components.",
+        lam_visible=False,
+        extras=(
+            ExtraFieldSpec(
+                key="taus_left",
+                label="Left τ (µs):",
+                widget="text",
+                tooltip="Comma separated list of negative tail constants (µs).",
+            ),
+            ExtraFieldSpec(
+                key="weights_left",
+                label="Left weights:",
+                widget="text",
+                tooltip="Comma separated weights for left tails (sum ≤ 1).",
+            ),
+            ExtraFieldSpec(
+                key="taus_right",
+                label="Right τ (µs):",
+                widget="text",
+                tooltip="Comma separated list of positive tail constants (µs).",
+            ),
+            ExtraFieldSpec(
+                key="weights_right",
+                label="Right weights:",
+                widget="text",
+                tooltip="Comma separated weights for right tails (sum ≤ 1).",
+            ),
+        ),
+        legend_label="HyperEMG fit",
+    ),
+    "generalized_normal": LineShapeConfig(
+        key="generalized_normal",
+        display="Generalized Normal",
+        formula_html=_render_formula(
+            "<b>f(t)</b> = <b>A</b>·β/(2<b>α</b>Γ(1/β)) · exp(−| (t−<b>μ</b>) / <b>α</b> |^β)"
+        ),
+        sigma_label="α (µs)",
+        sigma_tooltip="Scale parameter controlling the spread (α).",
+        sigma_minimum=1.0e-6,
+        lam_label="β",
+        lam_tooltip="Shape exponent β controlling tail heaviness.",
+        lam_minimum=0.1,
+        lam_step=0.1,
+        legend_label="Generalized normal fit",
+    ),
+}
 
 
 def _emg_model(time_values: np.ndarray, amplitude: float, mu: float, sigma: float, lam: float) -> np.ndarray:
@@ -191,14 +372,138 @@ def _emg_area(
     return area
 
 
-def _estimate_amplitude_from_curve(
-    time_axis: np.ndarray, fit_values: np.ndarray, mu: float, sigma: float, lam: float
+def _coerce_float_list(value: float | List[float] | str | None) -> List[float]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, np.ndarray)):
+        result: List[float] = []
+        for item in value:
+            try:
+                result.append(float(item))
+            except Exception:
+                continue
+        return result
+    if isinstance(value, str):
+        tokens = [tok.strip() for tok in value.replace(";", ",").split(",") if tok.strip()]
+        result: List[float] = []
+        for tok in tokens:
+            try:
+                result.append(float(tok))
+            except Exception:
+                continue
+        return result
+    try:
+        return [float(value)]
+    except Exception:
+        return []
+
+
+def _evaluate_line_shape(
+    shape: str,
+    time_values: np.ndarray,
+    amplitude: float,
+    mu: float,
+    sigma: float,
+    lam: float,
+    extras: Optional[Dict[str, float | List[float]]] = None,
+) -> np.ndarray:
+    arr = np.asarray(time_values, dtype=float)
+    if arr.size == 0:
+        return np.zeros(0, dtype=float)
+    if not math.isfinite(amplitude) or amplitude <= 0.0:
+        return np.zeros_like(arr, dtype=float)
+
+    extras = extras or {}
+    key = (shape or "emg").lower()
+    safe_sigma = max(abs(float(sigma)), 1.0e-12)
+
+    if key == "gaussian":
+        return _line_gaussian(arr, mu, safe_sigma, area=float(amplitude))
+    if key == "lorentzian":
+        gamma = max(abs(float(sigma)), 1.0e-12)
+        return _line_lorentzian(arr, mu, gamma, area=float(amplitude))
+    if key == "voigt":
+        gamma = max(abs(float(lam)), 1.0e-12)
+        return _line_voigt(arr, mu, safe_sigma, gamma, area=float(amplitude))
+    if key == "double_emg":
+        tau1 = float(lam)
+        if not math.isfinite(tau1) or abs(tau1) < 1.0e-9:
+            tau1 = 1.0e-9
+        tau2_raw = extras.get("tau2")
+        try:
+            tau2 = float(tau2_raw) if tau2_raw is not None else -tau1
+        except Exception:
+            tau2 = -tau1
+        if not math.isfinite(tau2) or abs(tau2) < 1.0e-9:
+            tau2 = -math.copysign(1.0e-9, tau2 if tau2 != 0 else tau1)
+        weight_raw = extras.get("weight")
+        try:
+            weight = float(weight_raw)
+        except Exception:
+            weight = 0.5
+        weight = float(np.clip(weight, 0.0, 1.0))
+        return _line_double_emg(arr, mu, safe_sigma, tau1, tau2, w1=weight, area=float(amplitude))
+    if key == "hyper_emg":
+        taus_left = [-abs(val) for val in _coerce_float_list(extras.get("taus_left"))]
+        taus_right = [abs(val) for val in _coerce_float_list(extras.get("taus_right"))]
+        weights_left = _coerce_float_list(extras.get("weights_left"))
+        weights_right = _coerce_float_list(extras.get("weights_right"))
+        return _line_hyper_emg(
+            arr,
+            mu,
+            safe_sigma,
+            taus_left=taus_left,
+            taus_right=taus_right,
+            weights_left=weights_left,
+            weights_right=weights_right,
+            area=float(amplitude),
+        )
+    if key == "generalized_normal":
+        alpha = max(abs(float(sigma)), 1.0e-9)
+        beta = abs(float(lam)) if math.isfinite(lam) else 1.0
+        beta = max(beta, 0.1)
+        return _line_generalized_normal(arr, mu, alpha, beta, area=float(amplitude))
+
+    safe_lambda = abs(float(lam)) if math.isfinite(lam) else 1.0
+    safe_lambda = max(safe_lambda, 1.0e-9)
+    tau = 1.0 / safe_lambda
+    return _line_emg(arr, mu, safe_sigma, tau, area=float(amplitude))
+
+
+def _line_window_area(
+    shape: str,
+    amplitude: float,
+    mu: float,
+    sigma: float,
+    lam: float,
+    extras: Optional[Dict[str, float | List[float]]],
+    start: Optional[float],
+    end: Optional[float],
 ) -> float:
-    """Infer the EMG amplitude from sampled ``fit_values``."""
+    if start is None or end is None or not (math.isfinite(start) and math.isfinite(end)) or end <= start:
+        return 0.0
+    sample = np.linspace(start, end, 800)
+    values = _evaluate_line_shape(shape, sample, amplitude, mu, sigma, lam, extras)
+    if values.size == 0:
+        return 0.0
+    with np.errstate(invalid="ignore"):
+        return float(np.trapz(np.clip(values, 0.0, None), sample))
+
+
+def _estimate_amplitude_from_curve(time_axis: np.ndarray, fit_values: np.ndarray, line: MassLineFit) -> float:
+    """Infer the amplitude scaling for ``line`` from sampled ``fit_values``."""
 
     if time_axis.size == 0 or fit_values.size == 0:
         return 0.0
-    unit_model = _emg_model(time_axis, 1.0, mu, abs(sigma), abs(lam))
+    unit_model = _evaluate_line_shape(
+        line.shape,
+        time_axis,
+        1.0,
+        line.mu,
+        abs(line.sigma),
+        abs(line.lam),
+        line.extra_params,
+    )
     with np.errstate(divide="ignore", invalid="ignore"):
         mask = np.isfinite(unit_model) & np.isfinite(fit_values) & (unit_model > 0)
         if not np.any(mask):
@@ -873,7 +1178,7 @@ def nearest_mass_name(target: float) -> str:
 
 @dataclass
 class MassLineFit:
-    """Container describing a single EMG mass-line fit."""
+    """Container describing a single analytical mass-line fit."""
 
     line_id: int
     label: str
@@ -890,9 +1195,22 @@ class MassLineFit:
     color: str = "#d62728"
     assigned_species: Optional[str] = None
     assigned_mass: Optional[float] = None
+    shape: str = "emg"
+    extra_params: Dict[str, float | List[float]] = field(default_factory=dict)
 
     def parameters(self) -> Tuple[float, float, float, float]:
         return (self.amplitude, self.mu, self.sigma, self.lam)
+
+    def evaluate(self, time_values: np.ndarray) -> np.ndarray:
+        return _evaluate_line_shape(
+            self.shape,
+            time_values,
+            self.amplitude,
+            self.mu,
+            self.sigma,
+            self.lam,
+            self.extra_params,
+        )
 
     def as_row(self) -> Sequence[float | str]:
         return (
@@ -906,12 +1224,24 @@ class MassLineFit:
         )
 
     def window_area(self) -> float:
-        area = _emg_area(self.amplitude, self.mu, abs(self.sigma), abs(self.lam), self.time_start, self.time_end)
-        return max(area, 0.0)
+        return max(
+            _line_window_area(
+                self.shape,
+                self.amplitude,
+                self.mu,
+                self.sigma,
+                self.lam,
+                self.extra_params,
+                self.time_start,
+                self.time_end,
+            ),
+            0.0,
+        )
 
     def total_area(self) -> float:
-        area = _emg_area(self.amplitude, self.mu, abs(self.sigma), abs(self.lam))
-        return max(area, 0.0)
+        if not math.isfinite(self.amplitude):
+            return 0.0
+        return max(float(self.amplitude), 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -1030,13 +1360,7 @@ class ManualMassLineDialog(QDialog):
 
 
 class InspectMassLineDialog(QDialog):
-    """Focused inspector for visualising and editing a single EMG mass line."""
-
-    _EMG_HTML = (
-        "<span style='font-size:16px;'>"
-        "<b>f(t)</b> = <b>A</b> · <b>λ</b>/2 · exp\u207b((t − <b>μ</b>)·<b>λ</b> − (<b>λ</b>·<b>σ</b>)² / 2) · erfc\u208b((<b>μ</b> + (<b>λ</b>·<b>σ</b>)² − t) / (\u221a2 · <b>σ</b>))"
-        "</span>"
-    )
+    """Focused inspector for visualising and editing a single mass line."""
 
     def __init__(
         self,
@@ -1056,6 +1380,12 @@ class InspectMassLineDialog(QDialog):
         self.setMinimumSize(720, 680)
 
         self._line = replace(line)
+        if not isinstance(self._line.extra_params, dict):
+            self._line.extra_params = {}
+        else:
+            self._line.extra_params = dict(self._line.extra_params)
+        if self._line.shape not in LINE_SHAPES:
+            self._line.shape = "emg"
         self._time_axis = np.asarray(time_axis, dtype=float).ravel()
         self._signal = np.asarray(signal, dtype=float).ravel()
         self._baseline = float(baseline)
@@ -1074,11 +1404,13 @@ class InspectMassLineDialog(QDialog):
         self.header_label.setStyleSheet("font-size: 20px; font-weight: 600;")
         layout.addWidget(self.header_label)
 
+        config = LINE_SHAPES.get(self._line.shape, LINE_SHAPES["emg"])
+
         self.formula_label = QLabel(self)
         self.formula_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.formula_label.setTextFormat(Qt.TextFormat.RichText)
         self.formula_label.setWordWrap(True)
-        self.formula_label.setText(self._EMG_HTML)
+        self.formula_label.setText(config.formula_html)
         layout.addWidget(self.formula_label)
 
         source_label = QLabel(f"Signal source: {html.escape(self._source_name)}", self)
@@ -1108,6 +1440,13 @@ class InspectMassLineDialog(QDialog):
         self.species_combo.currentIndexChanged.connect(self._on_species_changed)
         form.addRow("Species:", self.species_combo)
 
+        self._block_shape_signal = False
+        self.shape_combo = QComboBox(parameter_box)
+        for key, shape_cfg in LINE_SHAPES.items():
+            self.shape_combo.addItem(shape_cfg.display, userData=key)
+        self.shape_combo.currentIndexChanged.connect(self._on_shape_changed)
+        form.addRow("Line shape:", self.shape_combo)
+
         self.label_edit = QLineEdit(parameter_box)
         self.label_edit.setText(self._line.label)
         self.label_edit.textChanged.connect(self._on_label_changed)
@@ -1116,33 +1455,40 @@ class InspectMassLineDialog(QDialog):
         time_min = float(np.nanmin(self._time_axis)) if self._time_axis.size else -1.0e6
         time_max = float(np.nanmax(self._time_axis)) if self._time_axis.size else 1.0e6
 
+        self.mu_label = QLabel("μ (µs):", parameter_box)
         self.mu_spin = QDoubleSpinBox(parameter_box)
         self.mu_spin.setDecimals(6)
         self.mu_spin.setRange(time_min, time_max)
         self.mu_spin.setValue(self._line.mu)
         self.mu_spin.valueChanged.connect(self._on_parameter_changed)
-        form.addRow("μ (µs):", self.mu_spin)
+        form.addRow(self.mu_label, self.mu_spin)
 
+        self.sigma_label = QLabel("σ (µs):", parameter_box)
         self.sigma_spin = QDoubleSpinBox(parameter_box)
         self.sigma_spin.setDecimals(6)
         self.sigma_spin.setRange(1.0e-9, 1.0e6)
         self.sigma_spin.setValue(max(abs(self._line.sigma), 1.0e-6))
         self.sigma_spin.valueChanged.connect(self._on_parameter_changed)
-        form.addRow("σ (µs):", self.sigma_spin)
+        form.addRow(self.sigma_label, self.sigma_spin)
 
+        self.lambda_label = QLabel("λ (µs⁻¹):", parameter_box)
         self.lambda_spin = QDoubleSpinBox(parameter_box)
         self.lambda_spin.setDecimals(6)
-        self.lambda_spin.setRange(1.0e-9, 1.0e6)
-        self.lambda_spin.setValue(max(abs(self._line.lam), 1.0e-6))
+        self.lambda_spin.setRange(-1.0e6, 1.0e6)
+        lam_initial = float(self._line.lam) if math.isfinite(self._line.lam) else 1.0
+        if abs(lam_initial) < 1.0e-9:
+            lam_initial = 1.0e-6
+        self.lambda_spin.setValue(lam_initial)
         self.lambda_spin.valueChanged.connect(self._on_parameter_changed)
-        form.addRow("λ (µs⁻¹):", self.lambda_spin)
+        form.addRow(self.lambda_label, self.lambda_spin)
 
+        self.amplitude_label = QLabel("A (DN·µs):", parameter_box)
         self.amplitude_spin = QDoubleSpinBox(parameter_box)
         self.amplitude_spin.setDecimals(6)
         self.amplitude_spin.setRange(1.0e-12, 1.0e12)
         self.amplitude_spin.setValue(max(abs(self._line.amplitude), 1.0e-9))
         self.amplitude_spin.valueChanged.connect(self._on_parameter_changed)
-        form.addRow("A (DN·µs):", self.amplitude_spin)
+        form.addRow(self.amplitude_label, self.amplitude_spin)
 
         self.start_spin = QDoubleSpinBox(parameter_box)
         self.start_spin.setDecimals(6)
@@ -1158,7 +1504,18 @@ class InspectMassLineDialog(QDialog):
         self.end_spin.valueChanged.connect(self._on_window_changed)
         form.addRow("End time (µs):", self.end_spin)
 
+        self.extra_box = QGroupBox("Additional parameters", parameter_box)
+        self.extra_box.setVisible(False)
+        self.extra_form = QFormLayout(self.extra_box)
+        self.extra_form.setContentsMargins(8, 8, 8, 8)
+        self.extra_form.setSpacing(6)
+        self._extra_fields: Dict[str, QWidget] = {}
+        form.addRow(self.extra_box)
+
         layout.addWidget(parameter_box)
+
+        self._set_shape_index(self._line.shape)
+        self._apply_shape_config(self._line.shape)
 
         self.mass_hint_label = QLabel("", self)
         self.mass_hint_label.setStyleSheet("font-size: 14px; font-style: italic; color: #495057;")
@@ -1211,10 +1568,19 @@ class InspectMassLineDialog(QDialog):
         self.mass_hint_label.setText(" | ".join(parts))
 
     def _update_plot(self) -> None:
+        shape_key = self._current_shape_key()
+        config = self._shape_config(shape_key)
         amplitude = float(max(self.amplitude_spin.value(), 1.0e-12))
         mu = float(self.mu_spin.value())
-        sigma = float(max(self.sigma_spin.value(), 1.0e-9))
-        lam = float(max(self.lambda_spin.value(), 1.0e-9))
+        sigma = float(max(abs(self.sigma_spin.value()), max(config.sigma_minimum, 1.0e-9)))
+        lam_value = float(self.lambda_spin.value())
+        if config.lam_visible:
+            lam = lam_value
+            if config.lam_minimum > 0.0:
+                lam = max(lam, config.lam_minimum)
+        else:
+            lam = lam_value if math.isfinite(lam_value) else 1.0
+        extras = self._collect_extra_parameters(validate=False)
         start = float(self.start_spin.value())
         end = float(self.end_spin.value())
 
@@ -1240,7 +1606,7 @@ class InspectMassLineDialog(QDialog):
             signal_data = self._signal
 
         fit_time = np.linspace(start, end, 1200)
-        fit_values = _emg_model(fit_time, amplitude, mu, sigma, lam)
+        fit_values = _evaluate_line_shape(shape_key, fit_time, amplitude, mu, sigma, lam, extras)
 
         offset = 0.0
         finite_signal = signal_data[np.isfinite(signal_data)]
@@ -1254,7 +1620,13 @@ class InspectMassLineDialog(QDialog):
         self.figure.clear()
         ax = self.figure.add_subplot(111)
         ax.scatter(time_data, signal_plot, s=22, c="#1f77b4", alpha=0.75, label="Waveform")
-        ax.plot(fit_time, fit_plot, color="#d62728", linewidth=2.2, label="EMG fit")
+        ax.plot(
+            fit_time,
+            fit_plot,
+            color="#d62728",
+            linewidth=2.2,
+            label=config.legend_label,
+        )
         ax.set_xlabel("Time (µs)")
         ax.set_ylabel("Signal (DN – baseline)")
         ax.set_yscale("symlog", linthresh=1.0e-3)
@@ -1263,6 +1635,136 @@ class InspectMassLineDialog(QDialog):
         ax.legend(loc="best")
         ax.grid(True, which="both", linestyle="--", linewidth=0.6, alpha=0.35)
         self.canvas.draw_idle()
+
+    def _shape_config(self, key: str) -> LineShapeConfig:
+        return LINE_SHAPES.get(key, LINE_SHAPES["emg"])
+
+    def _current_shape_key(self) -> str:
+        data = self.shape_combo.currentData()
+        if isinstance(data, str) and data in LINE_SHAPES:
+            return data
+        return "emg"
+
+    def _set_shape_index(self, key: str) -> None:
+        target = key if key in LINE_SHAPES else "emg"
+        for idx in range(self.shape_combo.count()):
+            if self.shape_combo.itemData(idx) == target:
+                self._block_shape_signal = True
+                try:
+                    self.shape_combo.setCurrentIndex(idx)
+                finally:
+                    self._block_shape_signal = False
+                return
+        if self.shape_combo.count():
+            self._block_shape_signal = True
+            try:
+                self.shape_combo.setCurrentIndex(0)
+            finally:
+                self._block_shape_signal = False
+
+    def _apply_shape_config(self, key: str) -> None:
+        config = self._shape_config(key)
+        self.formula_label.setText(config.formula_html)
+        self.amplitude_label.setText(config.amplitude_label)
+        self.amplitude_spin.setToolTip(config.amplitude_tooltip)
+        self.mu_label.setText(config.mu_label)
+        self.mu_spin.setToolTip(config.mu_tooltip)
+        self.sigma_label.setText(config.sigma_label)
+        self.sigma_spin.setToolTip(config.sigma_tooltip)
+        sigma_min = max(config.sigma_minimum, 1.0e-9)
+        self.sigma_spin.setRange(sigma_min, 1.0e6)
+        self.sigma_spin.setSingleStep(config.sigma_step)
+
+        self.lambda_label.setText(config.lam_label)
+        self.lambda_spin.setToolTip(config.lam_tooltip)
+        self.lambda_label.setVisible(config.lam_visible)
+        self.lambda_spin.setVisible(config.lam_visible)
+        if config.lam_visible:
+            if config.lam_minimum < 0.0:
+                self.lambda_spin.setRange(-1.0e6, 1.0e6)
+            else:
+                lam_min = max(config.lam_minimum, 1.0e-9)
+                self.lambda_spin.setRange(lam_min, 1.0e6)
+            self.lambda_spin.setSingleStep(config.lam_step)
+            if config.lam_minimum >= 0.0 and self.lambda_spin.value() <= 0.0:
+                self.lambda_spin.setValue(max(config.lam_minimum, 1.0e-9))
+
+        # Rebuild extra parameter widgets
+        for widget in self._extra_fields.values():
+            if isinstance(widget, QWidget):
+                self.extra_form.removeRow(widget)
+                widget.deleteLater()
+        self._extra_fields.clear()
+
+        if config.extras:
+            self.extra_box.show()
+            for spec in config.extras:
+                if spec.widget == "spin":
+                    field = QDoubleSpinBox(self.extra_box)
+                    field.setDecimals(spec.decimals)
+                    field.setRange(spec.minimum, spec.maximum)
+                    field.setSingleStep(spec.step)
+                    if spec.tooltip:
+                        field.setToolTip(spec.tooltip)
+                    base_value = self._line.extra_params.get(spec.key)
+                    if isinstance(base_value, (int, float)):
+                        field.setValue(float(base_value))
+                    elif spec.key == "weight":
+                        field.setValue(0.5)
+                    elif spec.key.startswith("tau"):
+                        tau_default = float(self.lambda_spin.value())
+                        if spec.key == "tau2":
+                            tau_default = -abs(tau_default)
+                        field.setValue(tau_default)
+                    self.extra_form.addRow(spec.label, field)
+                    self._extra_fields[spec.key] = field
+                else:
+                    field = QLineEdit(self.extra_box)
+                    if spec.tooltip:
+                        field.setToolTip(spec.tooltip)
+                    base_value = self._line.extra_params.get(spec.key)
+                    if isinstance(base_value, str):
+                        field.setText(base_value)
+                    elif isinstance(base_value, (list, tuple, np.ndarray)):
+                        field.setText(", ".join(f"{float(val):.6g}" for val in base_value))
+                    self.extra_form.addRow(spec.label, field)
+                    self._extra_fields[spec.key] = field
+        else:
+            self.extra_box.hide()
+
+    def _collect_extra_parameters(self, *, validate: bool) -> Dict[str, float | List[float]]:
+        extras: Dict[str, float | List[float]] = {}
+        config = self._shape_config(self._current_shape_key())
+        for spec in config.extras:
+            widget = self._extra_fields.get(spec.key)
+            if widget is None:
+                continue
+            if isinstance(widget, QDoubleSpinBox):
+                value = float(widget.value())
+                if validate and spec.key.startswith("tau") and abs(value) < 1.0e-9:
+                    raise ValueError("Time constants must be non-zero.")
+                if validate and spec.key == "weight" and not (0.0 <= value <= 1.0):
+                    raise ValueError("w₁ must be between 0 and 1.")
+                extras[spec.key] = value
+            elif isinstance(widget, QLineEdit):
+                text = widget.text().strip()
+                if not text:
+                    extras[spec.key] = []
+                else:
+                    values = _coerce_float_list(text)
+                    if validate and not values:
+                        raise ValueError(f"{spec.label} requires at least one value.")
+                    extras[spec.key] = values
+        return extras
+
+    def _on_shape_changed(self, _index: int) -> None:
+        if self._block_shape_signal:
+            return
+        key = self._current_shape_key()
+        self._line.shape = key
+        self._line.extra_params = {}
+        self._apply_shape_config(key)
+        self._update_plot()
 
     def _on_label_changed(self, _text: str) -> None:
         label = self.label_edit.text().strip()
@@ -1299,10 +1801,22 @@ class InspectMassLineDialog(QDialog):
 
     def _collect_values(self) -> Dict[str, float | str]:
         label = self.label_edit.text().strip() or "Mass line"
+        shape_key = self._current_shape_key()
+        config = self._shape_config(shape_key)
         amplitude = float(max(self.amplitude_spin.value(), 1.0e-12))
         mu = float(self.mu_spin.value())
-        sigma = float(max(self.sigma_spin.value(), 1.0e-9))
-        lam = float(max(self.lambda_spin.value(), 1.0e-9))
+        sigma = float(max(abs(self.sigma_spin.value()), max(config.sigma_minimum, 1.0e-9)))
+        lam_value = float(self.lambda_spin.value())
+        if config.lam_visible:
+            lam = lam_value
+        else:
+            lam = lam_value if math.isfinite(lam_value) else (self._line.lam or 1.0)
+        if sigma <= 0.0:
+            raise ValueError("The width parameter must be positive.")
+        if config.key in {"emg", "voigt", "generalized_normal"} and lam <= 0.0:
+            raise ValueError("The selected line shape requires a positive secondary parameter.")
+        if config.key == "double_emg" and abs(lam) < 1.0e-9:
+            raise ValueError("τ₁ must be non-zero.")
         start = float(self.start_spin.value())
         end = float(self.end_spin.value())
         if end <= start:
@@ -1314,6 +1828,8 @@ class InspectMassLineDialog(QDialog):
                 mass_guess = float(self._mass_converter(mu))
             except Exception:
                 mass_guess = float("nan")
+        extras = self._collect_extra_parameters(validate=True)
+        self._line.extra_params = extras
         return {
             "label": label,
             "amplitude": amplitude,
@@ -1325,6 +1841,8 @@ class InspectMassLineDialog(QDialog):
             "mass_guess": mass_guess,
             "assigned_species": self._assigned_species or "",
             "assigned_mass": self._assigned_mass,
+            "shape": shape_key,
+            "extra_params": extras,
         }
 
     def _set_species_index(self, index: int) -> None:
@@ -1548,9 +2066,7 @@ class DustCompositionWindow(QMainWindow):
                             inferred = _estimate_amplitude_from_curve(
                                 line.time_axis,
                                 line.fit_values,
-                                line.mu,
-                                line.sigma,
-                                line.lam,
+                                line,
                             )
                             if math.isfinite(inferred) and inferred > 0.0:
                                 line.amplitude = inferred
@@ -1640,6 +2156,28 @@ class DustCompositionWindow(QMainWindow):
                 )
                 if not label:
                     label = nearest_mass_name(mass_guess)
+                shape_raw = _get_field(entry, ("shape", "line_shape", "model"), default="emg")
+                if isinstance(shape_raw, bytes):
+                    try:
+                        shape_raw = shape_raw.decode("utf-8")
+                    except Exception:
+                        shape_raw = shape_raw.decode("latin-1", "ignore")
+                shape_key = str(shape_raw).strip().lower() or "emg"
+                if shape_key not in LINE_SHAPES:
+                    shape_key = "emg"
+                extras_raw = _get_field(entry, ("extras", "extra", "extra_params"), default="")
+                extra_params: Dict[str, float | List[float]] = {}
+                if extras_raw not in (None, "", b""):
+                    try:
+                        if isinstance(extras_raw, bytes):
+                            extras_raw = extras_raw.decode("utf-8")
+                        parsed = json.loads(extras_raw)
+                        if isinstance(parsed, dict):
+                            extra_params = {
+                                str(key): value for key, value in parsed.items() if isinstance(key, str)
+                            }
+                    except Exception:
+                        extra_params = {}
                 line = MassLineFit(
                     line_id=line_id,
                     label=label,
@@ -1651,6 +2189,8 @@ class DustCompositionWindow(QMainWindow):
                     time_end=time_end,
                     mass_guess=mass_guess,
                     abundance=abundance,
+                    shape=shape_key,
+                    extra_params=extra_params,
                 )
                 if assigned_label:
                     line.label = assigned_label
@@ -1960,10 +2500,11 @@ class DustCompositionWindow(QMainWindow):
             mass_guess=float(data.get("mass", 0.0)),
             abundance=0.0,
             color="#2ca02c",
+            shape="emg",
         )
         dense_time = np.linspace(line.time_start, line.time_end, 800)
         line.time_axis = dense_time
-        line.fit_values = _emg_model(dense_time, line.amplitude, line.mu, abs(line.sigma), abs(line.lam))
+        line.fit_values = line.evaluate(dense_time)
         self._mass_line_counter += 1
         self._mass_lines.append(line)
         self._selected_line_id = line.line_id
@@ -2014,6 +2555,18 @@ class DustCompositionWindow(QMainWindow):
         line.mu = float(values.get("mu", line.mu))
         line.sigma = float(values.get("sigma", line.sigma))
         line.lam = float(values.get("lam", line.lam))
+        shape_value = values.get("shape", line.shape)
+        if isinstance(shape_value, str) and shape_value in LINE_SHAPES:
+            line.shape = shape_value
+        else:
+            line.shape = "emg"
+        extras_value = values.get("extra_params")
+        if isinstance(extras_value, dict):
+            line.extra_params = {
+                str(key): value for key, value in extras_value.items()
+            }
+        else:
+            line.extra_params = {}
         line.time_start = float(values.get("time_start", line.time_start))
         line.time_end = float(values.get("time_end", line.time_end))
         assigned_species = str(values.get("assigned_species", "")).strip()
@@ -2667,9 +3220,10 @@ class DustCompositionWindow(QMainWindow):
             mass_guess=mass_guess,
             abundance=0.0,
             time_axis=dense_time,
-            fit_values=fit_curve,
             color="#ff7f0e",
+            shape="emg",
         )
+        line.fit_values = line.evaluate(dense_time)
         self._mass_line_counter += 1
         self._mass_lines.append(line)
         self._selected_line_id = line.line_id
@@ -2684,7 +3238,7 @@ class DustCompositionWindow(QMainWindow):
         previous_auto = nearest_mass_name(previous_guess) if math.isfinite(previous_guess) else ""
         dense_time = np.linspace(line.time_start, line.time_end, 800)
         line.amplitude = max(abs(float(line.amplitude)), 0.0)
-        fit_curve = _emg_model(dense_time, line.amplitude, line.mu, abs(line.sigma), abs(line.lam))
+        fit_curve = line.evaluate(dense_time)
         line.time_axis = dense_time
         line.fit_values = fit_curve
         preserve_label = preserve_label or bool(line.assigned_species)
@@ -2882,6 +3436,7 @@ class DustCompositionWindow(QMainWindow):
             dust_group.attrs["MassShift"] = self._mass_params.get("shift", 0.0)
             if self._mass_lines:
                 str_dtype = h5py.string_dtype(encoding="utf-8", length=120)
+                extras_dtype = h5py.string_dtype(encoding="utf-8", length=2048)
                 table = np.zeros(len(self._mass_lines), dtype=[
                     ("id", "i4"),
                     ("label", str_dtype),
@@ -2896,6 +3451,8 @@ class DustCompositionWindow(QMainWindow):
                     ("assigned_mass", "f8"),
                     ("area", "f8"),
                     ("abundance", "f8"),
+                    ("shape", str_dtype),
+                    ("extras", extras_dtype),
                 ])
                 for idx, line in enumerate(self._mass_lines):
                     assigned_species = line.assigned_species or ""
@@ -2903,6 +3460,10 @@ class DustCompositionWindow(QMainWindow):
                         assigned_mass = float(line.assigned_mass)
                     else:
                         assigned_mass = float("nan")
+                    try:
+                        extras_serialized = json.dumps(line.extra_params)
+                    except Exception:
+                        extras_serialized = "{}"
                     table[idx] = (
                         line.line_id,
                         line.label,
@@ -2917,6 +3478,8 @@ class DustCompositionWindow(QMainWindow):
                         assigned_mass,
                         line.window_area(),
                         line.abundance,
+                        line.shape,
+                        extras_serialized,
                     )
                 _write_dataset(dust_group, MASS_LINES_DATASET, table)
                 fits_group = dust_group.require_group("Fits")
