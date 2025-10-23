@@ -1117,7 +1117,7 @@ BASELINE_PRIMARY_WINDOW = (-7.0, -5.0)
 BASELINE_FALLBACK_THRESHOLD = -2.0
 
 FAMILY_YLABELS = {
-    FAMILY_HIGH: r"$TOF$ [pC/\Delta t]",
+    FAMILY_HIGH: r"$TOF$ [pC/ $\Delta t$]",
     FAMILY_LOW: r"$Q$ [pC]",
 }
 
@@ -1779,9 +1779,9 @@ Y_AXIS_LABELS: Dict[str, str] = {
     "Target L": r"$Q_{TL}$ [pC]",
     "Target H": r"$Q_{TH}$ [pC]",
     "Ion Grid": r"$Q_{IG}$ [pC]",
-    "TOF L": r"$TOF_{L}$ [pC/\Delta t]",
-    "TOF M": r"$TOF_{M}$ [pC/\Delta t]",
-    "TOF H": r"$TOF_{H}$ [pC/\Delta t]",
+    "TOF L": r"$TOF_{L}$ [pC/ $\Delta t$]",
+    "TOF M": r"$TOF_{M}$ [pC/ $\Delta t$]",
+    "TOF H": r"$TOF_{H}$ [pC/ $\Delta t$]",
 }
 
 

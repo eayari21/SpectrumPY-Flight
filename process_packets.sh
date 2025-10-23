@@ -1,8 +1,5 @@
 #!/bin/bash
 
-<<<<<<< HEAD
-python3 -m tools.process_packets_parallel "$@"
-=======
 # Define the base directories
 # directories=("../Pre_Env" "../Post_Env")
 directories=("Data/")
@@ -32,6 +29,5 @@ for dir in "${directories[@]}"; do
         }
     done
 done
->>>>>>> b74a97b (Catchup after packet process attempt)
 
 
