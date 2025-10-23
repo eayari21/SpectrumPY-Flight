@@ -105,7 +105,7 @@ except Exception:
     )
     _QT = "PyQt6"
 
-print(f"[info] Qt binding: {_QT}, Matplotlib backend: {matplotlib.get_backend()}")
+# print(f"[info] Qt binding: {_QT}, Matplotlib backend: {matplotlib.get_backend()}")
 
 matplotlib.rcParams.update({
     "figure.autolayout": False,
