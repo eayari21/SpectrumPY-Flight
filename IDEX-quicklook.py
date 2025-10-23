@@ -1129,6 +1129,11 @@ FAMILY_YLABELS = {
     FAMILY_LOW: r"$Q$ [pC]",
 }
 
+FAMILY_UNITS = {
+    FAMILY_HIGH: "pC/Δt",
+    FAMILY_LOW: "pC",
+}
+
 TIME_AXIS_LABEL = r"Time [$\mu$s]"
 
 
@@ -2547,7 +2552,12 @@ class MainWindow(QMainWindow):
             return
 
         channel_metas = [
-            ChannelMeta(name=name, dataset=definition.dataset, time_dataset=definition.time_dataset)
+            ChannelMeta(
+                name=name,
+                dataset=definition.dataset,
+                time_dataset=definition.time_dataset,
+                unit=FAMILY_UNITS.get(definition.family, ""),
+            )
             for name, definition in CHANNEL_DEFS.items()
         ]
 

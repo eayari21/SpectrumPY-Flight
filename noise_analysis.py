@@ -48,6 +48,7 @@ class ChannelMeta:
     name: str
     dataset: str
     time_dataset: str
+    unit: str = ""
 
 
 ChannelLoader = Callable[[str], Tuple[Optional[np.ndarray], Optional[np.ndarray]]]
@@ -73,6 +74,9 @@ class NoiseAnalysisWindow(QMainWindow):
         self._loader = loader
         self._channel_definitions = list(channels)
         self._data_cache: Dict[str, Tuple[Optional[np.ndarray], Optional[np.ndarray]]] = {}
+        self._channel_units: Dict[str, str] = {
+            meta.name: meta.unit.strip() for meta in self._channel_definitions
+        }
 
         self._build_ui()
         self._populate_channels()
@@ -198,6 +202,8 @@ class NoiseAnalysisWindow(QMainWindow):
         ]
 
         self._summary_labels: Dict[str, QLabel] = {}
+        self._summary_title_labels: Dict[str, QLabel] = {}
+        self._summary_titles: Dict[str, str] = {}
         for idx, (title, key) in enumerate(summary_items):
             label = QLabel(title)
             label.setObjectName("SummaryLabel")
@@ -206,6 +212,8 @@ class NoiseAnalysisWindow(QMainWindow):
             summary_card_layout.addWidget(label, idx // 3, (idx % 3) * 2)
             summary_card_layout.addWidget(value, idx // 3, (idx % 3) * 2 + 1)
             self._summary_labels[key] = value
+            self._summary_title_labels[key] = label
+            self._summary_titles[key] = title
 
         layout.addWidget(summary_card)
 
@@ -301,8 +309,12 @@ class NoiseAnalysisWindow(QMainWindow):
             )
             self.axes_hist.legend(loc="upper right")
 
+        unit = self._channel_units.get(channel, "")
+        amplitude_label = "Amplitude"
+        if unit:
+            amplitude_label = f"{amplitude_label} [{unit}]"
         self.axes_hist.set_title(f"{channel} Amplitude Distribution", fontsize=16, fontweight="bold")
-        self.axes_hist.set_xlabel("Amplitude")
+        self.axes_hist.set_xlabel(amplitude_label)
         self.axes_hist.set_ylabel("Counts")
         self.axes_hist.set_facecolor("#f8f9fb")
         self.axes_hist.grid(True, alpha=0.3)
@@ -359,6 +371,7 @@ class NoiseAnalysisWindow(QMainWindow):
         poisson = float(np.sqrt(abs(np.mean(np.clip(signal, a_min=0.0, a_max=None)))))
         rms = float(np.sqrt(np.mean(detrended**2)))
 
+        self._apply_summary_units(unit)
         self._set_summary_value("mean", mean)
         self._set_summary_value("sigma", sigma)
         self._set_summary_value("amplitude", amplitude)
@@ -412,8 +425,18 @@ class NoiseAnalysisWindow(QMainWindow):
         for value in self._summary_labels.values():
             value.setText("–")
 
+        self._apply_summary_units("")
+
         self.statusBar().showMessage(message)
         self.canvas.draw_idle()
+
+    def _apply_summary_units(self, unit: str) -> None:
+        for key, label in self._summary_title_labels.items():
+            base = self._summary_titles.get(key, label.text())
+            if unit:
+                label.setText(f"{base} [{unit}]")
+            else:
+                label.setText(base)
 
 
 def launch_noise_analysis_window(
