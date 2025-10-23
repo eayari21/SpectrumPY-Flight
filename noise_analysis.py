@@ -1,0 +1,394 @@
+"""Noise analysis window for SpectrumPY."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Callable, Dict, Iterable, Optional, Tuple
+
+import numpy as np
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
+from matplotlib.figure import Figure
+
+try:  # pragma: no cover - prefer PyQt6
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QFont
+    from PyQt6.QtWidgets import (
+        QComboBox,
+        QFrame,
+        QGridLayout,
+        QHBoxLayout,
+        QLabel,
+        QMainWindow,
+        QMessageBox,
+        QSizePolicy,
+        QStatusBar,
+        QVBoxLayout,
+        QWidget,
+    )
+except Exception:  # pragma: no cover - fallback to PySide6
+    from PySide6.QtCore import Qt  # type: ignore
+    from PySide6.QtGui import QFont  # type: ignore
+    from PySide6.QtWidgets import (  # type: ignore
+        QComboBox,
+        QFrame,
+        QGridLayout,
+        QHBoxLayout,
+        QLabel,
+        QMainWindow,
+        QMessageBox,
+        QSizePolicy,
+        QStatusBar,
+        QVBoxLayout,
+        QWidget,
+    )
+
+
+@dataclass(frozen=True)
+class ChannelMeta:
+    name: str
+    dataset: str
+    time_dataset: str
+
+
+ChannelLoader = Callable[[str], Tuple[Optional[np.ndarray], Optional[np.ndarray]]]
+
+
+class NoiseAnalysisWindow(QMainWindow):
+    """Interactive window that provides publication-ready noise diagnostics."""
+
+    def __init__(
+        self,
+        *,
+        event_name: str,
+        channels: Iterable[ChannelMeta],
+        loader: ChannelLoader,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"Noise Analysis — Event {event_name}")
+        self.setMinimumSize(960, 720)
+        self.setStatusBar(QStatusBar(self))
+
+        self._event_name = event_name
+        self._loader = loader
+        self._channel_definitions = list(channels)
+        self._data_cache: Dict[str, Tuple[Optional[np.ndarray], Optional[np.ndarray]]] = {}
+
+        self._build_ui()
+        self._populate_channels()
+
+    # ------------------------------------------------------------------
+    # UI assembly
+    # ------------------------------------------------------------------
+    def _build_ui(self) -> None:
+        self.setStyleSheet(
+            """
+            QMainWindow {
+                background-color: #edf1fb;
+            }
+            QFrame#SelectionCard, QFrame#SummaryCard {
+                background-color: #ffffff;
+                border-radius: 18px;
+                border: 1px solid #d0d4e6;
+            }
+            QLabel#TitleLabel {
+                font-size: 26px;
+                font-weight: 700;
+                color: #1f2240;
+            }
+            QLabel#SubtitleLabel {
+                font-size: 15px;
+                color: #495057;
+            }
+            QComboBox {
+                font-size: 15px;
+                padding: 10px 16px;
+                border-radius: 12px;
+                border: 1px solid #adb5d3;
+                background-color: #f8f9ff;
+                color: #1f2240;
+            }
+            QComboBox::drop-down {
+                width: 26px;
+                border-left: 1px solid #adb5d3;
+            }
+            QLabel#SummaryLabel {
+                font-size: 15px;
+                color: #495057;
+            }
+            QLabel#SummaryValue {
+                font-size: 17px;
+                font-weight: 700;
+                color: #212529;
+            }
+            """
+        )
+
+        central = QWidget(self)
+        self.setCentralWidget(central)
+
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(18)
+
+        selection_card = QFrame()
+        selection_card.setObjectName("SelectionCard")
+        selection_card_layout = QVBoxLayout(selection_card)
+        selection_card_layout.setContentsMargins(28, 28, 28, 28)
+        selection_card_layout.setSpacing(14)
+
+        header_layout = QVBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(6)
+
+        self._title_label = QLabel("Noise Analysis")
+        self._title_label.setObjectName("TitleLabel")
+        header_layout.addWidget(self._title_label)
+
+        self._subtitle_label = QLabel(f"Event {self._event_name}")
+        self._subtitle_label.setObjectName("SubtitleLabel")
+        header_layout.addWidget(self._subtitle_label)
+
+        selection_card_layout.addLayout(header_layout)
+
+        combo_layout = QHBoxLayout()
+        combo_layout.setContentsMargins(0, 0, 0, 0)
+        combo_layout.setSpacing(12)
+
+        combo_label = QLabel("Channel")
+        combo_label.setObjectName("SummaryLabel")
+        combo_layout.addWidget(combo_label)
+
+        self.channel_combo = QComboBox()
+        self.channel_combo.currentIndexChanged.connect(self._update_analysis)
+        combo_layout.addWidget(self.channel_combo, 1)
+
+        combo_layout.addStretch()
+        selection_card_layout.addLayout(combo_layout)
+
+        layout.addWidget(selection_card)
+
+        self.figure = Figure(figsize=(11, 7), constrained_layout=True)
+        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.axes_hist = self.figure.add_subplot(2, 1, 1)
+        self.axes_power = self.figure.add_subplot(2, 1, 2)
+
+        self.nav_toolbar = NavigationToolbar2QT(self.canvas, self)
+        self.nav_toolbar.setStyleSheet("font-size: 13px; padding: 6px;")
+        layout.addWidget(self.nav_toolbar)
+        layout.addWidget(self.canvas, 1)
+
+        summary_card = QFrame()
+        summary_card.setObjectName("SummaryCard")
+        summary_card_layout = QGridLayout(summary_card)
+        summary_card_layout.setContentsMargins(24, 24, 24, 24)
+        summary_card_layout.setHorizontalSpacing(30)
+        summary_card_layout.setVerticalSpacing(12)
+
+        summary_items = [
+            ("Gaussian Mean", "mean"),
+            ("Gaussian σ", "sigma"),
+            ("Gaussian Amplitude", "amplitude"),
+            ("Poisson Noise", "poisson"),
+            ("RMS Noise", "rms"),
+        ]
+
+        self._summary_labels: Dict[str, QLabel] = {}
+        for idx, (title, key) in enumerate(summary_items):
+            label = QLabel(title)
+            label.setObjectName("SummaryLabel")
+            value = QLabel("–")
+            value.setObjectName("SummaryValue")
+            summary_card_layout.addWidget(label, idx // 3, (idx % 3) * 2)
+            summary_card_layout.addWidget(value, idx // 3, (idx % 3) * 2 + 1)
+            self._summary_labels[key] = value
+
+        layout.addWidget(summary_card)
+
+    # ------------------------------------------------------------------
+    # Channel management
+    # ------------------------------------------------------------------
+    def _populate_channels(self) -> None:
+        self.channel_combo.blockSignals(True)
+        self.channel_combo.clear()
+
+        available = [meta.name for meta in self._channel_definitions if self._has_data(meta.name)]
+        for name in available:
+            self.channel_combo.addItem(name)
+        self.channel_combo.blockSignals(False)
+
+        if not available:
+            QMessageBox.information(
+                self,
+                "No Data",
+                "None of the standard channels contain data for this event.",
+            )
+            self._clear_axes("No channel data available")
+            return
+
+        self.channel_combo.setCurrentIndex(0)
+        self._update_analysis()
+
+    def _has_data(self, channel: str) -> bool:
+        values, _ = self._get_channel_arrays(channel)
+        if values is None:
+            return False
+        flat = np.asarray(values, dtype=float).ravel()
+        flat = flat[np.isfinite(flat)]
+        return flat.size > 0
+
+    def _get_channel_arrays(self, channel: str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        if channel not in self._data_cache:
+            self._data_cache[channel] = self._loader(channel)
+        return self._data_cache[channel]
+
+    # ------------------------------------------------------------------
+    # Analysis & plotting
+    # ------------------------------------------------------------------
+    def _update_analysis(self) -> None:
+        channel = self.channel_combo.currentText().strip()
+        if not channel:
+            return
+
+        values, times = self._get_channel_arrays(channel)
+        if values is None:
+            self._clear_axes(f"{channel}: data unavailable")
+            return
+
+        signal = np.asarray(values, dtype=float).ravel()
+        signal = signal[np.isfinite(signal)]
+        if signal.size == 0:
+            self._clear_axes(f"{channel}: empty dataset")
+            return
+
+        mean = float(np.mean(signal))
+        sigma = float(np.std(signal))
+        total = signal.size
+
+        # Histogram and Gaussian fit
+        self.axes_hist.cla()
+        bins = min(80, max(20, total // 20))
+        counts, edges = np.histogram(signal, bins=bins)
+        centers = (edges[:-1] + edges[1:]) / 2.0
+        widths = np.diff(edges)
+        if centers.size:
+            self.axes_hist.bar(
+                centers,
+                counts,
+                width=widths,
+                align="center",
+                color="#748ffc",
+                edgecolor="#ffffff",
+                alpha=0.85,
+                label="Amplitude histogram",
+            )
+
+        amplitude = 0.0
+        if sigma > 0 and centers.size:
+            bin_width = float(np.mean(widths)) if widths.size else 1.0
+            amplitude = float(total * bin_width / (sigma * np.sqrt(2.0 * np.pi)))
+            fit_y = amplitude * np.exp(-0.5 * ((centers - mean) / sigma) ** 2)
+            self.axes_hist.plot(
+                centers,
+                fit_y,
+                color="#364fc7",
+                linewidth=2.4,
+                label="Gaussian fit",
+            )
+            self.axes_hist.legend(loc="upper right")
+
+        self.axes_hist.set_title(f"{channel} Amplitude Distribution", fontsize=16, fontweight="bold")
+        self.axes_hist.set_xlabel("Amplitude")
+        self.axes_hist.set_ylabel("Counts")
+        self.axes_hist.set_facecolor("#f8f9fb")
+        self.axes_hist.grid(True, alpha=0.3)
+        self.axes_hist.tick_params(axis="both", labelsize=12, width=1.2, length=6)
+
+        # Power spectrum
+        self.axes_power.cla()
+        detrended = signal - mean
+        fft = np.fft.rfft(detrended)
+        magnitude = np.abs(fft)
+
+        dt = self._infer_sample_spacing(times)
+        freqs = np.fft.rfftfreq(signal.size, d=dt if dt and dt > 0 else 1.0)
+        if freqs.size and magnitude.size:
+            self.axes_power.plot(freqs, magnitude, color="#4263eb", linewidth=2.0)
+            self.axes_power.fill_between(freqs, 0, magnitude, color="#bac8ff", alpha=0.45)
+        self.axes_power.set_title(f"{channel} Power Spectrum", fontsize=16, fontweight="bold")
+        self.axes_power.set_xlabel("Frequency (1/Δt)")
+        self.axes_power.set_ylabel("|FFT|")
+        self.axes_power.set_facecolor("#f8f9fb")
+        self.axes_power.grid(True, alpha=0.3)
+        self.axes_power.tick_params(axis="both", labelsize=12, width=1.2, length=6)
+
+        poisson = float(np.sqrt(abs(np.mean(np.clip(signal, a_min=0.0, a_max=None)))))
+        rms = float(np.sqrt(np.mean(detrended**2)))
+
+        self._set_summary_value("mean", mean)
+        self._set_summary_value("sigma", sigma)
+        self._set_summary_value("amplitude", amplitude)
+        self._set_summary_value("poisson", poisson)
+        self._set_summary_value("rms", rms)
+
+        sample_text = f"{channel} • {total} samples"
+        if dt and dt > 0:
+            sample_text += f" • Δt≈{dt:.3g}"
+        self.statusBar().showMessage(sample_text)
+
+        self.canvas.draw_idle()
+
+    def _infer_sample_spacing(self, times: Optional[np.ndarray]) -> Optional[float]:
+        if times is None:
+            return None
+        flat = np.asarray(times, dtype=float).ravel()
+        flat = flat[np.isfinite(flat)]
+        if flat.size < 2:
+            return None
+        diffs = np.diff(np.sort(flat))
+        diffs = diffs[diffs > 0]
+        if diffs.size == 0:
+            return None
+        return float(np.median(diffs))
+
+    def _set_summary_value(self, key: str, value: float) -> None:
+        label = self._summary_labels.get(key)
+        if not label:
+            return
+        if not np.isfinite(value):
+            label.setText("–")
+            return
+        if abs(value) >= 1e4 or (abs(value) < 1e-2 and value != 0.0):
+            label.setText(f"{value:.3e}")
+        else:
+            label.setText(f"{value:.4f}")
+
+    def _clear_axes(self, message: str) -> None:
+        self.axes_hist.cla()
+        self.axes_power.cla()
+
+        for ax in (self.axes_hist, self.axes_power):
+            ax.set_facecolor("#f8f9fb")
+            ax.grid(False)
+            ax.text(0.5, 0.5, message, ha="center", va="center", transform=ax.transAxes, fontsize=15)
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+        for value in self._summary_labels.values():
+            value.setText("–")
+
+        self.statusBar().showMessage(message)
+        self.canvas.draw_idle()
+
+
+def launch_noise_analysis_window(
+    *,
+    event_name: str,
+    channels: Iterable[ChannelMeta],
+    loader: ChannelLoader,
+    parent: Optional[QWidget] = None,
+) -> NoiseAnalysisWindow:
+    """Create a :class:`NoiseAnalysisWindow` ready for display."""
+
+    return NoiseAnalysisWindow(event_name=event_name, channels=channels, loader=loader, parent=parent)

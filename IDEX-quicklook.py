@@ -56,6 +56,7 @@ def _erfc(values: np.ndarray) -> np.ndarray:
 
 from HDF_View import launch_hdf_viewer
 from dust_composition import launch_dust_composition_window
+from noise_analysis import ChannelMeta, launch_noise_analysis_window
 try:  # pragma: no cover - optional dependency, loaded lazily
     from HDF_View import launch_hdf_viewer
 except Exception:  # pragma: no cover
@@ -1968,6 +1969,11 @@ class MainWindow(QMainWindow):
         self.reset_fit_action = QAction("Reset Fit Overrides", self)
         self.reset_fit_action.triggered.connect(self.reset_all_overrides)
 
+        self.open_noise_analysis_action = QAction("Noise Analysis…", self)
+        self.open_noise_analysis_action.setShortcut("Ctrl+N")
+        self.open_noise_analysis_action.setStatusTip("Inspect noise characteristics for the current event")
+        self.open_noise_analysis_action.triggered.connect(self.action_open_noise_analysis)
+
         help_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DialogHelpButton)
         self.help_action = QAction(help_icon, "Documentation Center", self)
         self.help_action.setShortcut("F1")
@@ -2015,6 +2021,7 @@ class MainWindow(QMainWindow):
         view_menu = menubar.addMenu("&View")
         view_menu.addAction(self.view_structure_action)
         view_menu.addAction(self.open_variable_definitions_action)
+        view_menu.addAction(self.open_noise_analysis_action)
 
         help_menu = menubar.addMenu("&Help")
         help_menu.addAction(self.help_action)
@@ -2106,6 +2113,36 @@ class MainWindow(QMainWindow):
         )
         self.dust_button.clicked.connect(act_dust.trigger)
         tb.addWidget(self.dust_button)
+
+        act_noise = self.open_noise_analysis_action
+        self.addAction(act_noise)
+
+        self.noise_button = QPushButton("Noise Analysis", self)
+        self.noise_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.noise_button.setMinimumHeight(46)
+        self.noise_button.setStyleSheet(
+            """
+            QPushButton {
+                font-size: 16px;
+                font-weight: 700;
+                padding: 10px 22px;
+                border-radius: 14px;
+                background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                                 stop:0 #4dabf7, stop:1 #3b82f6);
+                color: #ffffff;
+                border: 1px solid #1c7ed6;
+            }
+            QPushButton:hover {
+                background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                                 stop:0 #3a8de0, stop:1 #2962d9);
+            }
+            QPushButton:pressed {
+                background-color: #1c7ed6;
+            }
+            """
+        )
+        self.noise_button.clicked.connect(act_noise.trigger)
+        tb.addWidget(self.noise_button)
 
         act_reload = QAction("Reload", self)
         act_reload.setShortcut("Ctrl+R")
@@ -2476,6 +2513,71 @@ class MainWindow(QMainWindow):
 
         window.destroyed.connect(_cleanup)
 
+    def action_open_noise_analysis(self):
+        if not self._current_event or not self._data_source:
+            QMessageBox.information(
+                self,
+                "No Event",
+                "Open a data file and select an event before launching noise analysis.",
+            )
+            return
+
+        available = False
+        for channel in CHANNEL_ORDER:
+            values, _times = self._resolve_channel_data(self._current_event, channel)
+            if values is None:
+                continue
+            flat = np.asarray(values, dtype=float).ravel()
+            flat = flat[np.isfinite(flat)]
+            if flat.size:
+                available = True
+                break
+        if not available:
+            QMessageBox.information(
+                self,
+                "Noise Analysis",
+                "No channel data are available for noise analysis in this event.",
+            )
+            return
+
+        channel_metas = [
+            ChannelMeta(name=name, dataset=definition.dataset, time_dataset=definition.time_dataset)
+            for name, definition in CHANNEL_DEFS.items()
+        ]
+
+        def loader(channel: str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+            values, times = self._resolve_channel_data(self._current_event, channel)
+            return (
+                None if values is None else np.array(values, copy=True),
+                None if times is None else np.array(times, copy=True),
+            )
+
+        try:
+            window = launch_noise_analysis_window(
+                event_name=self._current_event,
+                channels=channel_metas,
+                loader=loader,
+                parent=self,
+            )
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Noise Analysis Error",
+                f"Unable to launch the noise analysis window:\n{exc}",
+            )
+            return
+
+        window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        window.show()
+
+        self._child_windows.append(window)
+
+        def _cleanup(*_args):
+            if window in self._child_windows:
+                self._child_windows.remove(window)
+
+        window.destroyed.connect(_cleanup)
+
     def close_current_file(self):
         if not self._filename and not self._data_source:
             return
@@ -2588,6 +2690,14 @@ class MainWindow(QMainWindow):
             return self._data_source.get_dataset(self._current_event, parts[0])
         event, dataset = parts
         return self._data_source.get_dataset(event, dataset)
+
+    def _resolve_channel_data(self, event: str, channel: str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        definition = CHANNEL_DEFS.get(channel)
+        if not definition:
+            return None, None
+        values = self._get_dataset(event, definition.dataset)
+        times = self._get_dataset(event, definition.time_dataset)
+        return values, times
 
     def open_file(self, path: str, preferred_event: Optional[str] = None):
         self._reset_state()
