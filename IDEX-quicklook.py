@@ -33,6 +33,8 @@ except Exception:  # pragma: no cover - optional dependency for environments wit
 from typing import Union
 import numpy as np
 
+from idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
+
 try:
     # Preferred on modern stacks
     from scipy.special import erfc as _erfc  # type: ignore
@@ -1117,6 +1119,8 @@ CHANNEL_ORDER: List[str] = ["TOF L", "TOF M", "TOF H", "Ion Grid", "Target L", "
 
 FIT_ELIGIBLE_CHANNELS = {"Ion Grid", "Target L", "Target H", "TOF H"}
 
+RISE_METRIC_CHANNELS = {"Ion Grid", "Target L", "Target H"}
+
 BASELINE_PRIMARY_WINDOW = (-7.0, -5.0)
 BASELINE_FALLBACK_THRESHOLD = -2.0
 
@@ -1815,6 +1819,7 @@ class MainWindow(QMainWindow):
         self._fit_result_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
         self._fit_time_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
         self._baseline_cache: Dict[Tuple[str, str], float] = {}
+        self._rise_metric_cache: Dict[Tuple[str, str], Dict[str, float]] = {}
         self._show_fit: Dict[str, bool] = {name: False for name in FIT_ELIGIBLE_CHANNELS}
         # ``refresh_fit_controls`` is invoked as soon as data are loaded, so make
         # sure ``fit_buttons`` always exists even before the control panel is
@@ -2667,6 +2672,7 @@ class MainWindow(QMainWindow):
         self._fit_result_overrides.clear()
         self._fit_time_overrides.clear()
         self._baseline_cache.clear()
+        self._rise_metric_cache.clear()
         self._show_fit = {name: False for name in FIT_ELIGIBLE_CHANNELS}
 
         self.event_combo.blockSignals(True)
@@ -2691,6 +2697,76 @@ class MainWindow(QMainWindow):
             return self._data_source.get_dataset(self._current_event, parts[0])
         event, dataset = parts
         return self._data_source.get_dataset(event, dataset)
+
+    def _rise_dataset_name(self, channel: str, suffix: str) -> str:
+        return f"Analysis/{channel} {suffix}"
+
+    def _load_rise_metrics(self, event: str, channel: str) -> Dict[str, float]:
+        cache_key = (event, channel)
+        cached = self._rise_metric_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        metrics = {key: float("nan") for key in RISE_METRIC_SUFFIXES}
+        for key, suffix in RISE_METRIC_SUFFIXES.items():
+            dataset = self._get_dataset(event, self._rise_dataset_name(channel, suffix))
+            if dataset is None:
+                continue
+            arr = np.asarray(dataset, dtype=float).ravel()
+            if arr.size == 0:
+                continue
+            value = float(arr[0])
+            if np.isfinite(value):
+                metrics[key] = value
+
+        self._rise_metric_cache[cache_key] = metrics
+        return metrics
+
+    def _write_rise_metrics(self, event: str, channel: str, metrics: Dict[str, float]) -> None:
+        if self._h5 is None or h5py is None:
+            return
+        try:
+            analysis_group = self._h5.require_group(f"{event}/Analysis")
+        except Exception:
+            return
+
+        updated = False
+        for key, suffix in RISE_METRIC_SUFFIXES.items():
+            value = metrics.get(key)
+            if value is None or not np.isfinite(value):
+                continue
+            dataset_name = f"{channel} {suffix}"
+            if dataset_name in analysis_group:
+                continue
+            try:
+                analysis_group.create_dataset(dataset_name, data=np.array([float(value)], dtype=float))
+                updated = True
+            except Exception:
+                continue
+
+        if updated:
+            try:
+                self._h5.flush()
+            except Exception:
+                pass
+
+    def _ensure_rise_metrics(
+        self,
+        event: str,
+        channel: str,
+        time_values: Iterable[float],
+        fit_values: Iterable[float],
+    ) -> Dict[str, float]:
+        metrics = dict(self._load_rise_metrics(event, channel))
+        missing = [key for key, value in metrics.items() if not np.isfinite(value)]
+        if not missing:
+            return metrics
+
+        computed = compute_rise_metrics(time_values, fit_values)
+        metrics.update(computed)
+        self._rise_metric_cache[(event, channel)] = metrics
+        self._write_rise_metrics(event, channel, metrics)
+        return metrics
 
     def _resolve_channel_data(self, event: str, channel: str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         definition = CHANNEL_DEFS.get(channel)
@@ -2906,8 +2982,6 @@ class MainWindow(QMainWindow):
                         for channel in channels:
                             plotted_any |= self._plot_channel(ax, event_name, channel, overlay_mode=True, missing_channels=missing)
                         self._style_overlay_axis(ax, family, bottom=(idx == len(families)))
-                        if plotted_any and (len(channels) > 1 or any(self._show_fit.get(ch, False) for ch in channels)):
-                            ax.legend(loc="best")
             else:
                 ordered = [ch for ch in CHANNEL_ORDER if ch in selected]
                 if not ordered:
@@ -2937,8 +3011,6 @@ class MainWindow(QMainWindow):
                             bottom=(idx == len(ordered) - 1),
                             next_family=next_family,
                         )
-                        if plotted_any and self._show_fit.get(channel) and len(ax.lines) > 1:
-                            ax.legend(loc="best")
         except Exception as exc:
             self.figure.clear()
             self._reset_layout_engine()
@@ -2984,8 +3056,15 @@ class MainWindow(QMainWindow):
                     scale = FIT_SCALE_MULTIPLIERS.get(channel, 1.0)
                     if scale != 1.0:
                         values = values * scale
-                    label = channel if overlay_mode else None
-                    ax.plot(times, values, label=label)
+                    ax.plot(
+                        times,
+                        values,
+                        color="#111111",
+                        linewidth=1.1,
+                        alpha=0.85,
+                        label=None,
+                        zorder=2,
+                    )
                     base_plotted = True
                     use_filtered = True
 
@@ -2999,8 +3078,15 @@ class MainWindow(QMainWindow):
                 if n == 0:
                     reason = "Empty dataset"
                 else:
-                    label = channel if overlay_mode else None
-                    ax.plot(t[:n], y[:n], label=label)
+                    ax.plot(
+                        t[:n],
+                        y[:n],
+                        color="#111111",
+                        linewidth=1.1,
+                        alpha=0.85,
+                        label=None,
+                        zorder=2,
+                    )
                     base_plotted = True
 
         fit_plotted = self._plot_fit(ax, event_name, channel, overlay_mode)
@@ -3154,10 +3240,37 @@ class MainWindow(QMainWindow):
             n = min(len(time_values), len(fit_values))
             if n == 0:
                 continue
-            legend_label = label
-            if overlay_mode and not label.lower().startswith(channel.lower()):
-                legend_label = f"{channel} {label}"
-            ax.plot(time_values[:n], fit_values[:n], linestyle="--", linewidth=2.2, label=legend_label)
+
+            times = np.asarray(time_values[:n], dtype=float)
+            values = np.asarray(fit_values[:n], dtype=float)
+
+            ax.plot(
+                times,
+                values,
+                color="#c1121f",
+                linewidth=2.4,
+                label=None,
+                zorder=3,
+            )
+
+            if channel in RISE_METRIC_CHANNELS:
+                metrics = self._ensure_rise_metrics(event_name, channel, times, values)
+                t10 = metrics.get("t10")
+                v10 = metrics.get("v10")
+                t90 = metrics.get("t90")
+                v90 = metrics.get("v90")
+                marker_kwargs = dict(
+                    color="#2563eb",
+                    edgecolors="white",
+                    linewidths=1.2,
+                    zorder=4,
+                    s=70,
+                )
+                if np.isfinite(t10) and np.isfinite(v10):
+                    ax.scatter([t10], [v10], **marker_kwargs)
+                if np.isfinite(t90) and np.isfinite(v90):
+                    ax.scatter([t90], [v90], **marker_kwargs)
+
             plotted = True
         return plotted
 
