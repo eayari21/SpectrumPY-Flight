@@ -83,7 +83,56 @@ file, and exposes shortcuts to the HDF Plotter and full Quicklook GUI.
 * The **Export Plot** button exposes PNG/PDF/SVG exports. File names incorporate
   the event number, making it easy to archive comparisons.
 
-## 6. Built-in help & documentation search
+## 6. Noise analysis window
+
+The toolbar and `View` menu expose a dedicated **Noise Analysis** workspace for
+the currently loaded event (`Ctrl+N`).【F:IDEX-quicklook.py†L1972-L2026】【F:IDEX-quicklook.py†L2068-L2142】
+Launching it opens an auxiliary window that focuses on three diagnostics for the
+selected channel:
+
+* **Amplitude histogram with Gaussian overlay.** The window automatically fits a
+  normal distribution to the noise-only samples and overlays it on the
+  histogram so you can verify whether the tails are Gaussian or contaminated by
+  coherent pickup.【F:noise_analysis.py†L270-L331】
+* **Power spectrum.** A detrended FFT reveals narrowband tones and broadband
+  energy at a glance. The tool infers the sample spacing from the dataset’s
+  timestamp array so the x-axis is expressed in physical frequency when
+  possible.【F:noise_analysis.py†L333-L360】
+* **Autocorrelation.** The normalized autocorrelation plot highlights
+  persistence and periodicity in the residual noise. When timing metadata is
+  available the x-axis switches to physical lag units, making it easy to link
+  peaks back to instrument oscillators.【F:noise_analysis.py†L362-L402】
+
+Summary tiles underneath the plots report the Gaussian mean, σ, fitted peak
+amplitude, Poisson noise estimate, and RMS noise, while the status bar confirms
+sample counts and the inferred Δt. The analysis gracefully handles empty or
+missing channels by clearing the plots and status text until a populated
+waveform is selected.【F:noise_analysis.py†L304-L324】【F:noise_analysis.py†L402-L451】
+
+## 7. Dust composition & mass line shapes
+
+Use the **Dust Composition** button (`Ctrl+D`) to launch the composition
+workspace, which combines high-/medium-/low-gain TOF traces, handles baseline
+subtraction, and lets you fit analytic mass lines before exporting abundance
+tables.【F:IDEX-quicklook.py†L2068-L2142】【F:dust_composition.py†L3008-L3123】 Each
+mass line can be refit or inspected in detail via the **Inspect Mass Line**
+dialog. The inspector offers a shape selector backed by the shared
+`line_shapes.py` library, so you can swap between EMG, Gaussian, Lorentzian,
+Voigt, double EMG, HyperEMG, and generalised-normal profiles without leaving
+the window.【F:dust_composition.py†L1387-L1478】【F:line_shapes.py†L17-L126】 Shape
+changes automatically update parameter labels (for example switching `σ` to
+`γ` for Lorentzian fits) and expose extra controls such as secondary time
+constants or weight lists for composite tails.【F:dust_composition.py†L1387-L1478】
+
+The dialog plots the candidate waveform, overlays the fitted curve, and updates
+relative abundance estimates based on the analytic area under each line window.
+Abundances are normalised against the integrated, baseline-subtracted TOF trace
+so you can compare species contributions across events.【F:dust_composition.py†L3208-L3295】【F:dust_composition.py†L3336-L3361】
+Exported tables persist the fitted parameters, analytic areas, and abundance
+fractions alongside any manually assigned species labels for downstream mass
+budgeting.【F:dust_composition.py†L3438-L3484】
+
+## 8. Built-in help & documentation search
 
 * Click the question-mark **Help** button or press `F1` to launch the
   Documentation Center. It lists every bundled guide (README, tutorials,
@@ -94,7 +143,7 @@ file, and exposes shortcuts to the HDF Plotter and full Quicklook GUI.
 * The menu bar also includes a quick search widget under `Help` so you can start
   typing without leaving the main window.【F:IDEX-quicklook.py†L1134-L1192】
 
-## 7. Keyboard shortcuts
+## 9. Keyboard shortcuts
 
 | Shortcut | Action |
 | -------- | ------ |
@@ -106,7 +155,7 @@ file, and exposes shortcuts to the HDF Plotter and full Quicklook GUI.
 | `F1` | Open the documentation center |
 | `Ctrl+Q` | Quit the application |
 
-## 8. Troubleshooting tips
+## 10. Troubleshooting tips
 
 * If the viewer reports that `cdflib` or `h5py` is missing, install the optional
   dependency in your environment (`pip install cdflib h5py`).
