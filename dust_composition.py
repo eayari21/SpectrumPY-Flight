@@ -659,6 +659,197 @@ def analyse_sample_matches(mass_lines: Sequence["MassLineFit"]) -> Tuple[Optiona
     best = matches[0] if matches else None
     mixture = _best_mixture_match(weights, matches[:6]) if matches else None
     return best, mixture
+SPECIES_CHOICES: List[Tuple[str, float]] = [
+    ("1H", 1.008),
+    ("2H", 2.014),
+    ("3He", 3.016),
+    ("4He", 4.003),
+    ("12C", 12.0),
+    ("13C", 13.003),
+    ("14N", 14.003),
+    ("15N", 15.0),
+    ("16O", 15.995),
+    ("17O", 16.999),
+    ("18O", 17.999),
+    ("23Na", 22.99),
+    ("24Mg", 23.985),
+    ("25Mg", 24.986),
+    ("26Mg", 25.983),
+    ("27Al", 26.982),
+    ("28Si", 27.977),
+    ("29Si", 28.976),
+    ("30Si", 29.974),
+    ("31P", 30.974),
+    ("32S", 31.972),
+    ("33S", 32.971),
+    ("34S", 33.968),
+    ("36S", 35.967),
+    ("35Cl", 34.969),
+    ("37Cl", 36.966),
+    ("39K", 38.964),
+    ("41K", 40.962),
+    ("40Ca", 39.963),
+    ("44Ca", 43.955),
+    ("45Sc", 44.956),
+    ("47Ti", 46.952),
+    ("48Ti", 47.948),
+    ("49Ti", 48.948),
+    ("50Ti", 49.944),
+    ("50Cr", 49.946),
+    ("52Cr", 51.941),
+    ("53Cr", 52.941),
+    ("54Cr", 53.939),
+    ("55Mn", 54.938),
+    ("54Fe", 53.94),
+    ("56Fe", 55.935),
+    ("57Fe", 56.935),
+    ("58Fe", 57.933),
+    ("58Ni", 57.935),
+    ("60Ni", 59.931),
+    ("61Ni", 60.931),
+    ("62Ni", 61.928),
+    ("64Ni", 63.928),
+    ("63Cu", 62.93),
+    ("65Cu", 64.928),
+    ("64Zn", 63.929),
+    ("66Zn", 65.926),
+    ("67Zn", 66.927),
+    ("68Zn", 67.924),
+    ("70Zn", 69.925),
+    ("H", 1.008),
+    ("CH", 13.018),
+    ("NH", 15.015),
+    ("OH", 17.007),
+    ("H2", 2.016),
+    ("CH2", 14.026),
+    ("NH2", 16.022),
+    ("H2O", 18.015),
+    ("CH3", 15.034),
+    ("NH3", 17.03),
+    ("CO", 28.011),
+    ("N2", 28.014),
+    ("NO", 30.006),
+    ("O2", 31.998),
+    ("CO2", 44.009),
+    ("H2S", 34.076),
+    ("SO", 48.06),
+    ("SO2", 64.059),
+    ("CS", 44.071),
+    ("COS", 60.072),
+    ("CS2", 76.131),
+    ("C2", 24.021),
+    ("C2H", 25.029),
+    ("C2H2", 26.037),
+    ("C2H3", 27.045),
+    ("C2H4", 28.053),
+    ("C2H5", 29.061),
+    ("C2H6", 30.069),
+    ("C3", 36.032),
+    ("C3H", 37.04),
+    ("C3H2", 38.047),
+    ("C3H3", 39.055),
+    ("C3H4", 40.063),
+    ("C3H5", 41.071),
+    ("C3H6", 42.079),
+    ("C3H7", 43.086),
+    ("C3H8", 44.094),
+    ("C4", 48.042),
+    ("C4H", 49.05),
+    ("C4H2", 50.058),
+    ("C4H3", 51.066),
+    ("C4H4", 52.074),
+    ("C4H5", 53.082),
+    ("C4H6", 54.09),
+    ("C4H7", 55.097),
+    ("C4H8", 56.105),
+    ("C4H9", 57.113),
+    ("C5H5", 65.061),
+    ("C5H7", 67.077),
+    ("C5H9", 69.093),
+    ("C6H5", 77.059),
+    ("C6H6", 78.047),
+    ("C6H7", 79.055),
+    ("C7H7", 91.055),
+    ("C7H8", 92.063),
+    ("C8H7", 103.067),
+    ("C9H7", 115.078),
+    ("C10H8", 128.062),
+    ("NaO", 38.989),
+    ("NaOH", 39.997),
+    ("MgO", 40.304),
+    ("MgOH", 41.312),
+    ("AlO", 42.98),
+    ("SiH", 29.093),
+    ("SiH2", 30.101),
+    ("SiH3", 31.108),
+    ("SiC", 40.096),
+    ("SiN", 42.092),
+    ("SiO", 44.084),
+    ("SiO2", 60.083),
+    ("Si2", 56.17),
+    ("Si2O", 72.169),
+    ("Si2O2", 88.168),
+    ("Si2O3", 104.167),
+    ("Si2O4", 120.166),
+    ("Si3O4", 148.249),
+    ("Si3O5", 164.25),
+    ("Si3O6", 180.249),
+    ("Si4O6", 208.334),
+    ("Si4O7", 224.333),
+    ("Si4O8", 240.332),
+    ("FeO", 71.844),
+    ("FeOH", 72.852),
+    ("Fe2O", 127.535),
+    ("Fe2O2", 143.534),
+    ("Fe2O3", 159.533),
+    ("MgSi", 52.39),
+    ("MgSiO", 68.389),
+    ("MgSiO2", 84.388),
+    ("FeSi", 83.93),
+    ("FeSiO", 99.929),
+    ("FeSiO2", 115.928),
+    ("CaO", 56.077),
+    ("CaOH", 57.085),
+    ("Ca2O", 120.156),
+    ("CaSi", 68.163),
+    ("CaSiO", 84.162),
+    ("CaSiO2", 100.161),
+    ("NaCl", 58.44),
+    ("KCl", 74.548),
+    ("MgCl", 59.365),
+    ("CaCl", 75.528),
+    ("FeCl", 91.905),
+    ("S2", 64.12),
+    ("FeS", 87.905),
+    ("FeS2", 119.965),
+    ("MgS", 56.365),
+    ("CaS", 72.138),
+    ("CuS", 95.606),
+    ("ZnS", 97.44),
+    ("Na2S", 78.04),
+    ("MgSiO3", 100.387),
+    ("FeSiO3", 131.927),
+    ("CaSiO3", 116.16),
+    ("Mg2SiO4", 140.691),
+    ("Fe2SiO4", 203.771),
+    ("MgFeSiO4", 172.231),
+    ("NaAlSi3O8", 262.218),
+    ("KAlSi3O8", 278.327),
+    ("CaAl2Si2O8", 278.203),
+]
+
+SPECIES_BY_LABEL: Dict[str, float] = {name: mass for name, mass in SPECIES_CHOICES}
+
+
+def _species_display(label: str, mass: float) -> str:
+    return f"{label} ({mass:.3f} amu)"
+
+
+def _species_for_label(label: str) -> Optional[Tuple[str, float]]:
+    mass = SPECIES_BY_LABEL.get(label.strip())
+    if mass is None:
+        return None
+    return label.strip(), mass
 
 
 def nearest_mass_name(target: float) -> str:
@@ -697,6 +888,8 @@ class MassLineFit:
     time_axis: np.ndarray = field(repr=False, default_factory=lambda: np.zeros(0))
     fit_values: np.ndarray = field(repr=False, default_factory=lambda: np.zeros(0))
     color: str = "#d62728"
+    assigned_species: Optional[str] = None
+    assigned_mass: Optional[float] = None
 
     def parameters(self) -> Tuple[float, float, float, float]:
         return (self.amplitude, self.mu, self.sigma, self.lam)
@@ -869,6 +1062,9 @@ class InspectMassLineDialog(QDialog):
         self._source_name = source_name
         self._mass_converter = mass_converter
         self._result: Optional[Dict[str, float | str]] = None
+        self._assigned_species: Optional[str] = line.assigned_species
+        self._assigned_mass: Optional[float] = line.assigned_mass
+        self._block_species_signal = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
@@ -904,6 +1100,13 @@ class InspectMassLineDialog(QDialog):
         form = QFormLayout(parameter_box)
         form.setContentsMargins(12, 12, 12, 12)
         form.setSpacing(8)
+
+        self.species_combo = QComboBox(parameter_box)
+        self.species_combo.addItem("Custom / manual entry", userData=None)
+        for name, mass in SPECIES_CHOICES:
+            self.species_combo.addItem(_species_display(name, mass), (name, mass))
+        self.species_combo.currentIndexChanged.connect(self._on_species_changed)
+        form.addRow("Species:", self.species_combo)
 
         self.label_edit = QLineEdit(parameter_box)
         self.label_edit.setText(self._line.label)
@@ -969,6 +1172,20 @@ class InspectMassLineDialog(QDialog):
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
 
+        initial_index = 0
+        if self._assigned_species:
+            assigned_mass = self._assigned_mass
+            tolerance = 5.0e-3
+            for idx, (name, mass) in enumerate(SPECIES_CHOICES, start=1):
+                if name == self._assigned_species and (
+                    assigned_mass is None or not math.isfinite(assigned_mass) or abs(assigned_mass - mass) <= tolerance
+                ):
+                    initial_index = idx
+                    if assigned_mass is None or not math.isfinite(assigned_mass):
+                        self._assigned_mass = mass
+                    break
+
+        self._set_species_index(initial_index)
         self._update_header()
         self._update_mass_hint()
         self._update_plot()
@@ -983,11 +1200,15 @@ class InspectMassLineDialog(QDialog):
             mass_value = float(self._mass_converter(mu))
         except Exception:
             mass_value = float("nan")
+        parts: List[str] = []
+        if self._assigned_mass is not None and math.isfinite(self._assigned_mass):
+            species = self._assigned_species or (self.label_edit.text().strip() or "Species")
+            parts.append(f"Assigned mass: {self._assigned_mass:.3f} amu ({species})")
         if math.isfinite(mass_value):
-            text = f"Estimated mass from μ: {mass_value:.3f} amu"
+            parts.append(f"Estimated mass from μ: {mass_value:.3f} amu")
         else:
-            text = "Estimated mass from μ: unavailable"
-        self.mass_hint_label.setText(text)
+            parts.append("Estimated mass from μ: unavailable")
+        self.mass_hint_label.setText(" | ".join(parts))
 
     def _update_plot(self) -> None:
         amplitude = float(max(self.amplitude_spin.value(), 1.0e-12))
@@ -1044,7 +1265,13 @@ class InspectMassLineDialog(QDialog):
         self.canvas.draw_idle()
 
     def _on_label_changed(self, _text: str) -> None:
+        label = self.label_edit.text().strip()
+        if self._assigned_species and label != self._assigned_species:
+            self._assigned_species = None
+            self._assigned_mass = None
+            self._set_species_index(0)
         self._update_header()
+        self._update_mass_hint()
 
     def _on_parameter_changed(self, _value: float) -> None:
         self._update_mass_hint()
@@ -1080,10 +1307,13 @@ class InspectMassLineDialog(QDialog):
         end = float(self.end_spin.value())
         if end <= start:
             raise ValueError("The end time must be greater than the start time.")
-        try:
-            mass_guess = float(self._mass_converter(mu))
-        except Exception:
-            mass_guess = float("nan")
+        if self._assigned_mass is not None and math.isfinite(self._assigned_mass):
+            mass_guess = float(self._assigned_mass)
+        else:
+            try:
+                mass_guess = float(self._mass_converter(mu))
+            except Exception:
+                mass_guess = float("nan")
         return {
             "label": label,
             "amplitude": amplitude,
@@ -1093,7 +1323,37 @@ class InspectMassLineDialog(QDialog):
             "time_start": start,
             "time_end": end,
             "mass_guess": mass_guess,
+            "assigned_species": self._assigned_species or "",
+            "assigned_mass": self._assigned_mass,
         }
+
+    def _set_species_index(self, index: int) -> None:
+        if 0 <= index < self.species_combo.count():
+            self._block_species_signal = True
+            try:
+                self.species_combo.setCurrentIndex(index)
+            finally:
+                self._block_species_signal = False
+
+    def _on_species_changed(self, index: int) -> None:
+        if self._block_species_signal:
+            return
+        data = self.species_combo.itemData(index)
+        if data is None:
+            self._assigned_species = None
+            self._assigned_mass = None
+            self._update_mass_hint()
+            return
+        species_label, species_mass = data
+        self._assigned_species = str(species_label)
+        self._assigned_mass = float(species_mass)
+        self.label_edit.blockSignals(True)
+        try:
+            self.label_edit.setText(self._assigned_species)
+        finally:
+            self.label_edit.blockSignals(False)
+        self._update_header()
+        self._update_mass_hint()
 
     def collected_values(self) -> Optional[Dict[str, float | str]]:
         return self._result
@@ -1166,6 +1426,7 @@ class DustCompositionWindow(QMainWindow):
         self._in_baseline_mode = False
         self._block_table_signals = False
         self._block_selection_signals = False
+        self._block_species_assignment = False
 
         self._load_datasets()
         self._load_saved_state()
@@ -1365,6 +1626,18 @@ class DustCompositionWindow(QMainWindow):
                     _get_field(entry, ("abundance", "relative_abundance"), default=0.0),
                     default=0.0,
                 )
+                assigned_label_raw = _get_field(entry, ("assigned_species",), default="")
+                if assigned_label_raw in (None, "", b""):
+                    assigned_label = ""
+                else:
+                    try:
+                        assigned_label = str(assigned_label_raw)
+                    except Exception:
+                        assigned_label = ""
+                assigned_mass = _coerce_float(
+                    _get_field(entry, ("assigned_mass",), default=float("nan")),
+                    default=float("nan"),
+                )
                 if not label:
                     label = nearest_mass_name(mass_guess)
                 line = MassLineFit(
@@ -1379,6 +1652,26 @@ class DustCompositionWindow(QMainWindow):
                     mass_guess=mass_guess,
                     abundance=abundance,
                 )
+                if assigned_label:
+                    line.label = assigned_label
+                    line.assigned_species = assigned_label
+                if math.isfinite(assigned_mass):
+                    line.assigned_mass = assigned_mass
+                    line.mass_guess = assigned_mass
+                elif assigned_label and assigned_label in SPECIES_BY_LABEL:
+                    species_mass = SPECIES_BY_LABEL[assigned_label]
+                    line.assigned_mass = species_mass
+                    line.mass_guess = species_mass
+                elif assigned_label:
+                    line.assigned_mass = None
+                else:
+                    species_match = _species_for_label(line.label)
+                    if species_match is not None:
+                        _, species_mass = species_match
+                        if math.isfinite(line.mass_guess) and abs(line.mass_guess - species_mass) <= 5.0e-3:
+                            line.assigned_species = species_match[0]
+                            line.assigned_mass = species_mass
+                            line.mass_guess = species_mass
                 self._mass_lines.append(line)
                 self._mass_line_counter = max(self._mass_line_counter, line.line_id + 1)
                 if math.isfinite(mu) and math.isfinite(mass_guess):
@@ -1442,6 +1735,7 @@ class DustCompositionWindow(QMainWindow):
         self._build_action_buttons()
         self._build_baseline_controls()
         self._build_mass_axis_controls()
+        self._build_mass_assignment_controls()
         self._build_mass_line_table()
         self._build_summary_section()
         self.control_layout.addStretch(1)
@@ -1516,6 +1810,30 @@ class DustCompositionWindow(QMainWindow):
         self.add_mass_button.toggled.connect(self._toggle_mass_line_mode)
         layout.addRow("", self.add_mass_button)
         self.control_layout.addWidget(box)
+
+    def _build_mass_assignment_controls(self) -> None:
+        box = QGroupBox("Mass Assignment", self.control_panel)
+        layout = QVBoxLayout(box)
+        layout.setSpacing(6)
+        description = QLabel(
+            "Assign the selected mass line to a reference species to lock its mass and update the axis.",
+            box,
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet("color: #495057; font-size: 12px;")
+        layout.addWidget(description)
+        self.mass_assignment_label = QLabel("No mass line selected.", box)
+        self.mass_assignment_label.setWordWrap(True)
+        self.mass_assignment_label.setStyleSheet("font-weight: 500;")
+        layout.addWidget(self.mass_assignment_label)
+        self.mass_species_combo = QComboBox(box)
+        self.mass_species_combo.addItem("Assign selected line…", userData=None)
+        for name, mass in SPECIES_CHOICES:
+            self.mass_species_combo.addItem(_species_display(name, mass), (name, mass))
+        self.mass_species_combo.currentIndexChanged.connect(self._on_mass_species_chosen)
+        layout.addWidget(self.mass_species_combo)
+        self.control_layout.addWidget(box)
+        self._set_mass_assignment_index(0)
 
     def _build_mass_line_table(self) -> None:
         box = QGroupBox("Mass Line Fits", self.control_panel)
@@ -1698,14 +2016,37 @@ class DustCompositionWindow(QMainWindow):
         line.lam = float(values.get("lam", line.lam))
         line.time_start = float(values.get("time_start", line.time_start))
         line.time_end = float(values.get("time_end", line.time_end))
-        mass_guess = float(values.get("mass_guess", line.mass_guess))
-        if math.isfinite(mass_guess):
-            line.mass_guess = mass_guess
-        self._recompute_mass_line(line, preserve_label=True)
+        assigned_species = str(values.get("assigned_species", "")).strip()
+        assigned_mass_value = values.get("assigned_mass")
+        needs_axis_update = False
+        try:
+            assigned_mass = float(assigned_mass_value)
+        except Exception:
+            assigned_mass = None
+        if assigned_mass is not None and math.isfinite(assigned_mass):
+            line.assigned_species = assigned_species or line.label
+            line.assigned_mass = assigned_mass
+            line.mass_guess = assigned_mass
+            if assigned_species:
+                line.label = assigned_species
+            needs_axis_update = True
+        else:
+            line.assigned_species = None
+            line.assigned_mass = None
+        if line.assigned_mass is None:
+            try:
+                mass_guess = float(values.get("mass_guess", line.mass_guess))
+            except Exception:
+                mass_guess = float("nan")
+            if math.isfinite(mass_guess):
+                line.mass_guess = mass_guess
+        self._recompute_mass_line(line, preserve_label=bool(line.assigned_species))
         self._selected_line_id = line.line_id
         self._update_tables()
         self._update_summary()
         self._refresh_plot()
+        if needs_axis_update:
+            self._update_mass_axis_from_lines(show_warning=False)
 
     def _set_span_selector_active(self, active: bool) -> None:
         if self._span_selector is not None:
@@ -1749,6 +2090,17 @@ class DustCompositionWindow(QMainWindow):
         self._set_baseline(float(value))
 
     def _auto_calculate_mass_axis(self) -> None:
+        self._update_mass_axis_from_lines(show_warning=True)
+
+    def _on_mass_params_changed(self) -> None:
+        self._mass_params["stretch"] = float(self.mass_stretch_spin.value())
+        self._mass_params["shift"] = float(self.mass_shift_spin.value())
+        self._combined_cached_mass = None
+        self._refresh_plot()
+        self._update_tables()
+        self._update_summary()
+
+    def _update_mass_axis_from_lines(self, *, show_warning: bool) -> bool:
         pairs: List[Tuple[float, float]] = []
         for line in self._mass_lines:
             mu = float(line.mu)
@@ -1756,14 +2108,19 @@ class DustCompositionWindow(QMainWindow):
             if math.isfinite(mu) and math.isfinite(mass):
                 pairs.append((mu, mass))
         if len(pairs) < 2:
-            QMessageBox.information(
-                self,
-                "Insufficient Mass Lines",
-                "Add at least two mass lines with valid μ and mass values to estimate the axis.",
-            )
-            return
+            if show_warning:
+                QMessageBox.information(
+                    self,
+                    "Insufficient Mass Lines",
+                    "Add at least two mass lines with valid μ and mass values to estimate the axis.",
+                )
+            return False
         previous = dict(self._mass_params)
         self._estimate_mass_axis(pairs)
+        self._apply_mass_params_update(previous)
+        return True
+
+    def _apply_mass_params_update(self, previous: Dict[str, float]) -> None:
         stretch = float(self._mass_params.get("stretch", 1.0))
         shift = float(self._mass_params.get("shift", 0.0))
         if hasattr(self, "mass_stretch_spin") and hasattr(self, "mass_shift_spin"):
@@ -1773,25 +2130,73 @@ class DustCompositionWindow(QMainWindow):
             self.mass_shift_spin.setValue(shift)
             self.mass_stretch_spin.blockSignals(False)
             self.mass_shift_spin.blockSignals(False)
-        # If the estimate failed the parameters will remain unchanged; force a refresh anyway.
         if (
             not math.isclose(previous.get("stretch", 1.0), stretch, rel_tol=1e-9, abs_tol=1e-9)
             or not math.isclose(previous.get("shift", 0.0), shift, rel_tol=1e-9, abs_tol=1e-9)
         ):
             self._on_mass_params_changed()
         else:
-            # No change in parameters, but refresh the plot to ensure the UI stays in sync.
             self._refresh_plot()
             self._update_tables()
             self._update_summary()
 
-    def _on_mass_params_changed(self) -> None:
-        self._mass_params["stretch"] = float(self.mass_stretch_spin.value())
-        self._mass_params["shift"] = float(self.mass_shift_spin.value())
-        self._combined_cached_mass = None
-        self._refresh_plot()
+    def _set_mass_assignment_index(self, index: int) -> None:
+        if not hasattr(self, "mass_species_combo"):
+            return
+        if not (0 <= index < self.mass_species_combo.count()):
+            index = 0
+        self._block_species_assignment = True
+        try:
+            self.mass_species_combo.setCurrentIndex(index)
+        finally:
+            self._block_species_assignment = False
+
+    def _on_mass_species_chosen(self, index: int) -> None:
+        if self._block_species_assignment:
+            return
+        if not hasattr(self, "mass_species_combo"):
+            return
+        data = self.mass_species_combo.itemData(index)
+        if data is None:
+            return
+        line = self._current_mass_line()
+        if line is None:
+            self._set_mass_assignment_index(0)
+            return
+        species_label, species_mass = data
+        self._assign_species_to_line(line, str(species_label), float(species_mass))
+        self._selected_line_id = line.line_id
+        self._update_mass_line_abundances()
         self._update_tables()
         self._update_summary()
+        self._refresh_plot()
+        self._update_mass_axis_from_lines(show_warning=False)
+        self._refresh_assignment_display()
+        self._set_mass_assignment_index(0)
+
+    def _assign_species_to_line(self, line: MassLineFit, species_label: str, species_mass: float) -> None:
+        line.label = species_label
+        line.mass_guess = species_mass
+        line.assigned_species = species_label
+        line.assigned_mass = species_mass
+
+    def _refresh_assignment_display(self) -> None:
+        line = self._current_mass_line()
+        if hasattr(self, "mass_species_combo"):
+            self.mass_species_combo.setEnabled(line is not None)
+        if not hasattr(self, "mass_assignment_label"):
+            return
+        if line is None:
+            self.mass_assignment_label.setText("No mass line selected.")
+            return
+        if line.assigned_species and math.isfinite(line.mass_guess):
+            self.mass_assignment_label.setText(
+                f"Assigned: {line.assigned_species} ({line.mass_guess:.3f} amu)"
+            )
+        elif math.isfinite(line.mass_guess):
+            self.mass_assignment_label.setText(f"Estimated mass: {line.mass_guess:.3f} amu")
+        else:
+            self.mass_assignment_label.setText("Mass estimate unavailable.")
 
     def _on_mass_table_changed(self, item: QTableWidgetItem) -> None:
         if self._block_table_signals or item is None:
@@ -1802,11 +2207,23 @@ class DustCompositionWindow(QMainWindow):
             return
         line = self._mass_lines[row]
         text = item.text().strip()
+        recalc_axis = False
         try:
             if column == 0:
-                line.label = text or line.label
+                new_label = text or line.label
+                line.label = new_label
+                species_match = _species_for_label(new_label)
+                if species_match is not None:
+                    species_label, species_mass = species_match
+                    self._assign_species_to_line(line, species_label, float(species_mass))
+                    recalc_axis = True
+                else:
+                    line.assigned_species = None
+                    line.assigned_mass = None
             elif column == 1:
                 line.mass_guess = float(text)
+                line.assigned_species = None
+                line.assigned_mass = None
             elif column == 2:
                 line.mu = float(text)
             elif column == 3:
@@ -1822,12 +2239,14 @@ class DustCompositionWindow(QMainWindow):
             self._block_table_signals = False
             return
         if column in (2, 3, 4, 5):
-            self._recompute_mass_line(line)
+            self._recompute_mass_line(line, preserve_label=bool(line.assigned_species))
         if column == 1:
             line.label = nearest_mass_name(line.mass_guess)
         self._update_tables()
         self._update_summary()
         self._refresh_plot()
+        if recalc_axis:
+            self._update_mass_axis_from_lines(show_warning=False)
 
     # ---- Plotting -------------------------------------------------------
     def _refresh_plot(self, show_combined: Optional[bool] = None, initial: bool = False) -> None:
@@ -2160,6 +2579,7 @@ class DustCompositionWindow(QMainWindow):
             self.inspect_mass_button.setEnabled(has_selection)
         if hasattr(self, "remove_mass_button"):
             self.remove_mass_button.setEnabled(has_selection)
+        self._refresh_assignment_display()
 
     def _on_sample_guess_changed(self, index: int) -> None:
         if self._block_sample_guess_signal:
@@ -2267,13 +2687,19 @@ class DustCompositionWindow(QMainWindow):
         fit_curve = _emg_model(dense_time, line.amplitude, line.mu, abs(line.sigma), abs(line.lam))
         line.time_axis = dense_time
         line.fit_values = fit_curve
-        converted = self._time_to_mass(np.array([line.mu], dtype=float))
-        if converted.size:
-            line.mass_guess = float(converted[0])
+        preserve_label = preserve_label or bool(line.assigned_species)
+        if line.assigned_mass is not None and math.isfinite(line.assigned_mass):
+            line.mass_guess = float(line.assigned_mass)
         else:
-            line.mass_guess = float("nan")
+            converted = self._time_to_mass(np.array([line.mu], dtype=float))
+            if converted.size:
+                line.mass_guess = float(converted[0])
+            else:
+                line.mass_guess = float("nan")
         new_auto = nearest_mass_name(line.mass_guess) if math.isfinite(line.mass_guess) else previous_auto
-        if not preserve_label:
+        if line.assigned_species:
+            line.label = line.assigned_species
+        elif not preserve_label:
             label_clean = previous_label.strip() if isinstance(previous_label, str) else ""
             if not label_clean or (previous_auto and label_clean == previous_auto):
                 line.label = new_auto
@@ -2459,6 +2885,7 @@ class DustCompositionWindow(QMainWindow):
                 table = np.zeros(len(self._mass_lines), dtype=[
                     ("id", "i4"),
                     ("label", str_dtype),
+                    ("assigned_species", str_dtype),
                     ("mu", "f8"),
                     ("sigma", "f8"),
                     ("lam", "f8"),
@@ -2466,13 +2893,20 @@ class DustCompositionWindow(QMainWindow):
                     ("time_start", "f8"),
                     ("time_end", "f8"),
                     ("mass", "f8"),
+                    ("assigned_mass", "f8"),
                     ("area", "f8"),
                     ("abundance", "f8"),
                 ])
                 for idx, line in enumerate(self._mass_lines):
+                    assigned_species = line.assigned_species or ""
+                    if line.assigned_mass is not None and math.isfinite(line.assigned_mass):
+                        assigned_mass = float(line.assigned_mass)
+                    else:
+                        assigned_mass = float("nan")
                     table[idx] = (
                         line.line_id,
                         line.label,
+                        assigned_species,
                         line.mu,
                         line.sigma,
                         line.lam,
@@ -2480,6 +2914,7 @@ class DustCompositionWindow(QMainWindow):
                         line.time_start,
                         line.time_end,
                         line.mass_guess,
+                        assigned_mass,
                         line.window_area(),
                         line.abundance,
                     )
