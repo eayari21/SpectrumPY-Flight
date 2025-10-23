@@ -1,144 +1,101 @@
 # SpectrumPY-Flight
 
-## Author: Ethan Ayari
-
 > Ground-system decoding, fitting, and visualization tools for the LASP/IMPACT IDEX campaign.
 
-![IDEX Quicklook UI map](docs/media/quicklook_overview.svg)
+![SpectrumPY overview](docs/media/quicklook_overview.svg)
 
-## Table of contents
+---
 
-1. [Overview](#overview)
-2. [Quickstart](#quickstart)
-3. [Launching the Quicklook GUI](#launching-the-quicklook-gui)
-4. [Exploring the interface](#exploring-the-interface)
-5. [Automation & analysis pipelines](#automation--analysis-pipelines)
-6. [Repository layout](#repository-layout)
-7. [Troubleshooting](#troubleshooting)
-8. [Documentation library](#documentation-library)
+## Launch in 10 seconds
 
-## Overview
+```
+python start.py
+```
 
-SpectrumPY-Flight bundles every tool the IDEX team used during the flight-model integration campaign: packet decoders, Rice decompression, HDF5/CDF exporters, matplotlib quicklooks, oscilloscope processors, and science analytics notebooks. The flagship `IDEX-quicklook.py` GUI stitches these capabilities together so analysts can load telemetry, compare fits, and export publication-ready plots in seconds.【F:IDEX-quicklook.py†L1025-L1323】【F:lmfit_idex_packet.py†L46-L200】【F:idex_packet.py†L203-L376】
+The Spectrum Launcher opens immediately and hands off to the Quicklook viewer so you can load telemetry, browse documentation, and export science plots without touching any other scripts.【F:start.py†L1-L7】【F:spectrum_launcher.py†L167-L289】
 
-### Highlights
+---
 
-* **Robust decoding pipelines** – Translate raw XTCE telemetry into structured HDF5/CDF science products, with optional lmfit-based curve fitting and derived metadata.【F:lmfit_idex_packet.py†L46-L377】【F:science_tool.py†L60-L377】
-* **Polished GUI experience** – Quickload HDF5/CDF files, toggle channels, inspect fit overlays, and export plots directly from a modernized Qt interface.【F:IDEX-quicklook.py†L1056-L1323】
-* **Self-serve documentation** – Launch an in-app documentation center, search every Markdown guide, and follow curated tutorials without leaving the viewer.【F:IDEX-quicklook.py†L200-L409】【F:docs/quicklook_tutorial.md†L1-L91】
-* **Automation scripts** – Batch decode telemetry, run calibration sweeps, and post-process oscilloscope campaigns with turnkey shell helpers.【F:process_packets.sh†L1-L27】【F:process_EM_Data.sh†L1-L37】【F:analyze_velocities.sh†L1-L18】
+## Core capabilities
 
-## Quickstart
+* **Packet decommutation** – Decode binary telemetry with the XTCE mission definition and publish structured HDF5/CDF products for analysis.【F:idex_packet.py†L203-L440】【F:science_tool.py†L60-L377】
+* **Batch processing** – Automate pipeline runs for new downlinks or oscilloscope campaigns with the provided shell helpers.【F:process_packets.sh†L1-L27】【F:process_EM_Data.sh†L1-L37】
+* **Fit adjustment** – Refine lmfit overlays inside the GUI, reset overrides, and compare solutions in real time.【F:IDEX-quicklook.py†L1056-L1349】
+* **TOF mass spectrometry** – Quantify dust populations with the dedicated composition workspace and EMG mass-line inspector.【F:dust_composition.py†L1129-L1335】
 
-### Prerequisites
+---
 
-* Python 3.10 and the mission packet definition `idex_combined_science_definition.xml`.【F:science_tool.py†L1-L79】
-* Scientific Python stack: NumPy, SciPy, matplotlib, pandas, seaborn, h5py, lmfit, bitstring, cdflib, and a Qt binding (PySide6 or PyQt6).【F:lmfit_idex_packet.py†L12-L200】【F:HDF_View.py†L60-L163】
-* Optional GUI helpers for HDF5/CDF browsing (`HDF_View.py`, `CDF_View.py`) and plot dashboards (`HDF_Explorer.py`).【F:HDF_View.py†L60-L398】【F:CDF_View.py†L87-L324】【F:HDF_Explorer.py†L24-L536】
+## Quicklook essentials
 
-### Environment setup
+### Primary windows
 
-1. Create an isolated environment and install dependencies:
-   ```bash
-   conda create -n spectrum_py python=3.10
-   conda activate spectrum_py
-   pip install numpy scipy matplotlib pandas seaborn h5py lmfit bitstring cdflib pyqt6
-   ```
-2. Add the repository root to `PYTHONPATH` (or run tools from the repo root) so relative imports resolve.
-3. Ensure the canonical folders exist: `Data/`, `HDF5/`, `CDF/`, `Plots/`, and `output_from_ois/`. Batch scripts expect these directories when decoding telemetry and exporting plots.【F:ImpactBook.py†L124-L143】【F:combine_target_signals.py†L30-L149】
+* **Data Browser** – Press `Ctrl+B` or choose **View → Open Data Browser** to launch the structure tree for the active event. The viewer exposes every dataset, attribute, and preview panel inside the HDF5/CDF product.【F:IDEX-quicklook.py†L1888-L1964】【F:HDF_View.py†L60-L398】
+* **Variable Definitions** – Use **View → Variable Definitions…** to open the spreadsheet companion that maps engineering units, calibration spans, and coefficients straight from the official Excel reference.【F:IDEX-quicklook.py†L1888-L1964】【F:IDEX_Definitions_View.py†L1-L199】
+* **Dust Composition** – Click the **Dust Composition** toolbar button or press `Ctrl+D` to launch the EMG fitting studio for the current event.【F:IDEX-quicklook.py†L2036-L2083】【F:dust_composition.py†L1-L215】
+* **Documentation Center** – Hit `F1` (or the `?` button) to browse the bundled Markdown library without leaving the viewer; `Ctrl+F1` jumps directly to the global search panel.【F:IDEX-quicklook.py†L1888-L1964】
 
-### Sample workflow
+### Inspect individual mass lines
 
-1. **Capture telemetry** using `read_from_ois.py` to record raw socket streams from GS-OASIS into timestamped binary dumps.【F:read_from_ois.py†L1-L43】
-2. **Decode and fit events** with `lmfit_idex_packet.py` or `science_tool.py`, producing per-event HDF5 datasets and optional CDF exports.【F:lmfit_idex_packet.py†L46-L377】【F:science_tool.py†L60-L377】
-3. **Inspect results** inside the Quicklook GUI, open the documentation center for guidance, and export polished plots for collaboration.【F:IDEX-quicklook.py†L1056-L1323】
+1. Open the Dust Composition window (`Ctrl+D`) from the main toolbar.【F:IDEX-quicklook.py†L2036-L2083】
+2. Combine the TOF traces if needed, select a region on the stacked plot, and click **Add Mass Line** to fit a new EMG peak; manual entry is also available through **Add Manual Line**.【F:dust_composition.py†L1129-L1244】
+3. Highlight a row in the **Mass Line Fits** table and press **Inspect Selected** to open the zoomed EMG editor with amplitude, μ, σ, λ, and window controls.【F:dust_composition.py†L1188-L1340】
+4. Adjust the parameters, confirm the dialog, and the main table plus composition summary update immediately with the refined solution.【F:dust_composition.py†L1245-L1335】
 
-## Launching the Quicklook GUI
+---
 
-SpectrumPY ships with a launcher-first workflow so analysts always land on a guided welcome screen before diving into data.
+## Packaging quick reference
 
-* **Primary entry point:** run `python start.py` from a source checkout to open the Spectrum Launcher. The wrapper simply forwards to `spectrum_launcher.main()` so packaged apps and local checkouts share the same UX.【F:start.py†L1-L7】【F:spectrum_launcher.py†L167-L289】
-* **Alternative commands:** invoke `python spectrum_launcher.py` directly or use `python -m imfpy.gui.main` when SpectrumPY is installed as a Python package. The module exposes subcommands such as `quicklook --filename <file.h5>` for scripted launches without the welcome screen.【F:spectrum_launcher.py†L281-L293】【F:imfpy/gui/main.py†L8-L129】
-* **Direct viewer access:** call `python IDEX-quicklook.py --filename <file>` and optionally `--eventnumber N` to skip the launcher for automation or debugging sessions.【F:IDEX-quicklook.py†L1585-L1595】
-* **Launcher behavior:** the welcome window remembers preferred directories, enables Quicklook/HDF buttons based on file type, and keeps running while child windows are open so you can inspect multiple datasets back-to-back.【F:spectrum_launcher.py†L196-L279】
-* **In-app convenience:** the universal Open dialog defaults to `HDF5/` while the **Open CDF…** shortcut jumps to `CDF/`. Press `Ctrl+R` after re-running fits to reload data without losing channel selections.【F:IDEX-quicklook.py†L82-L132】【F:IDEX-quicklook.py†L1056-L1323】
+### Shared setup
 
-## Exploring the interface
+All platforms use the same PyInstaller spec. Start from a clean Python ≥3.10 environment and install the packaging requirements:
 
-### Toolbar & navigation
+```
+python -m pip install --upgrade pip
+pip install -r packaging/packaging-requirements.txt
+```
 
-* The toolbar consolidates open/reload commands, export menu, a dedicated help button, and the event selector. Buttons use higher-contrast styling for readability, and the question-mark action opens the documentation center (`F1`).【F:IDEX-quicklook.py†L1216-L1294】
-* Status tips and shortcuts surface throughout the menu bar (`File`, `Edit`, `View`, `Help`). A built-in search bar lives inside the `Help` menu so you can jump to documentation without leaving the keyboard.【F:IDEX-quicklook.py†L1134-L1192】
+Then build the application bundle:
 
-### Channel & fit controls
+```
+pyinstaller --noconfirm packaging/idex_quicklook.spec
+```
 
-* Channel toggles and overlay buttons share a modernized palette with indigo highlights when active. Fit overlays can be toggled per-channel, and the `Edit Fit Parameters` button opens the override dialog for precise tuning.【F:IDEX-quicklook.py†L1296-L1349】【F:IDEX-quicklook.py†L1370-L1587】
-* Use `Reset Fit Overrides` from the toolbar or `Edit` menu to restore the on-disk solution after experimentation.【F:IDEX-quicklook.py†L1056-L1188】
+【F:packaging/README.md†L26-L55】【F:packaging/idex_quicklook.spec†L1-L89】
 
-### Built-in help & search
+### macOS
 
-* The new `DocumentationCenter` aggregates the README and every Markdown guide into a searchable library. It renders content in-place, highlights matches, and keeps navigation history in a split-pane viewer.【F:IDEX-quicklook.py†L200-L409】
-* `Help → Search documentation…` activates the same search dialog, and the toolbar help button mirrors the `F1` shortcut so assistance is one click away.【F:IDEX-quicklook.py†L1134-L1192】
-* The curated [Quicklook Tutorial](docs/quicklook_tutorial.md) complements the in-app help with a step-by-step workflow for analysts joining the project.【F:docs/quicklook_tutorial.md†L1-L91】
+```
+./packaging/macos/create_dmg.sh dist/IDEX-Quicklook.app "IDEX-Quicklook-$(git describe --tags --always)-$(uname -m).dmg"
+```
 
-## Automation & analysis pipelines
+The script wraps the generated `.app` into a signed-ready disk image; finish by running your usual `codesign` and notarization steps.【F:packaging/README.md†L57-L76】
 
-* `process_packets.sh` watches `Data/` for new binary dumps, runs the lmfit decoder, and writes cleaned products into `HDF5/`.【F:process_packets.sh†L1-L27】
-* `process_EM_Data.sh` orchestrates oscilloscope calibration sweeps, invoking `ImpactBook.py` for every trace directory and capturing plots/CSVs.【F:process_EM_Data.sh†L1-L37】【F:ImpactBook.py†L120-L609】
-* `analyze_velocities.sh` and `qd_quicklook.py` deliver quick assessments for accelerator campaigns and target/QD fits.【F:analyze_velocities.sh†L1-L18】【F:qd_quicklook.py†L43-L878】
-* `HDF_Explorer.py` builds multi-file scatter dashboards for analysis groups, while `HDF_View.py` and `CDF_View.py` provide lightweight structure browsers.【F:HDF_Explorer.py†L24-L536】【F:HDF_View.py†L60-L398】【F:CDF_View.py†L87-L324】
+### Windows
 
-## Desktop packaging & distribution
+PyInstaller emits `dist/IDEX-Quicklook/IDEX-Quicklook.exe`. Compress that folder into a ZIP for delivery, or feed it into your MSI tool of choice, for example:
 
-SpectrumPY’s desktop builds use a shared PyInstaller spec that freezes the Quicklook GUI, Spectrum Launcher, mission assets, and bundled documentation so analysts can work offline.【F:packaging/idex_quicklook.spec†L1-L89】
+```
+powershell -Command "Compress-Archive -Path dist/IDEX-Quicklook -DestinationPath IDEX-Quicklook-windows.zip"
+```
 
-### Building locally
+Users unzip the archive and launch `IDEX-Quicklook.exe` directly.【F:packaging/README.md†L78-L88】
 
-1. Create a clean Python ≥3.10 environment on the target platform.
-2. Install the packaging requirements and project dependencies:
-   ```bash
-   python -m pip install --upgrade pip
-   pip install -r packaging/packaging-requirements.txt
-   ```
-3. Run `pyinstaller --noconfirm packaging/idex_quicklook.spec` and collect the bundle from `dist/`. Each archive includes the Spectrum Launcher, Quicklook viewer, and Markdown docs referenced by the in-app help center.【F:packaging/README.md†L10-L45】【F:packaging/idex_quicklook.spec†L21-L47】
-4. Package the output for your platform (DMG, ZIP, or tar.gz) and follow the platform-specific signing or installer guidance in the packaging documentation.【F:packaging/README.md†L20-L63】【F:docs/packaging_tutorial.md†L60-L140】
+### Linux
 
-The [SpectrumPY Packaging & Distribution Playbook](docs/packaging_tutorial.md) expands these steps with platform nuances, validation checklists, and troubleshooting scenarios.【F:docs/packaging_tutorial.md†L1-L198】
+Package the frozen binary as a tarball ready for distribution:
 
-### Automated releases & updates
+```
+tar -C dist -czf IDEX-Quicklook-linux.tar.gz IDEX-Quicklook
+```
 
-The `.github/workflows/desktop-builds.yml` workflow rebuilds the macOS, Windows, and Linux bundles whenever you tag a release. Download the generated `.dmg`, `.zip`, and `.tar.gz` artifacts from the release page and share them with analysts.【F:packaging/README.md†L49-L72】
+The executable runs without root privileges and extracts its shared libraries on first launch.【F:packaging/README.md†L90-L108】
 
-Updates are nondestructive—users replace their previous installation with the new archive and keep working with their existing configuration and local data.【F:packaging/README.md†L64-L79】 Refer to the packaging playbook for guidance on communicating release notes and validating upgrades.【F:docs/packaging_tutorial.md†L142-L188】
+---
 
-If a local PyInstaller run fails, rely on those CI artifacts instead of fighting the environment. You can trigger the workflow manually or download the latest notarization-ready `.dmg` alongside the Windows and Linux bundles with `gh release download` patterns documented in the packaging README.【F:packaging/README.md†L11-L53】【F:.github/workflows/desktop-builds.yml†L1-L82】
+## Documentation & tutorials
 
-## Repository layout
+* **Quicklook tutorial** – Guided walkthrough of the GUI workflow, shortcuts, and recommended analysis order.【F:docs/quicklook_tutorial.md†L1-L123】
+* **Fitting reference** – Deep dive into baseline handling, Data Browser correlations, and variable-definition lookups.【F:docs/fitting_reference.md†L1-L115】
+* **Packaging playbook** – Extended release checklists, validation steps, and troubleshooting strategies for desktop builds.【F:docs/packaging_tutorial.md†L1-L198】
 
-| Path | Purpose |
-| ---- | ------- |
-| `Data/` | Telemetry staging area for raw binary captures.| 
-| `HDF5/` | Primary output folder for decoded quicklook products.| 
-| `CDF/` | Generated CDF files accessible via the `Open CDF…` shortcut.| 
-| `Plots/` | Destination for exported quicklook figures and batch plots.| 
-| `docs/` | Markdown guides, including the quicklook tutorial and technical memos.| 
-| `ImpactBook.py`, `qd_quicklook.py` | Oscilloscope processing pipelines with fit/SQL integration.【F:ImpactBook.py†L120-L609】【F:qd_quicklook.py†L43-L878】 |
-| `science_tool.py`, `lmfit_idex_packet.py` | Legacy and lmfit-based science decoders for packet ingest.【F:science_tool.py†L60-L377】【F:lmfit_idex_packet.py†L46-L377】 |
-
-## Troubleshooting
-
-* **Missing dependencies** – Install `h5py` and `cdflib` when the GUI reports missing optional modules. CLI decoders depend on `bitstring` and `lmfit` for waveform parsing and fits.【F:lmfit_idex_packet.py†L12-L200】【F:idex_packet.py†L34-L201】
-* **Headless systems** – Wrap GUI launches with `xvfb-run python IDEX-quicklook.py` to provide a virtual display server on CI or remote nodes.【F:IDEX-quicklook.py†L1585-L1595】
-* **Unexpected fit curves** – Use the fit parameter dialog to review overrides, then click `Reset Fit Overrides` or restart the viewer to reload on-disk parameters.【F:IDEX-quicklook.py†L1056-L1188】
-* **Scatter click tools not launching Quicklook** – Confirm matplotlib is emitting pick events and gather the diagnostics listed in [Debugging the interactive clicking tools](docs/clicking_tools_support.md) before filing an issue. The log lines printed inside `HDF_Explorer.py`'s click handler indicate whether the selection fired.【F:docs/clicking_tools_support.md†L1-L38】【F:HDF_Explorer.py†L478-L526】
-
-## Documentation library
-
-The repository ships with a comprehensive Markdown knowledge base accessible from within the application:
-
-* **README (this page)** – Mission overview, setup instructions, and navigation tips.
-* **Quicklook Tutorial** – Deep dive on GUI workflows and shortcuts.【F:docs/quicklook_tutorial.md†L1-L123】
-* **L2A CDF Guides** – Detailed comparisons between ASCII scans and HDF/CDF exports for downstream processing.【F:docs/l2a_cdf_ascii_scan.md†L1-L75】【F:docs/l2a_cdf_vs_hdf.md†L1-L83】
-* **Packaging & Distribution Playbook** – Comprehensive PyInstaller tutorials, validation checklists, and update workflows for desktop releases.【F:docs/packaging_tutorial.md†L1-L198】
-
-Launch the documentation center (`F1`) at any time to browse, search, and cross-reference these guides directly inside the application.【F:IDEX-quicklook.py†L200-L409】
+Launch the in-app documentation center anytime (`F1`) to search and read these guides inside the Quicklook viewer.【F:IDEX-quicklook.py†L1888-L1964】
