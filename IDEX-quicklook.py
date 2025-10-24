@@ -1158,6 +1158,9 @@ FAMILY_UNITS = {
 TIME_AXIS_LABEL = r"Time [$\mu$s]"
 
 
+# Instrument-specific conversion factors. Raw waveform counts are divided by the
+# matching factor before plotting so that the quicklook display is reported in
+# engineering units.
 CHANNEL_CONVERSION_FACTORS: Dict[str, float] = {
     "TOF H": 2.89e-4,
     "TOF M": 1.13e-2,
@@ -1924,7 +1927,7 @@ class MainWindow(QMainWindow):
             self.event_combo.setCurrentIndex(eventnumber - 1)
 
     def _channel_scale(self, channel: str) -> float:
-        """Return the plotting scale multiplier for *channel*."""
+        """Return the waveform conversion factor for *channel*."""
 
         return CHANNEL_CONVERSION_FACTORS.get(channel, 1.0)
 
@@ -1934,7 +1937,7 @@ class MainWindow(QMainWindow):
         arr = np.asarray(values, dtype=float)
         scale = self._channel_scale(channel)
         if scale != 1.0:
-            arr = arr * scale
+            arr = arr / scale
         return arr
 
     # ---- UI construction -------------------------------------------------
@@ -3443,7 +3446,7 @@ class MainWindow(QMainWindow):
         scale = CHANNEL_CONVERSION_FACTORS.get(channel, 1.0)
         if scale != 1.0:
             for path, values in list(data.value_series.items()):
-                data.value_series[path] = np.asarray(values, dtype=float) * scale
+                data.value_series[path] = np.asarray(values, dtype=float) / scale
 
         self._fit_cache[key] = data
         return data
