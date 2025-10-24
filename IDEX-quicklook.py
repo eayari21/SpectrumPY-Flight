@@ -3088,6 +3088,7 @@ class MainWindow(QMainWindow):
 
     def _plot_channel(self, ax, event_name: str, channel: str, overlay_mode: bool, missing_channels: List[str]) -> bool:
         definition = CHANNEL_DEFS[channel]
+        scale = FIT_SCALE_MULTIPLIERS.get(channel, 1.0)
         time_data = self._get_dataset(event_name, definition.time_dataset)
         value_data = self._get_dataset(event_name, definition.dataset)
 
@@ -3110,7 +3111,6 @@ class MainWindow(QMainWindow):
                 if n:
                     times = np.asarray(filtered_time[:n], dtype=float)
                     values = np.asarray(filtered_values[:n], dtype=float)
-                    scale = FIT_SCALE_MULTIPLIERS.get(channel, 1.0)
                     if scale != 1.0:
                         values = values * scale
                     ax.plot(
@@ -3135,9 +3135,12 @@ class MainWindow(QMainWindow):
                 if n == 0:
                     reason = "Empty dataset"
                 else:
+                    values = np.asarray(y[:n], dtype=float)
+                    if scale != 1.0:
+                        values = values * scale
                     ax.plot(
                         t[:n],
-                        y[:n],
+                        values,
                         color="#111111",
                         linewidth=1.1,
                         alpha=0.85,
@@ -3186,6 +3189,9 @@ class MainWindow(QMainWindow):
             return baseline_value
 
         raw_values = np.asarray(raw_values, dtype=float)
+        scale = FIT_SCALE_MULTIPLIERS.get(channel, 1.0)
+        if scale != 1.0:
+            raw_values = raw_values * scale
 
         times: Optional[np.ndarray] = None
         if reference_time is not None:
