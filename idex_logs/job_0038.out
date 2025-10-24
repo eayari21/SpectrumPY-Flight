@@ -9524,7 +9524,7 @@ Trigger time = 2023-12-18 18:38:47.204540+00:00
 23
 23
 23
-Progress: [====================]100% [Elapsed: 0:00:01.796623, 472 pkts/s]
+Progress: [====================]100% [Elapsed: 0:00:03.597101, 236 pkts/s]
 Parsing waveform for scitype=2
 8189
 Parsing waveform for scitype=4
