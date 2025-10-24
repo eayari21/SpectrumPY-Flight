@@ -860,6 +860,13 @@ SAMPLE_DATA: Tuple[Tuple[str, str, str], ...] = (
     ("Carbonaceous", "Graphite", "C"),
     ("Carbonaceous", "Nanodiamond / diamond", "C"),
     ("Carbonaceous", "Amorphous carbon", "C"),
+    ("Chondrite", "CI carbonaceous chondrite matrix", "MgFeSiONC"),
+    ("Chondrite", "CM carbonaceous chondrite matrix", "MgFeSiONCHS"),
+    ("Chondrite", "CO/CV carbonaceous chondrite matrix", "MgFeSiAlCaONC"),
+    ("Chondrite", "Ordinary chondrite (H/L)", "MgFeSiON"),
+    ("Chondrule", "Type I (Mg-rich) chondrule melt", "MgSiON"),
+    ("Chondrule", "Type II (Fe-rich) chondrule melt", "MgFeSiON"),
+    ("Chondrule", "Al-rich CAI-like inclusion", "CaAlTiSiON"),
     ("Organic (simple)", "Polycyclic aromatic hydrocarbons (PAHs)", "CH"),
     ("Organic (simple)", "Formaldehyde", "CHO"),
     ("Organic (simple)", "Methanol", "CHO"),
@@ -892,6 +899,9 @@ SAMPLE_DATA: Tuple[Tuple[str, str, str], ...] = (
     ("Presolar oxide", "Perovskite", "CaTiO"),
     ("Presolar oxide", "Spinel (presolar)", "MgAlO"),
     ("Presolar SiC", "Beta-SiC (mainstream presolar SiC)", "SiC"),
+    ("Presolar grain", "Graphite spherule", "C"),
+    ("Presolar grain", "Amorphous silicate (GEMS-like presolar)", "MgFeSiO"),
+    ("Presolar grain", "Nanodiamond aggregate", "C"),
 )
 
 
