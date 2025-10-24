@@ -329,8 +329,26 @@ class NoiseAnalysisWindow(QMainWindow):
         dt = self._infer_sample_spacing(times)
         freqs = np.fft.rfftfreq(signal.size, d=dt if dt and dt > 0 else 1.0)
         if freqs.size and magnitude.size:
+            positive_mask = (freqs > 0) & (magnitude > 0)
+            if np.count_nonzero(positive_mask) >= 1:
+                freqs = freqs[positive_mask]
+                magnitude = magnitude[positive_mask]
+            else:
+                freqs = np.array([])
+                magnitude = np.array([])
+
+        if freqs.size and magnitude.size:
             self.axes_power.plot(freqs, magnitude, color="#4263eb", linewidth=2.0)
-            self.axes_power.fill_between(freqs, 0, magnitude, color="#bac8ff", alpha=0.45)
+            if magnitude.size > 1:
+                self.axes_power.fill_between(
+                    freqs,
+                    magnitude,
+                    np.full_like(magnitude, magnitude.min()),
+                    color="#bac8ff",
+                    alpha=0.45,
+                )
+            self.axes_power.set_xscale("log")
+            self.axes_power.set_yscale("log")
         self.axes_power.set_title(f"{channel} Power Spectrum", fontsize=16, fontweight="bold")
         self.axes_power.set_xlabel("Frequency (1/Δt)")
         self.axes_power.set_ylabel("|FFT|")
