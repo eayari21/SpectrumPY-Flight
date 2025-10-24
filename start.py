@@ -18,20 +18,40 @@ from typing import Sequence
 
 os.environ.pop("QT_DEBUG_PLUGINS", None)
 
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QCloseEvent, QIcon
-from PyQt6.QtWidgets import (
-    QApplication,
-    QFileDialog,
-    QDialog,
-    QDialogButtonBox,
-    QFormLayout,
-    QInputDialog,
-    QLineEdit,
-    QMessageBox,
-    QProgressDialog,
-    QVBoxLayout,
-)
+# --------- Qt binding-agnostic imports (prefer PySide6, fallback PyQt6) ---------
+_QT = None
+try:
+    from PySide6.QtCore import QTimer, Qt
+    from PySide6.QtGui import QCloseEvent, QIcon
+    from PySide6.QtWidgets import (
+        QApplication,
+        QFileDialog,
+        QDialog,
+        QDialogButtonBox,
+        QFormLayout,
+        QInputDialog,
+        QLineEdit,
+        QMessageBox,
+        QProgressDialog,
+        QVBoxLayout,
+    )
+    _QT = "PySide6"
+except Exception:
+    from PyQt6.QtCore import QTimer, Qt
+    from PyQt6.QtGui import QCloseEvent, QIcon
+    from PyQt6.QtWidgets import (
+        QApplication,
+        QFileDialog,
+        QDialog,
+        QDialogButtonBox,
+        QFormLayout,
+        QInputDialog,
+        QLineEdit,
+        QMessageBox,
+        QProgressDialog,
+        QVBoxLayout,
+    )
+    _QT = "PyQt6"
 
 from readTrc import Trc
 
