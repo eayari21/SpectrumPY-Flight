@@ -2302,6 +2302,7 @@ class DustCompositionWindow(QMainWindow):
         self._auto_sample_match: Optional[SampleMatch] = None
         self._auto_mixture_match: Optional[MixtureMatch] = None
         self._block_sample_guess_signal = False
+        self._anchor_displayed_line_id: Optional[int] = None
 
         self._combined_axis = None
         self._combined_time_axis = None
@@ -2708,6 +2709,29 @@ class DustCompositionWindow(QMainWindow):
         self.mass_shift_spin.setValue(self._mass_params["shift"])
         self.mass_shift_spin.valueChanged.connect(self._on_mass_params_changed)
         layout.addRow("Shift:", self.mass_shift_spin)
+
+        anchor_row = QWidget(box)
+        anchor_row_layout = QHBoxLayout(anchor_row)
+        anchor_row_layout.setContentsMargins(0, 0, 0, 0)
+        anchor_row_layout.setSpacing(6)
+
+        self.anchor_mass_spin = QDoubleSpinBox(anchor_row)
+        self.anchor_mass_spin.setDecimals(6)
+        self.anchor_mass_spin.setRange(-1e6, 1e6)
+        self.anchor_mass_spin.setValue(1.0)
+        anchor_row_layout.addWidget(self.anchor_mass_spin)
+
+        self.anchor_button = QPushButton("Anchor selected line", anchor_row)
+        self.anchor_button.setToolTip(
+            "Adjust the mass-axis shift so the selected mass line matches the anchor mass."
+        )
+        self.anchor_button.clicked.connect(self._anchor_selected_line)
+        anchor_row_layout.addWidget(self.anchor_button)
+
+        layout.addRow("Anchor mass:", anchor_row)
+
+        self.anchor_mass_spin.setEnabled(False)
+        self.anchor_button.setEnabled(False)
         self.auto_mass_button = QPushButton("Auto-calc axis", box)
         self.auto_mass_button.setToolTip(
             "Estimate the mass-axis stretch and shift using existing mass lines."
@@ -3076,6 +3100,29 @@ class DustCompositionWindow(QMainWindow):
         self._update_tables()
         self._update_summary()
 
+    def _refresh_anchor_controls(self) -> None:
+        if not hasattr(self, "anchor_mass_spin") or not hasattr(self, "anchor_button"):
+            return
+        line = self._current_mass_line()
+        if line is None:
+            self.anchor_mass_spin.setEnabled(False)
+            self.anchor_button.setEnabled(False)
+            self._anchor_displayed_line_id = None
+            return
+        self.anchor_mass_spin.setEnabled(True)
+        self.anchor_button.setEnabled(True)
+        if self._anchor_displayed_line_id != line.line_id:
+            target_mass: Optional[float] = None
+            if line.assigned_mass is not None and math.isfinite(line.assigned_mass):
+                target_mass = float(line.assigned_mass)
+            elif math.isfinite(line.mass_guess):
+                target_mass = float(line.mass_guess)
+            if target_mass is not None and math.isfinite(target_mass):
+                self.anchor_mass_spin.blockSignals(True)
+                self.anchor_mass_spin.setValue(target_mass)
+                self.anchor_mass_spin.blockSignals(False)
+            self._anchor_displayed_line_id = line.line_id
+
     def _update_mass_axis_from_lines(self, *, show_warning: bool) -> bool:
         pairs: List[Tuple[float, float]] = []
         for line in self._mass_lines:
@@ -3155,6 +3202,47 @@ class DustCompositionWindow(QMainWindow):
         line.mass_guess = species_mass
         line.assigned_species = species_label
         line.assigned_mass = species_mass
+
+    def _anchor_selected_line(self) -> None:
+        line = self._current_mass_line()
+        if line is None:
+            QMessageBox.information(self, "No Selection", "Select a mass line to anchor.")
+            return
+        try:
+            target_mass = float(self.anchor_mass_spin.value())
+        except Exception:
+            target_mass = float("nan")
+        if not math.isfinite(target_mass):
+            QMessageBox.warning(self, "Invalid Mass", "Enter a finite anchor mass value.")
+            return
+        mu = float(line.mu)
+        if not math.isfinite(mu):
+            QMessageBox.warning(
+                self,
+                "Invalid Mass Line",
+                "The selected mass line does not have a valid centre time (μ).",
+            )
+            return
+        stretch = float(self._mass_params.get("stretch", 1.0))
+        if not math.isfinite(stretch) or abs(stretch) < 1.0e-12:
+            QMessageBox.warning(
+                self,
+                "Invalid Stretch",
+                "The mass-axis stretch must be finite and non-zero to anchor a line.",
+            )
+            return
+        shift = mu - target_mass / stretch
+        if not math.isfinite(shift):
+            QMessageBox.warning(
+                self,
+                "Anchor Failed",
+                "Unable to compute a valid shift from the selected line and anchor mass.",
+            )
+            return
+        previous = dict(self._mass_params)
+        self._mass_params["shift"] = shift
+        self._anchor_displayed_line_id = line.line_id
+        self._apply_mass_params_update(previous)
 
     def _refresh_assignment_display(self) -> None:
         line = self._current_mass_line()
@@ -3556,6 +3644,7 @@ class DustCompositionWindow(QMainWindow):
         if hasattr(self, "remove_mass_button"):
             self.remove_mass_button.setEnabled(has_selection)
         self._refresh_assignment_display()
+        self._refresh_anchor_controls()
 
     def _on_sample_guess_changed(self, index: int) -> None:
         if self._block_sample_guess_signal:
