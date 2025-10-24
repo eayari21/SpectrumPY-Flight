@@ -153,6 +153,16 @@ class ImpactBook():
         plt.show(block=False)
 
 # %%OBJECT TO STORE WAVEFORMS FOR A SPECIFIC TRACE
+CONVERSION_FACTORS = {
+    'TOF H': 2.89e-4,
+    'TOF M': 1.13e-2,
+    'TOF L': 5.14e-4,
+    'Ion Grid': 7.46e-4,
+    'Target H': 1.63e-1,
+    'Target L': 1.58e1,
+}
+
+
 class ImpactEvent():
     def __init__(self, Number, ChannelNames, times, amps, metas, ExperimentName, IonFolder, TargetFolder, QDFolder, HDFFile, ChannelUnits=[]):
         # print(f"There are {len(amps)} channels")
@@ -163,6 +173,16 @@ class ImpactEvent():
         self.MetaData = metas
         self.DataDict = dict(zip(ChannelNames, amps))
         self.DataDict.update({'Time': times[0]})
+
+        for channel in list(self.DataDict.keys()):
+            if channel == 'Time':
+                continue
+
+            factor = CONVERSION_FACTORS.get(channel)
+            if factor is None:
+                continue
+
+            self.DataDict[channel] = np.asarray(self.DataDict[channel], dtype=float) * factor
         # for key,value in self.DataDict.items():
         #     print(f"{key}: {len(value)}")
         self.IonFolder = IonFolder
