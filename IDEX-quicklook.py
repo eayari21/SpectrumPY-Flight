@@ -1158,7 +1158,13 @@ FAMILY_UNITS = {
 TIME_AXIS_LABEL = r"Time [$\mu$s]"
 
 
-FIT_SCALE_MULTIPLIERS: Dict[str, float] = {
+# Instrument-specific conversion factors. Raw waveform counts are divided by the
+# matching factor before plotting so that the quicklook display is reported in
+# engineering units.
+CHANNEL_CONVERSION_FACTORS: Dict[str, float] = {
+    "TOF H": 2.89e-4,
+    "TOF M": 1.13e-2,
+    "TOF L": 5.14e-4,
     "Ion Grid": 7.46e-4,
     "Target H": 1.63e-1,
     "Target L": 1.58e1,
@@ -1921,9 +1927,9 @@ class MainWindow(QMainWindow):
             self.event_combo.setCurrentIndex(eventnumber - 1)
 
     def _channel_scale(self, channel: str) -> float:
-        """Return the plotting scale multiplier for *channel*."""
+        """Return the waveform conversion factor for *channel*."""
 
-        return FIT_SCALE_MULTIPLIERS.get(channel, 1.0)
+        return CHANNEL_CONVERSION_FACTORS.get(channel, 1.0)
 
     def _apply_plot_scale(self, channel: str, values: Iterable[float]) -> np.ndarray:
         """Scale ``values`` into the display units for *channel*."""
@@ -1931,7 +1937,7 @@ class MainWindow(QMainWindow):
         arr = np.asarray(values, dtype=float)
         scale = self._channel_scale(channel)
         if scale != 1.0:
-            arr = arr * scale
+            arr = arr / scale
         return arr
 
     # ---- UI construction -------------------------------------------------
@@ -3437,10 +3443,10 @@ class MainWindow(QMainWindow):
             if override_result is not None:
                 data.value_series[path] = np.array(override_result, copy=True)
 
-        scale = FIT_SCALE_MULTIPLIERS.get(channel, 1.0)
+        scale = CHANNEL_CONVERSION_FACTORS.get(channel, 1.0)
         if scale != 1.0:
             for path, values in list(data.value_series.items()):
-                data.value_series[path] = np.asarray(values, dtype=float) * scale
+                data.value_series[path] = np.asarray(values, dtype=float) / scale
 
         self._fit_cache[key] = data
         return data
