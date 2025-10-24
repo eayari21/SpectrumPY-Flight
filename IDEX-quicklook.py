@@ -1920,6 +1920,20 @@ class MainWindow(QMainWindow):
         if eventnumber is not None and self._events and 1 <= eventnumber <= len(self._events):
             self.event_combo.setCurrentIndex(eventnumber - 1)
 
+    def _channel_scale(self, channel: str) -> float:
+        """Return the plotting scale multiplier for *channel*."""
+
+        return FIT_SCALE_MULTIPLIERS.get(channel, 1.0)
+
+    def _apply_plot_scale(self, channel: str, values: Iterable[float]) -> np.ndarray:
+        """Scale ``values`` into the display units for *channel*."""
+
+        arr = np.asarray(values, dtype=float)
+        scale = self._channel_scale(channel)
+        if scale != 1.0:
+            arr = arr * scale
+        return arr
+
     # ---- UI construction -------------------------------------------------
     def _apply_modern_palette(self) -> None:
         self.setStyleSheet(
@@ -3088,7 +3102,6 @@ class MainWindow(QMainWindow):
 
     def _plot_channel(self, ax, event_name: str, channel: str, overlay_mode: bool, missing_channels: List[str]) -> bool:
         definition = CHANNEL_DEFS[channel]
-        scale = FIT_SCALE_MULTIPLIERS.get(channel, 1.0)
         time_data = self._get_dataset(event_name, definition.time_dataset)
         value_data = self._get_dataset(event_name, definition.dataset)
 
@@ -3110,9 +3123,7 @@ class MainWindow(QMainWindow):
                 n = min(len(filtered_time), len(filtered_values))
                 if n:
                     times = np.asarray(filtered_time[:n], dtype=float)
-                    values = np.asarray(filtered_values[:n], dtype=float)
-                    if scale != 1.0:
-                        values = values * scale
+                    values = self._apply_plot_scale(channel, filtered_values[:n])
                     ax.plot(
                         times,
                         values,
@@ -3135,9 +3146,7 @@ class MainWindow(QMainWindow):
                 if n == 0:
                     reason = "Empty dataset"
                 else:
-                    values = np.asarray(y[:n], dtype=float)
-                    if scale != 1.0:
-                        values = values * scale
+                    values = self._apply_plot_scale(channel, y[:n])
                     ax.plot(
                         t[:n],
                         values,
@@ -3188,10 +3197,7 @@ class MainWindow(QMainWindow):
             self._baseline_cache[key] = baseline_value
             return baseline_value
 
-        raw_values = np.asarray(raw_values, dtype=float)
-        scale = FIT_SCALE_MULTIPLIERS.get(channel, 1.0)
-        if scale != 1.0:
-            raw_values = raw_values * scale
+        raw_values = self._apply_plot_scale(channel, raw_values)
 
         times: Optional[np.ndarray] = None
         if reference_time is not None:
@@ -3238,7 +3244,7 @@ class MainWindow(QMainWindow):
                     skip_baseline = True
         for label, _time_path, _value_path, time_values, fit_values in data.iter_time_result_pairs():
             times = np.asarray(time_values, dtype=float)
-            values = np.asarray(fit_values, dtype=float)
+            values = self._apply_plot_scale(channel, fit_values)
             baseline_offset = self._estimate_baseline(event_name, channel, times)
             if baseline_offset and not skip_baseline:
                 values = values + baseline_offset
@@ -3265,7 +3271,6 @@ class MainWindow(QMainWindow):
         if not model:
             return
 
-        scale = FIT_SCALE_MULTIPLIERS.get(channel, 1.0)
         for path, raw_params in data.iter_parameter_items():
             derived = _fit_paths_from_param(path)
             if derived:
@@ -3284,8 +3289,7 @@ class MainWindow(QMainWindow):
             fit_values = np.asarray(curve, dtype=float)
             if fit_values.size != base_time.size:
                 continue
-            if scale != 1.0:
-                fit_values = fit_values * scale
+            fit_values = self._apply_plot_scale(channel, fit_values)
             baseline_offset = self._estimate_baseline(event_name, channel, base_time)
             if baseline_offset and not skip_baseline:
                 fit_values = fit_values + baseline_offset
