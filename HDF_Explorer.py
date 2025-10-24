@@ -13,6 +13,7 @@ import math
 import os
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -21,7 +22,7 @@ import importlib.util
 import h5py  # type: ignore[import]
 import numpy as np
 import seaborn as sns
-from matplotlib import pyplot as plt
+from matplotlib import dates as mdates, pyplot as plt, ticker
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.collections import PathCollection
 from PyQt6.QtCore import Qt
@@ -44,6 +45,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from idex_variable_definitions import VariableDefinitionsCatalog, load_variable_definitions
 
 # --- Quicklook integration -------------------------------------------------
 
@@ -86,6 +89,39 @@ sns.set_theme(style="whitegrid")
 
 DEFAULT_COLORMAP = "magma"
 
+MST_TIMEZONE = timezone(timedelta(hours=-7))
+TIMEZONE_OPTIONS: Sequence[Tuple[str, Tuple[str, timezone]]] = (
+    ("UTC", ("UTC", timezone.utc)),
+    ("MST (UTC-7)", ("MST", MST_TIMEZONE)),
+)
+
+ION_TARGET_TOKENS = (
+    "iongrid",
+    "ion_grid",
+    "ion grid",
+    "igrid",
+    "targetl",
+    "target_l",
+    "target l",
+    "target low",
+    "targetlow",
+    "targeth",
+    "target_h",
+    "target h",
+    "target high",
+    "targethigh",
+)
+
+TOF_TOKENS = (
+    "tof",
+    "time_of_flight",
+    "time-of-flight",
+    "time of flight",
+    "timeofflight",
+)
+
+TIME_CONSTANT_TOKENS = ("rise", "trigger", "decay")
+
 
 @dataclass
 class EventRecord:
@@ -105,6 +141,7 @@ class DataStore:
     arrays: Dict[str, List[Optional[np.ndarray]]] = field(default_factory=dict)
     array_time_keys: Dict[str, Optional[str]] = field(default_factory=dict)
     dataset_paths: Dict[str, str] = field(default_factory=dict)
+    units: Dict[str, str] = field(default_factory=dict)
     metadata_epoch_key: Optional[str] = None
 
     def append_event(self, record: EventRecord) -> int:
@@ -540,6 +577,9 @@ class HDFDataExplorer(QWidget):
         else:
             self.hdf5_folder = resolved
 
+        self._variable_catalog: Optional[VariableDefinitionsCatalog] = self._load_variable_catalog()
+        self._unit_lookup_cache: Dict[str, Optional[str]] = {}
+
         if not self.hdf5_folder.exists():
             QMessageBox.critical(
                 self,
@@ -557,6 +597,15 @@ class HDFDataExplorer(QWidget):
         self._selected_marker: Optional[PathCollection] = None
 
         self._build_ui()
+
+    # ------------------------------------------------------------------
+    def _load_variable_catalog(self) -> Optional[VariableDefinitionsCatalog]:
+        try:
+            return load_variable_definitions()
+        except FileNotFoundError:
+            return None
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------
     def _build_ui(self) -> None:
@@ -629,12 +678,19 @@ class HDFDataExplorer(QWidget):
         self.timeseries_combo.setEditable(False)
         self.timeseries_combo.currentIndexChanged.connect(self.update_timeseries_plot)
 
+        self.timeseries_timezone_combo = QComboBox()
+        for text, payload in TIMEZONE_OPTIONS:
+            self.timeseries_timezone_combo.addItem(text, payload)
+        self.timeseries_timezone_combo.currentIndexChanged.connect(self.update_timeseries_plot)
+
         self.timeseries_button = QPushButton("Update timeseries")
         self.timeseries_button.clicked.connect(self.update_timeseries_plot)
 
         timeseries_layout.addWidget(QLabel("Quantity"), 0, 0)
         timeseries_layout.addWidget(self.timeseries_combo, 0, 1)
-        timeseries_layout.addWidget(self.timeseries_button, 1, 0, 1, 2)
+        timeseries_layout.addWidget(QLabel("Time zone"), 1, 0)
+        timeseries_layout.addWidget(self.timeseries_timezone_combo, 1, 1)
+        timeseries_layout.addWidget(self.timeseries_button, 2, 0, 1, 2)
 
         controls_layout.addWidget(timeseries_group)
         controls_layout.addStretch(1)
@@ -956,6 +1012,16 @@ class HDFDataExplorer(QWidget):
             label = f"{label_prefix}{name}" if label_prefix else name
             store.dataset_paths.setdefault(label, full_path)
 
+            if not _is_time_dataset(name) and label not in store.units:
+                unit = self._infer_dataset_units(
+                    label=label,
+                    dataset_name=name,
+                    full_path=full_path,
+                    category=category,
+                )
+                if unit:
+                    store.units[label] = unit
+
             if array.ndim == 0 or array.size == 1:
                 series = store.ensure_scalar_entry(label)
                 scalar_value = self._scalar_from_array(array)
@@ -1134,34 +1200,70 @@ class HDFDataExplorer(QWidget):
         if not hasattr(self, "ax_timeseries"):
             return
 
-        key = self.timeseries_combo.currentText()
-        axis = self.ax_timeseries
+        self._render_timeseries_axis()
+
+    # ------------------------------------------------------------------
+    def _render_timeseries_axis(self) -> None:
+        axis = getattr(self, "ax_timeseries", None)
+        if axis is None:
+            return
+
         axis.clear()
         axis.set_facecolor("#fbfdff")
         axis.grid(True, linestyle=":", linewidth=0.7, alpha=0.6)
+        axis.xaxis.set_major_locator(ticker.AutoLocator())
+        axis.xaxis.set_major_formatter(ticker.ScalarFormatter())
+
+        combo = getattr(self, "timeseries_combo", None)
+        key = combo.currentText() if combo is not None else ""
+
+        tz_label, tzinfo = self._current_timezone()
+
+        plotted = False
+        datetime_used = False
+        raw_epoch_used = False
+        relative_time_used = False
 
         if not key or (key not in self.data_store.scalars and key not in self.data_store.arrays):
             axis.text(0.5, 0.5, "Select a dataset to plot", ha="center", va="center", fontsize=13, transform=axis.transAxes)
-            self.canvas.draw_idle()
-            return
-
-        if key in self.data_store.scalars:
+        elif key in self.data_store.scalars:
             epochs = self._event_epoch_series()
             values = np.asarray(self.data_store.scalars[key], dtype=float)
             mask = np.isfinite(epochs) & np.isfinite(values)
             if np.count_nonzero(mask) == 0:
-                axis.text(0.5, 0.5, "No epoch/time metadata for selected scalars.", ha="center", va="center", transform=axis.transAxes)
-            else:
-                axis.scatter(
-                    epochs[mask],
-                    values[mask],
-                    s=36,
-                    color="#2563eb",
-                    edgecolors="white",
-                    linewidths=0.5,
+                axis.text(
+                    0.5,
+                    0.5,
+                    "No epoch/time metadata for selected scalars.",
+                    ha="center",
+                    va="center",
+                    transform=axis.transAxes,
                 )
-                axis.set_xlabel("Epoch")
-                axis.set_ylabel(key)
+            else:
+                epoch_values = epochs[mask]
+                value_values = values[mask]
+                converted = self._convert_epoch_values(epoch_values, tzinfo)
+                if converted is not None:
+                    axis.scatter(
+                        converted,
+                        value_values,
+                        s=36,
+                        color="#2563eb",
+                        edgecolors="white",
+                        linewidths=0.5,
+                    )
+                    datetime_used = True
+                else:
+                    axis.scatter(
+                        epoch_values,
+                        value_values,
+                        s=36,
+                        color="#2563eb",
+                        edgecolors="white",
+                        linewidths=0.5,
+                    )
+                    raw_epoch_used = True
+                plotted = True
         else:
             values_series = self.data_store.arrays.get(key, [])
             time_key = self.data_store.array_time_keys.get(key)
@@ -1172,7 +1274,6 @@ class HDFDataExplorer(QWidget):
                 else None
             )
 
-            plotted = False
             if times_series:
                 for idx, value in enumerate(values_series):
                     if value is None or value.size == 0:
@@ -1182,50 +1283,86 @@ class HDFDataExplorer(QWidget):
                         continue
                     times_flat = np.asarray(times, dtype=float).ravel()
                     value_flat = np.asarray(value, dtype=float).ravel()
-                    axis.scatter(
-                        times_flat,
-                        value_flat,
-                        s=25,
-                        label=f"Event {self.data_store.events[idx].event_name}",
-                        edgecolors="white",
-                        linewidths=0.4,
-                    )
-                    plotted = True
-
-                if plotted:
-                    axis.legend(loc="upper right", fontsize=8)
-                    axis.set_xlabel("Time")
-                    axis.set_ylabel(key)
-
-            if not plotted:
-                if metadata_epoch_series:
-                    for idx, value in enumerate(values_series):
-                        if value is None or value.size == 0 or idx >= len(metadata_epoch_series):
-                            continue
-                        epochs_arr = metadata_epoch_series[idx]
-                        if epochs_arr is None or np.size(epochs_arr) == 0:
-                            continue
-                        epochs_flat = np.asarray(epochs_arr, dtype=float).ravel()
-                        values_flat = np.asarray(value, dtype=float).ravel()
-                        if epochs_flat.size != values_flat.size:
-                            continue
-                        mask = np.isfinite(epochs_flat) & np.isfinite(values_flat)
-                        if np.count_nonzero(mask) == 0:
-                            continue
+                    mask = np.isfinite(times_flat) & np.isfinite(value_flat)
+                    if np.count_nonzero(mask) == 0:
+                        continue
+                    times_masked = times_flat[mask]
+                    values_masked = value_flat[mask]
+                    convert_times = self._is_epoch_series(time_key, times_masked)
+                    label = f"Event {self.data_store.events[idx].event_name}"
+                    if convert_times:
+                        converted = self._convert_epoch_values(times_masked, tzinfo)
+                        if converted is not None:
+                            axis.scatter(
+                                converted,
+                                values_masked,
+                                s=25,
+                                label=label,
+                                edgecolors="white",
+                                linewidths=0.4,
+                            )
+                            datetime_used = True
+                        else:
+                            axis.scatter(
+                                times_masked,
+                                values_masked,
+                                s=25,
+                                label=label,
+                                edgecolors="white",
+                                linewidths=0.4,
+                            )
+                            raw_epoch_used = True
+                    else:
                         axis.scatter(
-                            epochs_flat[mask],
-                            values_flat[mask],
+                            times_masked,
+                            values_masked,
                             s=25,
-                            label=f"Event {self.data_store.events[idx].event_name}",
+                            label=label,
                             edgecolors="white",
                             linewidths=0.4,
                         )
-                        plotted = True
+                        relative_time_used = True
+                    plotted = True
 
-                    if plotted:
-                        axis.legend(loc="upper right", fontsize=8)
-                        axis.set_xlabel("Epoch")
-                        axis.set_ylabel(key)
+            if not plotted and metadata_epoch_series:
+                for idx, value in enumerate(values_series):
+                    if value is None or value.size == 0 or idx >= len(metadata_epoch_series):
+                        continue
+                    epochs_arr = metadata_epoch_series[idx]
+                    if epochs_arr is None or np.size(epochs_arr) == 0:
+                        continue
+                    epochs_flat = np.asarray(epochs_arr, dtype=float).ravel()
+                    values_flat = np.asarray(value, dtype=float).ravel()
+                    if epochs_flat.size != values_flat.size:
+                        continue
+                    mask = np.isfinite(epochs_flat) & np.isfinite(values_flat)
+                    if np.count_nonzero(mask) == 0:
+                        continue
+                    epochs_masked = epochs_flat[mask]
+                    values_masked = values_flat[mask]
+                    label = f"Event {self.data_store.events[idx].event_name}"
+                    converted = self._convert_epoch_values(epochs_masked, tzinfo)
+                    if converted is not None:
+                        axis.scatter(
+                            converted,
+                            values_masked,
+                            s=25,
+                            label=label,
+                            edgecolors="white",
+                            linewidths=0.4,
+                        )
+                        datetime_used = True
+                    else:
+                        axis.scatter(
+                            epochs_masked,
+                            values_masked,
+                            s=25,
+                            label=label,
+                            edgecolors="white",
+                            linewidths=0.4,
+                        )
+                        raw_epoch_used = True
+                    plotted = True
 
             if not plotted:
                 epochs = self._event_epoch_series()
@@ -1247,18 +1384,29 @@ class HDFDataExplorer(QWidget):
 
                 if epoch_times:
                     order = np.argsort(epoch_times)
-                    ordered_epochs = np.asarray(epoch_times)[order]
-                    ordered_values = np.asarray(epoch_values)[order]
-                    axis.scatter(
-                        ordered_epochs,
-                        ordered_values,
-                        s=36,
-                        color="#2563eb",
-                        edgecolors="white",
-                        linewidths=0.5,
-                    )
-                    axis.set_xlabel("Epoch")
-                    axis.set_ylabel(key)
+                    ordered_epochs = np.asarray(epoch_times, dtype=float)[order]
+                    ordered_values = np.asarray(epoch_values, dtype=float)[order]
+                    converted = self._convert_epoch_values(ordered_epochs, tzinfo)
+                    if converted is not None:
+                        axis.scatter(
+                            converted,
+                            ordered_values,
+                            s=36,
+                            color="#2563eb",
+                            edgecolors="white",
+                            linewidths=0.5,
+                        )
+                        datetime_used = True
+                    else:
+                        axis.scatter(
+                            ordered_epochs,
+                            ordered_values,
+                            s=36,
+                            color="#2563eb",
+                            edgecolors="white",
+                            linewidths=0.5,
+                        )
+                        raw_epoch_used = True
                     plotted = True
                 else:
                     axis.text(
@@ -1270,10 +1418,161 @@ class HDFDataExplorer(QWidget):
                         transform=axis.transAxes,
                     )
 
+        if plotted:
+            handles, labels = axis.get_legend_handles_labels()
+            if handles:
+                axis.legend(loc="upper right", fontsize=8)
+            if datetime_used:
+                self._configure_time_axis(axis, tzinfo)
+                axis.set_xlabel(self._time_axis_caption("Epoch", tz_label))
+            elif raw_epoch_used:
+                axis.set_xlabel("Epoch")
+            elif relative_time_used:
+                axis.set_xlabel("Time")
+            axis.set_ylabel(self._label_with_unit(key))
+
         axis.set_title("Timeseries view", fontsize=14, fontweight="bold")
         self.canvas.draw_idle()
 
     # ------------------------------------------------------------------
+    def _current_timezone(self) -> Tuple[str, timezone]:
+        combo = getattr(self, "timeseries_timezone_combo", None)
+        if combo is None:
+            return "UTC", timezone.utc
+        data = combo.currentData()
+        if isinstance(data, tuple) and len(data) == 2:
+            name, tzinfo = data
+            if isinstance(name, str) and isinstance(tzinfo, timezone):
+                return name, tzinfo
+        return "UTC", timezone.utc
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _time_axis_caption(base: str, tz_label: str) -> str:
+        return f"{base} ({tz_label})"
+
+    # ------------------------------------------------------------------
+    def _configure_time_axis(self, axis: plt.Axes, tzinfo: timezone) -> None:
+        locator = mdates.AutoDateLocator(minticks=3, maxticks=8)
+        formatter = mdates.ConciseDateFormatter(locator, tz=tzinfo)
+        axis.xaxis.set_major_locator(locator)
+        axis.xaxis.set_major_formatter(formatter)
+
+    # ------------------------------------------------------------------
+    def _convert_epoch_values(self, values: np.ndarray, tzinfo: timezone) -> Optional[np.ndarray]:
+        arr = np.asarray(values, dtype=float).ravel()
+        if arr.size == 0:
+            return None
+        converted = np.full(arr.shape, np.nan, dtype=float)
+        any_valid = False
+        for idx, value in enumerate(arr):
+            if not math.isfinite(value):
+                continue
+            try:
+                dt_value = datetime.fromtimestamp(float(value), tz=timezone.utc)
+            except (OverflowError, OSError, ValueError):
+                continue
+            dt_local = dt_value.astimezone(tzinfo)
+            converted[idx] = mdates.date2num(dt_local)
+            any_valid = True
+        if not any_valid:
+            return None
+        return converted
+
+    # ------------------------------------------------------------------
+    def _label_with_unit(self, label: str) -> str:
+        unit = self.data_store.units.get(label)
+        if unit:
+            return f"{label} [{unit}]"
+        return label
+
+    # ------------------------------------------------------------------
+    def _is_epoch_series(self, label: Optional[str], values: np.ndarray) -> bool:
+        if label and "epoch" in label.lower():
+            return True
+        arr = np.asarray(values, dtype=float)
+        if arr.size == 0:
+            return False
+        finite = arr[np.isfinite(arr)]
+        if finite.size == 0:
+            return False
+        median = float(np.median(finite))
+        return 1e8 < median < 1e11
+
+    # ------------------------------------------------------------------
+    def _infer_dataset_units(self, *, label: str, dataset_name: str, full_path: str, category: str) -> Optional[str]:
+        cache_key = f"{category}:{full_path}"
+        if cache_key in self._unit_lookup_cache:
+            return self._unit_lookup_cache[cache_key]
+
+        result: Optional[str] = None
+
+        for candidate in (
+            dataset_name,
+            label,
+            full_path.split("/")[-1],
+            label.split("/")[-1],
+        ):
+            candidate = candidate.strip()
+            if not candidate:
+                continue
+            result = self._lookup_definition_units(candidate)
+            if result:
+                break
+
+        if result is None:
+            combined = " ".join({label, dataset_name, full_path}).lower()
+            if any(token in combined for token in TIME_CONSTANT_TOKENS):
+                result = "µs"
+            else:
+                amplitude_like = "amplitude" in combined
+                offset_like = "offset" in combined or "offsets" in combined
+                if amplitude_like or offset_like:
+                    if any(token in combined for token in TOF_TOKENS):
+                        result = "pC/Δt"
+                    else:
+                        ion_target_match = any(token in combined for token in ION_TARGET_TOKENS)
+                        if not ion_target_match and "ion" in combined and "grid" in combined:
+                            ion_target_match = True
+                        if not ion_target_match and "target" in combined:
+                            if any(token in combined for token in (" target l", " target h")):
+                                ion_target_match = True
+                        if ion_target_match:
+                            result = "pC"
+
+        self._unit_lookup_cache[cache_key] = result
+        return result
+
+    # ------------------------------------------------------------------
+    def _lookup_definition_units(self, identifier: str) -> Optional[str]:
+        catalog = self._variable_catalog
+        if catalog is None:
+            return None
+        candidate = identifier.strip()
+        if not candidate:
+            return None
+        variations = {
+            candidate,
+            candidate.replace("/", " "),
+            candidate.replace("_", " "),
+            candidate.replace("-", " "),
+            candidate.replace(".", " "),
+            candidate.split("/")[-1],
+            candidate.split(".")[-1],
+        }
+        for value in variations:
+            trimmed = value.strip()
+            if not trimmed:
+                continue
+            definition = (
+                catalog.find_by_cdf_varname(trimmed)
+                or catalog.find_by_packet_variable(trimmed)
+                or catalog.find_by_var_notes(trimmed)
+            )
+            if definition and definition.units:
+                return definition.units
+        return None
+
     def _on_pick(self, event):
         artist = event.artist
         if not isinstance(artist, PathCollection):
