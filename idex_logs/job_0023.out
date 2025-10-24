@@ -12422,7 +12422,7 @@ Trigger time = 2023-08-07 21:25:59.143380+00:00
 30
 30
 30
-Progress: [====================]100% [Elapsed: 0:00:05.334340, 166 pkts/s]
+Progress: [====================]100% [Elapsed: 0:00:03.653738, 242 pkts/s]
 Parsing waveform for scitype=2
 8189
 Parsing waveform for scitype=4
@@ -17199,62 +17199,62 @@ Analyzing peak 1990
 x_slice = [-0.02983682 -0.02599019 -0.02214357 -0.01829694 -0.01445032 -0.0106037
  -0.00675707 -0.00291045  0.00093617  0.0047828   0.00862942], y_slice = [0.295647 0.295647 0.295647 0.295647 0.295647 0.295647 0.295647 0.295647
  0.295647 0.295647 0.295647]
-Calculating mass fit for peak 12.08266469024056
+Calculating mass fit for peak 26.870498011747543
 Analyzing peak 1999
 x_slice = [0.0047828  0.00862942 0.01247604 0.01632267 0.02016929 0.02401591
  0.02786254 0.03170916 0.03555579 0.03940241 0.04324903], y_slice = [0.295647 0.295647 0.295647 0.173689 0.234957 0.252875 0.245361 0.224264
  0.28611  0.236113 0.243627]
-Calculating mass fit for peak 12.194827205552913
-Area under the EMG fit for peak 12.194827205552913: 0.009732627344554393
+Calculating mass fit for peak 27.099129736859688
+Area under the EMG fit for peak 27.099129736859688: 0.009732627344554393
 Analyzing peak 2002
 x_slice = [0.01632267 0.02016929 0.02401591 0.02786254 0.03170916 0.03555579
  0.03940241 0.04324903 0.04709566 0.05094228 0.0547889 ], y_slice = [0.173689 0.234957 0.252875 0.245361 0.224264 0.28611  0.236113 0.243627
  0.23409  0.162707 0.219062]
-Calculating mass fit for peak 12.2323298653034
-Area under the EMG fit for peak 12.2323298653034: 0.008836599218970263
+Calculating mass fit for peak 27.175555546948647
+Area under the EMG fit for peak 27.175555546948647: 0.008836599218970263
 Analyzing peak 2008
 x_slice = [0.03940241 0.04324903 0.04709566 0.05094228 0.0547889  0.05863553
  0.06248215 0.06632877 0.0701754  0.07402202 0.07786864], y_slice = [0.236113 0.243627 0.23409  0.162707 0.219062 0.266169 0.167331 0.126871
  0.213571 0.19363  0.144789]
-Calculating mass fit for peak 12.307507916773929
-Area under the EMG fit for peak 12.307507916773929: 0.007718996073718025
+Calculating mass fit for peak 27.32873001970393
+Area under the EMG fit for peak 27.32873001970393: 0.007718996073718025
 Analyzing peak 2011
 x_slice = [0.05094228 0.0547889  0.05863553 0.06248215 0.06632877 0.0701754
  0.07402202 0.07786864 0.08171527 0.08556189 0.08940852], y_slice = [0.162707 0.219062 0.266169 0.167331 0.126871 0.213571 0.19363  0.144789
  0.170799 0.167042 0.167331]
-Calculating mass fit for peak 12.345183308493969
-Area under the EMG fit for peak 12.345183308493969: 0.006995378622871021
+Calculating mass fit for peak 27.405478682370234
+Area under the EMG fit for peak 27.405478682370234: 0.006995378622871021
 Analyzing peak 2017
 x_slice = [0.07402202 0.07786864 0.08171527 0.08556189 0.08940852 0.09325514
  0.09710176 0.10094839 0.10479501 0.10864163 0.11248826], y_slice = [0.19363  0.144789 0.170799 0.167042 0.167331 0.184671 0.149991 0.143344
  0.185827 0.171088 0.146234]
-Calculating mass fit for peak 12.420706823903599
-Area under the EMG fit for peak 12.420706823903599: 0.00638065478474753
+Calculating mass fit for peak 27.55929886028023
+Area under the EMG fit for peak 27.55929886028023: 0.00638065478474753
 Analyzing peak 2020
 x_slice = [0.08556189 0.08940852 0.09325514 0.09710176 0.10094839 0.10479501
  0.10864163 0.11248826 0.11633488 0.1201815  0.12402813], y_slice = [0.167042 0.167331 0.184671 0.149991 0.143344 0.185827 0.171088 0.146234
  0.160973 0.160395 0.161551]
-Calculating mass fit for peak 12.458554947593193
-Area under the EMG fit for peak 12.458554947593193: 0.006288872214020373
+Calculating mass fit for peak 27.636370375523907
+Area under the EMG fit for peak 27.636370375523907: 0.006288872214020373
 Analyzing peak 2026
 x_slice = [0.10864163 0.11248826 0.11633488 0.1201815  0.12402813 0.12787475
  0.13172137 0.135568   0.13941462 0.14326125 0.14710787], y_slice = [0.171088 0.146234 0.160973 0.160395 0.161551 0.173978 0.154615 0.145656
  0.168776 0.165886 0.151147]
-Calculating mass fit for peak 12.534423926941935
-Area under the EMG fit for peak 12.534423926941935: 0.00618384477355686
+Calculating mass fit for peak 27.790836258588627
+Area under the EMG fit for peak 27.790836258588627: 0.00618384477355686
 Analyzing peak 2029
 x_slice = [0.1201815  0.12402813 0.12787475 0.13172137 0.135568   0.13941462
  0.14326125 0.14710787 0.15095449 0.15480112 0.15864774], y_slice = [0.160395 0.161551 0.173978 0.154615 0.145656 0.168776 0.165886 0.151147
  0.155193 0.158083 0.156349]
-Calculating mass fit for peak 12.572444782601085
-Area under the EMG fit for peak 12.572444782601085: 0.006125254449302749
+Calculating mass fit for peak 27.868230626409673
+Area under the EMG fit for peak 27.868230626409673: 0.006125254449302749
 Analyzing peak 2038
 x_slice = [0.15480112 0.15864774 0.16249436 0.16634099 0.17018761 0.17403423
  0.17788086 0.18172748 0.1855741  0.18942073 0.19326735], y_slice = [0.158083 0.156349 0.159239 0.152303 0.148257 0.15895  0.157505 0.148546
  0.147968 0.149413 0.150569]
-Calculating mass fit for peak 12.68685281351763
-Area under the EMG fit for peak 12.68685281351763: 0.005899808445055154
-Kappa = 0.0035496280922213685
+Calculating mass fit for peak 28.101059435027512
+Area under the EMG fit for peak 28.101059435027512: 0.005899808445055154
+Kappa = -0.006481244654001373
 Dataset '/1/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/1/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/1/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -17315,15 +17315,15 @@ Analyzing peak 1966
 x_slice = [-0.12215578 -0.11830916 -0.11446253 -0.11061591 -0.10676929 -0.10292266
  -0.09907604 -0.09522942 -0.09138279 -0.08753617 -0.08368955], y_slice = [0.147101 0.149413 0.151725 0.155193 0.156638 0.157216 0.155193 0.152014
  0.150569 0.15028  0.148835]
-Calculating mass fit for peak 1.326235955671813e-10
-Area under the EMG fit for peak 1.326235955671813e-10: 0.005854478926594673
+Calculating mass fit for peak 2.640252303567647
+Area under the EMG fit for peak 2.640252303567647: 0.005854478926594673
 Analyzing peak 4387
 x_slice = [9.1905199  9.19436652 9.19821314 9.20205977 9.20590639 9.20975302
  9.21359964 9.21744626 9.22129289 9.22513951 9.22898613], y_slice = [0.154326 0.156927 0.157216 0.158661 0.161262 0.162996 0.161551 0.160395
  0.160106 0.159239 0.157505]
-Calculating mass fit for peak 61.82171744269207
-Area under the EMG fit for peak 61.82171744269207: 0.006120271212745315
-Kappa = 0.010858721412347847
+Calculating mass fit for peak 54.681274321966896
+Area under the EMG fit for peak 54.681274321966896: 0.006120271212745315
+Kappa = 0.010763312767269939
 Dataset '/2/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/2/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/2/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -17384,9 +17384,9 @@ Analyzing peak 3002
 x_slice = [3.86294624 3.86679287 3.87063949 3.87448611 3.87833274 3.88217936
  3.88602599 3.88987261 3.89371923 3.89756586 3.90141248], y_slice = [0.159528 0.161262 0.160684 0.160684 0.161551 0.162418 0.161262 0.15895
  0.156927 0.156638 0.155482]
-Calculating mass fit for peak 36.8415803699396
-Area under the EMG fit for peak 36.8415803699396: 0.006144893983467575
-Kappa = 0.041580369939602235
+Calculating mass fit for peak 40.10511039832922
+Area under the EMG fit for peak 40.10511039832922: 0.006144893983467575
+Kappa = 0.005110398329215116
 Dataset '/3/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/3/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/3/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -17447,9 +17447,9 @@ Analyzing peak 1990
 x_slice = [-0.02983682 -0.02599019 -0.02214357 -0.01829694 -0.01445032 -0.0106037
  -0.00675707 -0.00291045  0.00093617  0.0047828   0.00862942], y_slice = [0.147968 0.147968 0.152014 0.160106 0.166464 0.170221 0.168776 0.165597
  0.160973 0.155193 0.152881]
-Calculating mass fit for peak 6.938755753611152
-Area under the EMG fit for peak 6.938755753611152: 0.006113187448521593
-Kappa = 0.038755753611151356
+Calculating mass fit for peak 9.398012073980855
+Area under the EMG fit for peak 9.398012073980855: 0.006113187448521593
+Kappa = -0.0019879260191455472
 Dataset '/4/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/4/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/4/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -17510,9 +17510,9 @@ Analyzing peak 3002
 x_slice = [3.86294624 3.86679287 3.87063949 3.87448611 3.87833274 3.88217936
  3.88602599 3.88987261 3.89371923 3.89756586 3.90141248], y_slice = [0.152592 0.155771 0.156638 0.156638 0.157216 0.158661 0.158083 0.15606
  0.156349 0.157216 0.155771]
-Calculating mass fit for peak 38.79087663017031
-Area under the EMG fit for peak 38.79087663017031: 0.00601819957029978
-Kappa = -0.009123369829687533
+Calculating mass fit for peak 50.97825453353102
+Area under the EMG fit for peak 50.97825453353102: 0.00601819957029978
+Kappa = -0.021745466468978236
 Dataset '/5/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/5/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/5/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -17573,9 +17573,9 @@ Analyzing peak 2016
 x_slice = [0.0701754  0.07402202 0.07786864 0.08171527 0.08556189 0.08940852
  0.09325514 0.09710176 0.10094839 0.10479501 0.10864163], y_slice = [0.17918  0.190162 0.195942 0.195942 0.194497 0.19652  0.195942 0.189295
  0.184093 0.180914 0.178891]
-Calculating mass fit for peak 12.199812821653767
-Area under the EMG fit for peak 12.199812821653767: 0.0072972547097493665
-Kappa = -0.00018717834623238616
+Calculating mass fit for peak 12.19980756639614
+Area under the EMG fit for peak 12.19980756639614: 0.0072972547097493665
+Kappa = -0.00019243360385878816
 Dataset '/6/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/6/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/6/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -17693,9 +17693,9 @@ Analyzing peak 2006
 x_slice = [0.03170916 0.03555579 0.03940241 0.04324903 0.04709566 0.05094228
  0.0547889  0.05863553 0.06248215 0.06632877 0.0701754 ], y_slice = [0.148835 0.149702 0.151436 0.158083 0.169354 0.176868 0.174845 0.168198
  0.163574 0.159817 0.154615]
-Calculating mass fit for peak 11.82838493750977
-Area under the EMG fit for peak 11.82838493750977: 0.006208187298612403
-Kappa = 0.02838493750976845
+Calculating mass fit for peak 25.431627292669496
+Area under the EMG fit for peak 25.431627292669496: 0.006208187298612403
+Kappa = 0.03162729266949782
 Dataset '/8/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/8/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/8/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -17813,9 +17813,9 @@ Analyzing peak 1998
 x_slice = [0.00093617 0.0047828  0.00862942 0.01247604 0.01632267 0.02016929
  0.02401591 0.02786254 0.03170916 0.03555579 0.03940241], y_slice = [0.152592 0.156927 0.15895  0.159817 0.160973 0.162996 0.162129 0.160973
  0.159528 0.160106 0.158372]
-Calculating mass fit for peak 17.38209781995398
-Area under the EMG fit for peak 17.38209781995398: 0.006131387361605155
-Kappa = -0.0179021800460184
+Calculating mass fit for peak 24.11077215544547
+Area under the EMG fit for peak 24.11077215544547: 0.006131387361605155
+Kappa = 0.010772155445469167
 Dataset '/10/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/10/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/10/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -17933,9 +17933,9 @@ Analyzing peak 2018
 x_slice = [0.07786864 0.08171527 0.08556189 0.08940852 0.09325514 0.09710176
  0.10094839 0.10479501 0.10864163 0.11248826 0.11633488], y_slice = [0.147679 0.151147 0.152014 0.15317  0.154037 0.15606  0.155771 0.154615
  0.153459 0.151725 0.150858]
-Calculating mass fit for peak 7.544993754148461
-Area under the EMG fit for peak 7.544993754148461: 0.005876713933645976
-Kappa = 0.04499375414846085
+Calculating mass fit for peak 26.52959217614322
+Area under the EMG fit for peak 26.52959217614322: 0.005876713933645976
+Kappa = 0.029592176143218296
 Dataset '/12/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/12/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/12/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -17996,15 +17996,15 @@ Analyzing peak 1987
 x_slice = [-0.04137669 -0.03753006 -0.03368344 -0.02983682 -0.02599019 -0.02214357
  -0.01829694 -0.01445032 -0.0106037  -0.00675707 -0.00291045], y_slice = [0.14739  0.149702 0.149702 0.150858 0.154326 0.158083 0.15606  0.153748
  0.152303 0.151147 0.150858]
-Calculating mass fit for peak 1.3090668300204606
-Area under the EMG fit for peak 1.3090668300204606: 0.005854475941379566
+Calculating mass fit for peak 1.0717259108917898
+Area under the EMG fit for peak 1.0717259108917898: 0.005854475941379566
 Analyzing peak 4401
 x_slice = [9.24437263 9.24821925 9.25206588 9.2559125  9.25975912 9.26360575
  9.26745237 9.27129899 9.27514562 9.27899224 9.28283886], y_slice = [0.171088 0.177157 0.183804 0.189584 0.194786 0.195653 0.195364 0.194208
  0.193052 0.190162 0.18785 ]
-Calculating mass fit for peak 25.402493594012288
-Area under the EMG fit for peak 25.402493594012288: 0.007248092368910033
-Kappa = 0.005780212016375019
+Calculating mass fit for peak 55.34536138420553
+Area under the EMG fit for peak 55.34536138420553: 0.007248092368910033
+Kappa = 0.008543647548662214
 Dataset '/13/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/13/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/13/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -18065,9 +18065,9 @@ Analyzing peak 2974
 x_slice = [3.75524078 3.75908741 3.76293403 3.76678065 3.77062728 3.7744739
  3.77832053 3.78216715 3.78601377 3.7898604  3.79370702], y_slice = [0.152881 0.155771 0.159239 0.165019 0.168198 0.169065 0.168487 0.167909
  0.167331 0.166464 0.162996]
-Calculating mass fit for peak 30.078539456630736
-Area under the EMG fit for peak 30.078539456630736: 0.006306220289059412
-Kappa = -0.021460543369265395
+Calculating mass fit for peak 11.125290780069843
+Area under the EMG fit for peak 11.125290780069843: 0.006306220289059412
+Kappa = 0.02529078006984342
 Dataset '/14/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/14/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/14/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -18128,15 +18128,15 @@ Analyzing peak 2009
 x_slice = [0.04324903 0.04709566 0.05094228 0.0547889  0.05863553 0.06248215
  0.06632877 0.0701754  0.07402202 0.07786864 0.08171527], y_slice = [0.151725 0.154615 0.155771 0.158372 0.159528 0.160395 0.158372 0.157505
  0.158372 0.160395 0.158083]
-Calculating mass fit for peak 13.028408145104308
-Area under the EMG fit for peak 13.028408145104308: 0.006060645523559778
+Calculating mass fit for peak 15.738027129573817
+Area under the EMG fit for peak 15.738027129573817: 0.006060645523559778
 Analyzing peak 2013
 x_slice = [0.05863553 0.06248215 0.06632877 0.0701754  0.07402202 0.07786864
  0.08171527 0.08556189 0.08940852 0.09325514 0.09710176], y_slice = [0.159528 0.160395 0.158372 0.157505 0.158372 0.160395 0.158083 0.156638
  0.154904 0.155193 0.154904]
-Calculating mass fit for peak 13.083842175917075
-Area under the EMG fit for peak 13.083842175917075: 0.00606749753077026
-Kappa = 0.006125160510691785
+Calculating mass fit for peak 15.82085701312582
+Area under the EMG fit for peak 15.82085701312582: 0.00606749753077026
+Kappa = 0.02944207134981891
 Dataset '/15/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/15/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/15/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -18197,9 +18197,9 @@ Analyzing peak 1971
 x_slice = [-0.10292266 -0.09907604 -0.09522942 -0.09138279 -0.08753617 -0.08368955
  -0.07984292 -0.0759963  -0.07214967 -0.06830305 -0.06445643], y_slice = [0.146523 0.147679 0.149124 0.151725 0.154615 0.158372 0.157216 0.154904
  0.150569 0.148835 0.149991]
-Calculating mass fit for peak 8.35187692476189
-Area under the EMG fit for peak 8.35187692476189: 0.0058383076350751765
-Kappa = -0.04812307523811121
+Calculating mass fit for peak 14.467565213708678
+Area under the EMG fit for peak 14.467565213708678: 0.0058383076350751765
+Kappa = -0.032434786291322126
 Dataset '/16/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/16/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/16/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -18260,15 +18260,15 @@ Analyzing peak 1999
 x_slice = [0.0047828  0.00862942 0.01247604 0.01632267 0.02016929 0.02401591
  0.02786254 0.03170916 0.03555579 0.03940241 0.04324903], y_slice = [0.150569 0.151436 0.151436 0.15317  0.15606  0.157794 0.157794 0.156927
  0.157505 0.157794 0.155193]
-Calculating mass fit for peak 16.10580233539191
-Area under the EMG fit for peak 16.10580233539191: 0.005964636645849695
+Calculating mass fit for peak 12.547618471533026
+Area under the EMG fit for peak 12.547618471533026: 0.005964636645849695
 Analyzing peak 2003
 x_slice = [0.02016929 0.02401591 0.02786254 0.03170916 0.03555579 0.03940241
  0.04324903 0.04709566 0.05094228 0.0547889  0.05863553], y_slice = [0.15606  0.157794 0.157794 0.156927 0.157505 0.157794 0.155193 0.15317
  0.153748 0.154904 0.15317 ]
-Calculating mass fit for peak 16.166379329577644
-Area under the EMG fit for peak 16.166379329577644: 0.00599615342223454
-Kappa = -0.013909167515222975
+Calculating mass fit for peak 12.60559870016212
+Area under the EMG fit for peak 12.60559870016212: 0.00599615342223454
+Kappa = 0.02660858584757353
 Dataset '/17/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/17/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/17/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -18329,21 +18329,21 @@ Analyzing peak 1981
 x_slice = [-0.06445643 -0.0606098  -0.05676318 -0.05291656 -0.04906993 -0.04522331
  -0.04137669 -0.03753006 -0.03368344 -0.02983682 -0.02599019], y_slice = [0.148257 0.152014 0.167909 0.196231 0.227732 0.241026 0.228599 0.21097
  0.19363  0.178313 0.163574]
-Calculating mass fit for peak 0.8367075970840593
-Area under the EMG fit for peak 0.8367075970840593: 0.007372398105429099
+Calculating mass fit for peak 0.8434136336255437
+Area under the EMG fit for peak 0.8434136336255437: 0.007372398105429099
 Analyzing peak 3128
 x_slice = [4.34762081 4.35146744 4.35531406 4.35916069 4.36300731 4.36685393
  4.37070056 4.37454718 4.3783938  4.38224043 4.38608705], y_slice = [0.152303 0.152592 0.152303 0.15317  0.155193 0.155771 0.154615 0.154326
  0.155193 0.155193 0.15317 ]
-Calculating mass fit for peak 16.099734823699972
-Area under the EMG fit for peak 16.099734823699972: 0.005923201720608025
+Calculating mass fit for peak 16.07213215974807
+Area under the EMG fit for peak 16.07213215974807: 0.005923201720608025
 Analyzing peak 4394
 x_slice = [9.21744626 9.22129289 9.22513951 9.22898613 9.23283276 9.23667938
  9.240526   9.24437263 9.24821925 9.25206588 9.2559125 ], y_slice = [0.187272 0.193919 0.197098 0.198543 0.199121 0.19941  0.19941  0.197676
  0.194497 0.193052 0.191896]
-Calculating mass fit for peak 55.22814181195559
-Area under the EMG fit for peak 55.22814181195559: 0.007525022256406478
-Kappa = 0.021528077579871668
+Calculating mass fit for peak 55.06065622490003
+Area under the EMG fit for peak 55.06065622490003: 0.007525022256406478
+Kappa = -0.007932660575453757
 Dataset '/18/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/18/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/18/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -18461,9 +18461,9 @@ Analyzing peak 2018
 x_slice = [0.07786864 0.08171527 0.08556189 0.08940852 0.09325514 0.09710176
  0.10094839 0.10479501 0.10864163 0.11248826 0.11633488], y_slice = [0.148257 0.148257 0.151147 0.152881 0.152881 0.15606  0.155482 0.155482
  0.152881 0.15028  0.150858]
-Calculating mass fit for peak 26.635391272783107
-Area under the EMG fit for peak 26.635391272783107: 0.005855488504914484
-Kappa = 0.035391272783105165
+Calculating mass fit for peak 12.696660053207278
+Area under the EMG fit for peak 12.696660053207278: 0.005855488504914484
+Kappa = -0.0033399467927210935
 Dataset '/20/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/20/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/20/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -18524,9 +18524,9 @@ Analyzing peak 2018
 x_slice = [0.07786864 0.08171527 0.08556189 0.08940852 0.09325514 0.09710176
  0.10094839 0.10479501 0.10864163 0.11248826 0.11633488], y_slice = [0.15028  0.151725 0.151725 0.153459 0.155482 0.156349 0.154904 0.154904
  0.155771 0.155193 0.152592]
-Calculating mass fit for peak 15.018297516022772
-Area under the EMG fit for peak 15.018297516022772: 0.005918148654880737
-Kappa = 0.01829751602277163
+Calculating mass fit for peak 19.366303159044108
+Area under the EMG fit for peak 19.366303159044108: 0.005918148654880737
+Kappa = -0.03369684095589065
 Dataset '/21/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/21/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/21/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -18644,9 +18644,9 @@ Analyzing peak 1972
 x_slice = [-0.09907604 -0.09522942 -0.09138279 -0.08753617 -0.08368955 -0.07984292
  -0.0759963  -0.07214967 -0.06830305 -0.06445643 -0.0606098 ], y_slice = [0.147968 0.147679 0.149991 0.152303 0.154037 0.15606  0.155482 0.154326
  0.152881 0.149702 0.147968]
-Calculating mass fit for peak 3.8018189095661654
-Area under the EMG fit for peak 3.8018189095661654: 0.005834267303223308
-Kappa = 0.001818909566165594
+Calculating mass fit for peak 20.12553098697832
+Area under the EMG fit for peak 20.12553098697832: 0.005834267303223308
+Kappa = 0.02553098697831757
 Dataset '/23/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/23/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/23/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -18707,9 +18707,9 @@ Analyzing peak 1967
 x_slice = [-0.11830916 -0.11446253 -0.11061591 -0.10676929 -0.10292266 -0.09907604
  -0.09522942 -0.09138279 -0.08753617 -0.08368955 -0.07984292], y_slice = [0.150569 0.157216 0.16473  0.174556 0.181781 0.183226 0.17918  0.172533
  0.166175 0.162418 0.158661]
-Calculating mass fit for peak 17.395010223111704
-Area under the EMG fit for peak 17.395010223111704: 0.006472972365722329
-Kappa = -0.004989776888294273
+Calculating mass fit for peak 21.322068230053333
+Area under the EMG fit for peak 21.322068230053333: 0.006472972365722329
+Kappa = 0.022068230053331916
 Dataset '/24/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/24/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/24/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -18884,9 +18884,9 @@ Analyzing peak 1966
 x_slice = [-0.12215578 -0.11830916 -0.11446253 -0.11061591 -0.10676929 -0.10292266
  -0.09907604 -0.09522942 -0.09138279 -0.08753617 -0.08368955], y_slice = [0.148546 0.147679 0.149702 0.154904 0.159528 0.159817 0.158083 0.156638
  0.154326 0.151147 0.148257]
-Calculating mass fit for peak 9.92445306413988
-Area under the EMG fit for peak 9.92445306413988: 0.005905006460188135
-Kappa = 0.024453064139880354
+Calculating mass fit for peak 15.245981822417669
+Area under the EMG fit for peak 15.245981822417669: 0.005905006460188135
+Kappa = 0.04598182241766935
 Dataset '/27/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/27/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/27/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -18947,15 +18947,15 @@ Analyzing peak 1974
 x_slice = [-0.09138279 -0.08753617 -0.08368955 -0.07984292 -0.0759963  -0.07214967
  -0.06830305 -0.06445643 -0.0606098  -0.05676318 -0.05291656], y_slice = [0.149413 0.151147 0.159817 0.175423 0.191318 0.194786 0.187561 0.177446
  0.170799 0.162418 0.155482]
-Calculating mass fit for peak 0.9528651547156319
-Area under the EMG fit for peak 0.9528651547156319: 0.0065588663238990725
+Calculating mass fit for peak 1.094271827134368
+Area under the EMG fit for peak 1.094271827134368: 0.0065588663238990725
 Analyzing peak 4399
 x_slice = [9.23667938 9.240526   9.24437263 9.24821925 9.25206588 9.2559125
  9.25975912 9.26360575 9.26745237 9.27129899 9.27514562], y_slice = [0.152303 0.155193 0.156638 0.156638 0.155771 0.157505 0.157216 0.156349
  0.154904 0.154615 0.155193]
-Calculating mass fit for peak 56.3336169870609
-Area under the EMG fit for peak 56.3336169870609: 0.0059878800616483055
-Kappa = -0.006758929111732703
+Calculating mass fit for peak 54.96557410143774
+Area under the EMG fit for peak 54.96557410143774: 0.0059878800616483055
+Kappa = -0.02007703571394681
 Dataset '/28/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/28/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/28/SpiceData/Attitude/Roll' already exists. Skipping creation.
@@ -19016,9 +19016,9 @@ Analyzing peak 2025
 x_slice = [0.10479501 0.10864163 0.11248826 0.11633488 0.1201815  0.12402813
  0.12787475 0.13172137 0.135568   0.13941462 0.14326125], y_slice = [0.158083 0.162418 0.165308 0.166175 0.166464 0.167042 0.165019 0.162996
  0.161551 0.158372 0.15606 ]
-Calculating mass fit for peak 13.382058010933893
-Area under the EMG fit for peak 13.382058010933893: 0.006269371548403342
-Kappa = -0.017941989066107666
+Calculating mass fit for peak 17.06709109926215
+Area under the EMG fit for peak 17.06709109926215: 0.006269371548403342
+Kappa = -0.032908900737851354
 Dataset '/29/SpiceData/RightAscension' already exists. Skipping creation.
 Dataset '/29/SpiceData/Declination' already exists. Skipping creation.
 Dataset '/29/SpiceData/Attitude/Roll' already exists. Skipping creation.

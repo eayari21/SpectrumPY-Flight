@@ -8,9 +8,9 @@ lasp_packets.parser.UnrecognizedPacketTypeError: Detected an abstract container 
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py", line 1507, in <module>
+  File "/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py", line 1504, in <module>
     packets = IDEXEvent(args.file)
-  File "/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py", line 543, in __init__
+  File "/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/idex_packet.py", line 540, in __init__
     for pkt in idex_packet_generator:
   File "/opt/anaconda3/envs/idex/lib/python3.9/site-packages/lasp_packets/parser.py", line 437, in generator
     binary_data.pos = packet_starting_position + specified_packet_data_length
