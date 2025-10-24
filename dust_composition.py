@@ -1754,7 +1754,13 @@ class InspectMassLineDialog(QDialog):
         for widget in self._extra_fields.values():
             if isinstance(widget, QWidget):
                 self.extra_form.removeRow(widget)
-                widget.deleteLater()
+                try:
+                    widget.deleteLater()
+                except RuntimeError:
+                    # Qt may have already scheduled the widget for deletion.
+                    # In that case we simply ignore the error so shape
+                    # reconfiguration can proceed without aborting.
+                    pass
         self._extra_fields.clear()
 
         if config.extras:
