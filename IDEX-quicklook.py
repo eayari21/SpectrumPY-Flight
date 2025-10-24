@@ -1936,8 +1936,8 @@ class MainWindow(QMainWindow):
 
         arr = np.asarray(values, dtype=float)
         scale = self._channel_scale(channel)
-        if scale != 1.0:
-            arr = arr / scale
+        # if scale != 1.0:
+        #     arr = arr / scale
         return arr
 
     # ---- UI construction -------------------------------------------------
