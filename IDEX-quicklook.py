@@ -1094,6 +1094,22 @@ def _to_1d(array: np.ndarray) -> np.ndarray:
         return arr.reshape(1)
     return arr.ravel()
 
+def _has_samples(array: Optional[np.ndarray]) -> bool:
+    """Return ``True`` when *array* contains at least one finite sample."""
+
+    if array is None:
+        return False
+
+    try:
+        values = np.asarray(array)
+    except Exception:
+        return False
+
+    if values.size == 0:
+        return False
+
+    return bool(np.isfinite(values).any())
+
 # --------- Channel & fit metadata ---------
 FAMILY_HIGH = "high"
 FAMILY_LOW = "low"
@@ -1110,12 +1126,17 @@ CHANNEL_DEFS: Dict[str, ChannelDefinition] = {
     "TOF L": ChannelDefinition(dataset="TOF L", time_dataset="Time (high sampling)", family=FAMILY_HIGH),
     "TOF M": ChannelDefinition(dataset="TOF M", time_dataset="Time (high sampling)", family=FAMILY_HIGH),
     "TOF H": ChannelDefinition(dataset="TOF H", time_dataset="Time (high sampling)", family=FAMILY_HIGH),
+    "TOF Combined": ChannelDefinition(
+        dataset="Analysis/DustComposition/CombinedSignal",
+        time_dataset="Analysis/DustComposition/CombinedTime",
+        family=FAMILY_HIGH,
+    ),
     "Ion Grid": ChannelDefinition(dataset="Ion Grid", time_dataset="Time (low sampling)", family=FAMILY_LOW),
     "Target L": ChannelDefinition(dataset="Target L", time_dataset="Time (low sampling)", family=FAMILY_LOW),
     "Target H": ChannelDefinition(dataset="Target H", time_dataset="Time (low sampling)", family=FAMILY_LOW),
 }
 
-CHANNEL_ORDER: List[str] = ["TOF L", "TOF M", "TOF H", "Ion Grid", "Target L", "Target H"]
+CHANNEL_ORDER: List[str] = ["TOF L", "TOF M", "TOF H", "TOF Combined", "Ion Grid", "Target L", "Target H"]
 
 FIT_ELIGIBLE_CHANNELS = {"Ion Grid", "Target L", "Target H", "TOF H"}
 
@@ -1795,6 +1816,7 @@ Y_AXIS_LABELS: Dict[str, str] = {
     "TOF L": r"$TOF_{L}$ [pC/ $\Delta t$]",
     "TOF M": r"$TOF_{M}$ [pC/ $\Delta t$]",
     "TOF H": r"$TOF_{H}$ [pC/ $\Delta t$]",
+    "TOF Combined": r"$TOF_{combined}$ [pC/ $\Delta t$]",
 }
 
 
@@ -2708,6 +2730,30 @@ class MainWindow(QMainWindow):
         event, dataset = parts
         return self._data_source.get_dataset(event, dataset)
 
+    def _update_channel_button_states(self, event_name: str) -> None:
+        if not self.channel_buttons:
+            return
+
+        for name, definition in CHANNEL_DEFS.items():
+            btn = self.channel_buttons.get(name)
+            if btn is None:
+                continue
+
+            has_data = False
+            if self._data_source is not None:
+                values = self._get_dataset(event_name, definition.dataset)
+                times = self._get_dataset(event_name, definition.time_dataset)
+                has_data = _has_samples(values) and _has_samples(times)
+
+            with QSignalBlocker(btn):
+                btn.setEnabled(has_data)
+                if not has_data:
+                    btn.setChecked(False)
+                    btn.setToolTip(f"{name} data unavailable for this event.")
+                else:
+                    btn.setChecked(name in self.selected_channels)
+                    btn.setToolTip(f"Toggle {name} channel display.")
+
     def _rise_dataset_name(self, channel: str, suffix: str) -> str:
         return f"Analysis/{channel} {suffix}"
 
@@ -2929,6 +2975,7 @@ class MainWindow(QMainWindow):
             return
 
         self._current_event = event_name
+        self._update_channel_button_states(event_name)
         self.refresh_fit_controls()
 
         selected = [name for name in CHANNEL_ORDER if self.channel_buttons.get(name) and self.channel_buttons[name].isChecked()]
