@@ -67,10 +67,11 @@ from PyQt6.QtWidgets import (
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+from plot_style import apply_plot_style
 
 # %%PRETTY PLOTS
 matplotlib.use('Agg')
-plt.style.use("seaborn-pastel")
+apply_plot_style()
 
 fn = None
 eventnum = None

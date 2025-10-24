@@ -21,6 +21,10 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+from plot_style import apply_plot_style
+
+apply_plot_style()
+
 from readTrc import Trc
 from csv import writer
 from scipy.optimize import curve_fit
@@ -394,7 +398,7 @@ class ImpactEvent():
 
         if Plot:
 
-            plt.style.use('seaborn-pastel')
+            apply_plot_style()
 
             # || First, plot the original signal and the noise that has been removed from it.
             plt.cla()
@@ -501,7 +505,7 @@ class ImpactEvent():
 
         if Plot:
 
-            plt.style.use('seaborn-pastel')
+            apply_plot_style()
             plt.cla()
             plt.clf()
             plt.xlabel("Time (s)", fontsize=15)
@@ -579,7 +583,7 @@ class ImpactEvent():
         reduced_chi_squared = result.redchi
 
         if Plot:
-            plt.style.use('seaborn-pastel')
+            apply_plot_style()
             plt.cla()
             plt.clf()
 
