@@ -3250,7 +3250,7 @@ class MainWindow(QMainWindow):
                     skip_baseline = True
         for label, _time_path, _value_path, time_values, fit_values in data.iter_time_result_pairs():
             times = np.asarray(time_values, dtype=float)
-            values = self._apply_plot_scale(channel, fit_values)
+            values = np.asarray(fit_values, dtype=float)
             baseline_offset = self._estimate_baseline(event_name, channel, times)
             if baseline_offset and not skip_baseline:
                 values = values + baseline_offset
@@ -3295,7 +3295,6 @@ class MainWindow(QMainWindow):
             fit_values = np.asarray(curve, dtype=float)
             if fit_values.size != base_time.size:
                 continue
-            fit_values = self._apply_plot_scale(channel, fit_values)
             baseline_offset = self._estimate_baseline(event_name, channel, base_time)
             if baseline_offset and not skip_baseline:
                 fit_values = fit_values + baseline_offset
@@ -3442,11 +3441,6 @@ class MainWindow(QMainWindow):
             override_result = self._fit_result_overrides.get((event_name, channel, path))
             if override_result is not None:
                 data.value_series[path] = np.array(override_result, copy=True)
-
-        scale = CHANNEL_CONVERSION_FACTORS.get(channel, 1.0)
-        if scale != 1.0:
-            for path, values in list(data.value_series.items()):
-                data.value_series[path] = np.asarray(values, dtype=float) / scale
 
         self._fit_cache[key] = data
         return data
