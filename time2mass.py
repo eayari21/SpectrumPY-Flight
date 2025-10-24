@@ -17,27 +17,14 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 # import seaborn as sns
+from plot_style import apply_plot_style
 
 from pathlib import Path
 from matplotlib import colors
 from scipy.optimize import curve_fit, minimize
 from scipy.signal import find_peaks
-# plt.style.use('seaborn-v0_8-pastel')
-plt.style.use('seaborn-pastel')
-# ||
-# ||
-# ||
 
-# plt.rcParams['font.family'] = 'DejaVuSerif-BoldItalic'
-# plt.rcParams['font.serif'] = 'DejaVuSerif-BoldItalic'
-plt.rcParams['font.size'] = 15
-plt.rcParams['axes.labelsize'] = 15
-plt.rcParams['axes.labelweight'] = 'bold'
-plt.rcParams['axes.titlesize'] = 15
-plt.rcParams['xtick.labelsize'] = 15
-plt.rcParams['ytick.labelsize'] = 15
-plt.rcParams['legend.fontsize'] = 10
-plt.rcParams['figure.titlesize'] = 15
+apply_plot_style()
 plt.rcParams['agg.path.chunksize'] = 10_000
 
 def peak_time2mass(TOF, time):

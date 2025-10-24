@@ -4,7 +4,9 @@ from time2mass import time2mass
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 
-plt.style.use("seaborn-v0_8-pastel")
+from plot_style import apply_plot_style
+
+apply_plot_style()
 
 # Function to extract TOF H values where Time (High Sampling) is between -7 and -5
 def extract_snr(hdf_file):

@@ -18,6 +18,10 @@ from matplotlib.colors import LogNorm
 from matplotlib.ticker import LogLocator, LogFormatterMathtext
 import matplotlib.patheffects as pe
 
+from plot_style import apply_plot_style
+
+apply_plot_style()
+
 # =================== GLOBAL STYLE (unchanged sizes) ===========================
 mpl.rcParams.update({
     "font.size": 4,

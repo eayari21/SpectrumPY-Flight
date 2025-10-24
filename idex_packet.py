@@ -18,13 +18,10 @@ import h5py
 import shutil
 import struct
 import matplotlib.pyplot as plt
+from plot_style import apply_plot_style
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
-# try:
-#     plt.style.use("seaborn-pastel")
-# except:
-#     plt.style.use("seaborn-v0_8-pastel")
-plt.style.use("seaborn-pastel")
+apply_plot_style()
 import numpy as np
 
 from idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics

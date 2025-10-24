@@ -60,6 +60,7 @@ def _erfc(values: np.ndarray) -> np.ndarray:
 from HDF_View import launch_hdf_viewer
 from dust_composition import launch_dust_composition_window
 from noise_analysis import ChannelMeta, launch_noise_analysis_window
+from plot_style import apply_plot_style
 try:  # pragma: no cover - optional dependency, loaded lazily
     from HDF_View import launch_hdf_viewer
 except Exception:  # pragma: no cover
@@ -79,6 +80,8 @@ except Exception:  # pragma: no cover
 import matplotlib
 from matplotlib import mathtext
 matplotlib.use("QtAgg")
+
+apply_plot_style()
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -114,7 +117,6 @@ except Exception:
 # print(f"[info] Qt binding: {_QT}, Matplotlib backend: {matplotlib.get_backend()}")
 
 matplotlib.rcParams.update({
-    "figure.autolayout": False,
     "axes.titlesize": 18,
     "axes.labelsize": 16,
     "xtick.labelsize": 14,

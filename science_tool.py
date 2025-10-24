@@ -41,7 +41,10 @@ import shutil
 import datetime
 # import signal
 import matplotlib.pyplot as plt
-plt.style.use("seaborn-pastel")
+
+from plot_style import apply_plot_style
+
+apply_plot_style()
 import numpy as np
 
 from datetime import datetime, timedelta, timezone
