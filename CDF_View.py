@@ -121,6 +121,10 @@ class CDFViewWindow(QMainWindow):
         layout.setSpacing(6)
 
         splitter = QSplitter(Qt.Orientation.Horizontal, central)
+        splitter.setChildrenCollapsible(False)
+        if hasattr(splitter, "setCollapsible"):
+            splitter.setCollapsible(0, False)
+            splitter.setCollapsible(1, False)
         layout.addWidget(splitter)
 
         self._tree = QTreeWidget(splitter)

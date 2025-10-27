@@ -80,6 +80,10 @@ class VariableDefinitionsWindow(QMainWindow):
         layout.addWidget(self._search_field)
 
         splitter = QSplitter(Qt.Orientation.Horizontal, central)
+        splitter.setChildrenCollapsible(False)
+        if hasattr(splitter, "setCollapsible"):
+            splitter.setCollapsible(0, False)
+            splitter.setCollapsible(1, False)
         layout.addWidget(splitter)
 
         self._list = QListWidget(splitter)
