@@ -168,6 +168,18 @@ GAIN_MAP = {
     "TOF L": GAIN_LOW,
 }
 
+DEFAULT_MASS_STRETCH = 1.492
+DEFAULT_MASS_SHIFT = -10.0
+MIN_MASS_STRETCH = 1.3
+MAX_MASS_STRETCH = 1.6
+
+
+def _clamp_mass_stretch(value: float) -> float:
+    """Return *value* constrained to the allowed stretch window."""
+
+    return float(min(MAX_MASS_STRETCH, max(MIN_MASS_STRETCH, value)))
+
+
 COMBINED_DATASET = "CombinedSignal"
 COMBINED_TIME_DATASET = "CombinedTime"
 ANALYSIS_GROUP = "Analysis"
@@ -3018,7 +3030,7 @@ class DustCompositionWindow(QMainWindow):
         self._combined: Optional[np.ndarray] = None
         self._combined_cached_mass: Optional[np.ndarray] = None
         self._baseline = 0.0
-        self._mass_params = {"stretch": 1.0, "shift": 0.0}
+        self._mass_params = {"stretch": DEFAULT_MASS_STRETCH, "shift": DEFAULT_MASS_SHIFT}
         self._mass_params_loaded = False
         self._mass_axis_lock_level = 0
         self._mass_lines: List[MassLineFit] = []
@@ -3112,7 +3124,7 @@ class DustCompositionWindow(QMainWindow):
         self._combined = None
         self._combined_cached_mass = None
         self._baseline = 0.0
-        self._mass_params = {"stretch": 1.0, "shift": 0.0}
+        self._mass_params = {"stretch": DEFAULT_MASS_STRETCH, "shift": DEFAULT_MASS_SHIFT}
         self._mass_params_loaded = False
         self._mass_axis_lock_level = 0
         self._mass_lines = []
@@ -3176,11 +3188,11 @@ class DustCompositionWindow(QMainWindow):
             self.baseline_spin.blockSignals(False)
         if hasattr(self, "mass_stretch_spin"):
             self.mass_stretch_spin.blockSignals(True)
-            self.mass_stretch_spin.setValue(self._mass_params.get("stretch", 1.0))
+            self.mass_stretch_spin.setValue(self._mass_params.get("stretch", DEFAULT_MASS_STRETCH))
             self.mass_stretch_spin.blockSignals(False)
         if hasattr(self, "mass_shift_spin"):
             self.mass_shift_spin.blockSignals(True)
-            self.mass_shift_spin.setValue(self._mass_params.get("shift", 0.0))
+            self.mass_shift_spin.setValue(self._mass_params.get("shift", DEFAULT_MASS_SHIFT))
             self.mass_shift_spin.blockSignals(False)
         if hasattr(self, "combine_button"):
             self.combine_button.blockSignals(True)
@@ -3296,11 +3308,14 @@ class DustCompositionWindow(QMainWindow):
         except Exception:
             self._baseline = 0.0
         try:
-            self._mass_params["stretch"] = float(dust_group.attrs.get("MassStretch", 1.0))
-            self._mass_params["shift"] = float(dust_group.attrs.get("MassShift", 0.0))
+            stored_stretch = float(dust_group.attrs.get("MassStretch", DEFAULT_MASS_STRETCH))
+            if math.isfinite(stored_stretch) and stored_stretch > MAX_MASS_STRETCH * 10:
+                stored_stretch /= 1000.0
+            self._mass_params["stretch"] = stored_stretch
+            self._mass_params["shift"] = float(dust_group.attrs.get("MassShift", DEFAULT_MASS_SHIFT))
             self._mass_params_loaded = True
         except Exception:
-            self._mass_params = {"stretch": 1.0, "shift": 0.0}
+            self._mass_params = {"stretch": DEFAULT_MASS_STRETCH, "shift": DEFAULT_MASS_SHIFT}
             self._mass_params_loaded = False
         table = None
         if MASS_LINES_DATASET in dust_group:
@@ -3526,6 +3541,7 @@ class DustCompositionWindow(QMainWindow):
             return
         if not math.isfinite(stretch) or abs(stretch) < 1.0e-12:
             return
+        stretch = _clamp_mass_stretch(stretch)
         shift = -intercept / stretch
         self._mass_params["stretch"] = stretch
         self._mass_params["shift"] = shift
@@ -3573,7 +3589,7 @@ class DustCompositionWindow(QMainWindow):
             if previous_level < 1 and assigned_lines:
                 line = assigned_lines[0]
                 try:
-                    stretch = float(self._mass_params.get("stretch", 1.0))
+                    stretch = float(self._mass_params.get("stretch", DEFAULT_MASS_STRETCH))
                     mu = float(line.mu)
                     mass = float(line.assigned_mass)
                 except Exception:
@@ -3719,14 +3735,16 @@ class DustCompositionWindow(QMainWindow):
         self.mass_stretch_spin.setDecimals(6)
         self.mass_stretch_spin.setRange(1e-6, 1e6)
         self.mass_stretch_spin.setValue(self._mass_params["stretch"])
+        self.mass_stretch_spin.setSuffix(" µs")
         self.mass_stretch_spin.valueChanged.connect(self._on_mass_params_changed)
-        layout.addRow("Stretch:", self.mass_stretch_spin)
+        layout.addRow("Stretch (µs):", self.mass_stretch_spin)
         self.mass_shift_spin = QDoubleSpinBox(box)
         self.mass_shift_spin.setDecimals(6)
         self.mass_shift_spin.setRange(-1e6, 1e6)
         self.mass_shift_spin.setValue(self._mass_params["shift"])
+        self.mass_shift_spin.setSuffix(" µs")
         self.mass_shift_spin.valueChanged.connect(self._on_mass_params_changed)
-        layout.addRow("Shift:", self.mass_shift_spin)
+        layout.addRow("Shift (µs):", self.mass_shift_spin)
 
         anchor_row = QWidget(box)
         anchor_row_layout = QHBoxLayout(anchor_row)
@@ -4186,8 +4204,8 @@ class DustCompositionWindow(QMainWindow):
         return True
 
     def _apply_mass_params_update(self, previous: Dict[str, float]) -> None:
-        stretch = float(self._mass_params.get("stretch", 1.0))
-        shift = float(self._mass_params.get("shift", 0.0))
+        stretch = float(self._mass_params.get("stretch", DEFAULT_MASS_STRETCH))
+        shift = float(self._mass_params.get("shift", DEFAULT_MASS_SHIFT))
         if hasattr(self, "mass_stretch_spin") and hasattr(self, "mass_shift_spin"):
             self.mass_stretch_spin.blockSignals(True)
             self.mass_shift_spin.blockSignals(True)
@@ -4196,8 +4214,8 @@ class DustCompositionWindow(QMainWindow):
             self.mass_stretch_spin.blockSignals(False)
             self.mass_shift_spin.blockSignals(False)
         if (
-            not math.isclose(previous.get("stretch", 1.0), stretch, rel_tol=1e-9, abs_tol=1e-9)
-            or not math.isclose(previous.get("shift", 0.0), shift, rel_tol=1e-9, abs_tol=1e-9)
+            not math.isclose(previous.get("stretch", DEFAULT_MASS_STRETCH), stretch, rel_tol=1e-9, abs_tol=1e-9)
+            or not math.isclose(previous.get("shift", DEFAULT_MASS_SHIFT), shift, rel_tol=1e-9, abs_tol=1e-9)
         ):
             self._on_mass_params_changed()
         else:
@@ -4265,7 +4283,7 @@ class DustCompositionWindow(QMainWindow):
                 "The selected mass line does not have a valid centre time (μ).",
             )
             return
-        stretch = float(self._mass_params.get("stretch", 1.0))
+        stretch = float(self._mass_params.get("stretch", DEFAULT_MASS_STRETCH))
         if not math.isfinite(stretch) or abs(stretch) < 1.0e-12:
             QMessageBox.warning(
                 self,
@@ -4581,13 +4599,13 @@ class DustCompositionWindow(QMainWindow):
         return mass
 
     def _time_to_mass(self, time_values: np.ndarray) -> np.ndarray:
-        stretch = self._mass_params.get("stretch", 1.0)
-        shift = self._mass_params.get("shift", 0.0)
+        stretch = self._mass_params.get("stretch", DEFAULT_MASS_STRETCH)
+        shift = self._mass_params.get("shift", DEFAULT_MASS_SHIFT)
         return stretch * (np.asarray(time_values, dtype=float) - shift)
 
     def _mass_to_time(self, mass_values: np.ndarray) -> np.ndarray:
-        stretch = self._mass_params.get("stretch", 1.0)
-        shift = self._mass_params.get("shift", 0.0)
+        stretch = self._mass_params.get("stretch", DEFAULT_MASS_STRETCH)
+        shift = self._mass_params.get("shift", DEFAULT_MASS_SHIFT)
         if stretch == 0:
             stretch = 1.0
         return np.asarray(mass_values, dtype=float) / stretch + shift
@@ -5043,8 +5061,8 @@ class DustCompositionWindow(QMainWindow):
             if combined is not None:
                 _write_dataset(dust_group, COMBINED_DATASET, combined)
             dust_group.attrs["Baseline"] = self._baseline
-            dust_group.attrs["MassStretch"] = self._mass_params.get("stretch", 1.0)
-            dust_group.attrs["MassShift"] = self._mass_params.get("shift", 0.0)
+            dust_group.attrs["MassStretch"] = self._mass_params.get("stretch", DEFAULT_MASS_STRETCH)
+            dust_group.attrs["MassShift"] = self._mass_params.get("shift", DEFAULT_MASS_SHIFT)
             if self._mass_lines:
                 str_dtype = h5py.string_dtype(encoding="utf-8", length=120)
                 extras_dtype = h5py.string_dtype(encoding="utf-8", length=2048)

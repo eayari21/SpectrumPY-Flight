@@ -24,6 +24,9 @@ from concurrent.futures import ThreadPoolExecutor
 apply_plot_style()
 import numpy as np
 
+MASS_STRETCH_MIN = 1.3
+MASS_STRETCH_MAX = 1.6
+
 from idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
 
 try:
@@ -1180,6 +1183,7 @@ class IDEXEvent:
 
                 if channel == 'TOF H':
                     stretch, shift, mass_scale = time2mass(transformed_data, self.hstime)
+                    stretch = float(np.clip(stretch, MASS_STRETCH_MIN, MASS_STRETCH_MAX))
                     peaks, _ = find_peaks(transformed_data, prominence=.01)
                     analysis['logs'].append(f"peaks = {peaks}")
                     peak_results = []
