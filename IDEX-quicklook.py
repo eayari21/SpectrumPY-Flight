@@ -4036,9 +4036,8 @@ class FitParameterDialog(QDialog):
 
     # ---- UI helpers -----------------------------------------------------
     def _populate_waveform_options(self) -> None:
-        channels = ["Ion Grid", "Target L", "Target H"]
         available: List[str] = []
-        for name in channels:
+        for name in sorted(FIT_ELIGIBLE_CHANNELS):
             if self._get_waveform(name) is not None:
                 available.append(name)
 
@@ -4047,6 +4046,10 @@ class FitParameterDialog(QDialog):
         for name in available:
             self.waveform_combo.addItem(name, name)
         self.waveform_combo.blockSignals(False)
+
+        enabled = bool(available)
+        self.waveform_combo.setEnabled(enabled)
+        self.overlay_checkbox.setEnabled(enabled)
 
         if not available:
             self.preview_status_label.setText("Waveform preview unavailable for this event.")
