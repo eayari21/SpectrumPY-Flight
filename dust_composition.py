@@ -109,6 +109,24 @@ from line_shapes import (
     voigt as _line_voigt,
 )
 
+
+class ScrollFriendlyFigureCanvas(FigureCanvasQTAgg):
+    """Matplotlib canvas that forwards normal wheel events to its parent."""
+
+    def wheelEvent(self, event):  # type: ignore[override]
+        """Allow the surrounding scroll area to handle wheel scrolling."""
+
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            # Retain Matplotlib's zoom behaviour when the user explicitly
+            # requests it (Ctrl + scroll).  This keeps advanced navigation
+            # available while making plain scrolling work as expected.
+            super().wheelEvent(event)
+            return
+
+        # Propagate the event so the QScrollArea (or any other parent
+        # widget) can consume it and move the viewport.
+        event.ignore()
+
 # --- ERFC shim compatible with NumPy 1.x/2.x (SciPy optional) ---
 from typing import Union
 import numpy as np
@@ -1514,7 +1532,7 @@ class InspectMassLineDialog(QDialog):
         figure_layout.setSpacing(6)
 
         self.figure = Figure(figsize=(6.5, 3.8), constrained_layout=True)
-        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas = ScrollFriendlyFigureCanvas(self.figure)
         self.canvas.setMinimumSize(900, 420)
         self.toolbar = NavigationToolbar2QT(self.canvas, figure_container)
         figure_layout.addWidget(self.toolbar)
@@ -2180,7 +2198,7 @@ class TernaryCompositionDialog(QDialog):
         figure_layout.setContentsMargins(0, 0, 0, 0)
         figure_layout.setSpacing(6)
         self.figure = Figure(figsize=(6.8, 5.4), constrained_layout=False)
-        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas = ScrollFriendlyFigureCanvas(self.figure)
         self.toolbar = NavigationToolbar2QT(self.canvas, figure_container)
         figure_layout.addWidget(self.toolbar)
         figure_layout.addWidget(self.canvas, stretch=1)
@@ -2953,7 +2971,7 @@ class DustCompositionWindow(QMainWindow):
         figure_layout.setSpacing(0)
 
         self.figure = Figure(figsize=(8.2, 6.4), constrained_layout=True)
-        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas = ScrollFriendlyFigureCanvas(self.figure)
         self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.canvas.setMinimumSize(1100, 720)
         self.canvas.mpl_connect("button_press_event", self._on_canvas_click)
