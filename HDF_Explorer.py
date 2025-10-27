@@ -634,6 +634,10 @@ class HDFDataExplorer(QWidget):
         layout.addWidget(header)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+        if hasattr(splitter, "setCollapsible"):
+            splitter.setCollapsible(0, False)
+            splitter.setCollapsible(1, False)
         layout.addWidget(splitter, stretch=1)
 
         controls = QWidget()
