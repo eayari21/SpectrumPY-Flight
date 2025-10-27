@@ -37,6 +37,8 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 import h5py
 import numpy as np
 
+from matplotlib.collections import PathCollection
+
 try:  # pragma: no cover - Qt import guard
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import (
@@ -2200,6 +2202,13 @@ class TernaryCompositionDialog(QDialog):
         self.figure = Figure(figsize=(6.8, 5.4), constrained_layout=False)
         self.canvas = ScrollFriendlyFigureCanvas(self.figure)
         self.toolbar = NavigationToolbar2QT(self.canvas, figure_container)
+        self._scatter_artist: Optional[PathCollection] = None
+        self._scatter_sizes = np.array([], dtype=float)
+        self._latest_event_indices = np.array([], dtype=int)
+        self._latest_normalised = np.zeros((3, 0), dtype=float)
+        self._row_by_event_index: Dict[int, int] = {}
+        self._selected_point: Optional[int] = None
+        self.canvas.mpl_connect("pick_event", self._on_point_picked)
         figure_layout.addWidget(self.toolbar)
         figure_layout.addWidget(self.canvas, stretch=1)
         layout.addWidget(figure_container, stretch=1)
@@ -2443,6 +2452,12 @@ class TernaryCompositionDialog(QDialog):
             label="Events",
         )
         scatter.set_picker(True)
+        self._scatter_artist = scatter
+        self._scatter_sizes = np.full(event_indices.shape, 48.0, dtype=float)
+        scatter.set_sizes(self._scatter_sizes)
+        self._latest_event_indices = event_indices.astype(int, copy=True)
+        self._latest_normalised = normalised.copy()
+        self._selected_point = None
 
         ax.legend(loc="upper right", frameon=False)
 
@@ -2493,19 +2508,20 @@ class TernaryCompositionDialog(QDialog):
 
     # ------------------------------------------------------------------
     def _label_vertices(self, ax, labels: Sequence[str]) -> None:
-        offsets = [(0.0, -0.08, "left"), (0.0, -0.08, "right"), (0.0, 0.06, "center")]
+        offsets = [(-0.04, -0.085, "right"), (0.04, -0.085, "left"), (0.0, 0.08, "center")]
         positions = [
             (0.0, 0.0),
             (1.0, 0.0),
             (0.5, self._SQRT3_OVER_2),
         ]
         for (x, y), text, (dx, dy, align) in zip(positions, labels, offsets):
+            vertical = "bottom" if align == "center" else "top"
             ax.text(
                 x + dx,
                 y + dy,
                 text,
                 ha=align,
-                va="center" if align == "center" else "top",
+                va=vertical,
                 fontsize=13,
                 fontweight="semibold",
             )
@@ -2534,6 +2550,71 @@ class TernaryCompositionDialog(QDialog):
             ax.text(x, y, label, ha="center", va="center", fontsize=11, color="#495057")
 
     # ------------------------------------------------------------------
+    def _highlight_point(self, index: int) -> None:
+        if self._scatter_artist is None or self._scatter_sizes.size == 0:
+            return
+        if index < 0 or index >= self._scatter_sizes.size:
+            return
+        if self._selected_point == index and math.isclose(self._scatter_sizes[index], 96.0):
+            return
+        self._scatter_sizes[:] = 48.0
+        self._scatter_sizes[index] = 96.0
+        self._scatter_artist.set_sizes(self._scatter_sizes)
+        self._selected_point = index
+        self.canvas.draw_idle()
+
+    # ------------------------------------------------------------------
+    def _select_table_row(self, event_index: int) -> None:
+        row = self._row_by_event_index.get(int(event_index))
+        if row is None:
+            return
+        self.result_table.setCurrentCell(row, 0)
+        self.result_table.selectRow(row)
+        item = self.result_table.item(row, 0)
+        if item is not None:
+            self.result_table.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
+
+    # ------------------------------------------------------------------
+    def _on_point_picked(self, event) -> None:
+        if self._scatter_artist is None or not isinstance(event.artist, PathCollection):
+            return
+        if event.artist is not self._scatter_artist:
+            return
+        indices = getattr(event, "ind", [])
+        if not indices:
+            return
+        index = int(indices[0])
+        if index < 0 or index >= self._latest_event_indices.size:
+            return
+        event_idx = int(self._latest_event_indices[index])
+        if event_idx < 0 or event_idx >= len(self._repository.events):
+            return
+        fractions = self._latest_normalised[:, index]
+        try:
+            event_name = self._repository.events[event_idx]
+        except IndexError:
+            return
+        self._highlight_point(index)
+        self._select_table_row(event_idx)
+        self.status_label.setText(
+            "Selected event {}: A {:.1f} %, B {:.1f} %, C {:.1f} %.".format(
+                event_name,
+                fractions[0] * 100.0,
+                fractions[1] * 100.0,
+                fractions[2] * 100.0,
+            )
+        )
+        parent = self.parent()
+        setter = getattr(parent, "set_current_event", None) if parent is not None else None
+        if callable(setter):
+            try:
+                setter(event_name)
+                parent.raise_()
+                parent.activateWindow()
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
     @staticmethod
     def _barycentric_to_cartesian(a: float, b: float, c: float) -> Tuple[float, float]:
         x = b + 0.5 * c
@@ -2550,15 +2631,24 @@ class TernaryCompositionDialog(QDialog):
     def _populate_table(self, event_indices: np.ndarray, values: np.ndarray) -> None:
         names = [self._repository.events[int(idx)] for idx in event_indices]
         self.result_table.setRowCount(len(names))
+        self.result_table.clearSelection()
+        self._row_by_event_index = {}
         for row, (event_name, a, b, c) in enumerate(zip(names, values[0], values[1], values[2])):
             self.result_table.setItem(row, 0, QTableWidgetItem(str(event_name)))
             self.result_table.setItem(row, 1, QTableWidgetItem(f"{a * 100.0:.2f}"))
             self.result_table.setItem(row, 2, QTableWidgetItem(f"{b * 100.0:.2f}"))
             self.result_table.setItem(row, 3, QTableWidgetItem(f"{c * 100.0:.2f}"))
+            self._row_by_event_index[int(event_indices[row])] = row
         self.result_table.resizeColumnsToContents()
 
     # ------------------------------------------------------------------
     def _draw_placeholder(self, message: str) -> None:
+        self._scatter_artist = None
+        self._scatter_sizes = np.array([], dtype=float)
+        self._latest_event_indices = np.array([], dtype=int)
+        self._latest_normalised = np.zeros((3, 0), dtype=float)
+        self._row_by_event_index.clear()
+        self._selected_point = None
         self.figure.clear()
         ax = self.figure.add_subplot(111)
         ax.axis("off")
