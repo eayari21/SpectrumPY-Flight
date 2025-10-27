@@ -98,7 +98,7 @@ try:
         QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
         QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton, QTextBrowser,
         QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter,
-        QScrollArea, QFrame
+        QScrollArea, QFrame, QGroupBox
     )
     _QT = "PySide6"
 except Exception:
@@ -110,7 +110,7 @@ except Exception:
         QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
         QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton, QTextBrowser,
         QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter,
-        QScrollArea, QFrame
+        QScrollArea, QFrame, QGroupBox
     )
     _QT = "PyQt6"
 
@@ -3725,6 +3725,78 @@ class FitParameterDialog(QDialog):
         self.image_charge_checkbox.setVisible(False)
         layout.addWidget(self.image_charge_checkbox)
 
+        self._selector_keyword_map: Dict[str, Tuple[str, ...]] = {
+            "baseline": ("baseline",),
+            "offset": ("offset",),
+            "amplitude": ("amplitude", "amp"),
+            "trigger": ("trigger", "t0", "impact onset", "onset"),
+            "start": ("start", "window start"),
+            "end": ("end", "window end"),
+        }
+        self._selector_buttons: Dict[str, QToolButton] = {}
+        self._selector_mode: Optional[str] = None
+        self._selector_values: Dict[str, Optional[float]] = {
+            "baseline": None,
+            "offset": None,
+            "amplitude": None,
+            "trigger": None,
+            "start": None,
+            "end": None,
+        }
+        self._preview_time = np.array([], dtype=float)
+        self._preview_values = np.array([], dtype=float)
+        self._preview_ax = None
+        self._preview_offset = 0.0
+
+        preview_box = QGroupBox("Fit preview", self)
+        preview_layout = QVBoxLayout(preview_box)
+        preview_layout.setContentsMargins(12, 12, 12, 12)
+        preview_layout.setSpacing(6)
+
+        selector_row = QHBoxLayout()
+        selector_row.setContentsMargins(0, 0, 0, 0)
+        selector_row.setSpacing(6)
+        selector_label = QLabel("Interactive selectors:", preview_box)
+        selector_label.setStyleSheet("font-weight: 600; font-size: 14px;")
+        selector_row.addWidget(selector_label)
+
+        def _create_selector_button(text: str, mode: str, tooltip: str) -> QToolButton:
+            button = QToolButton(preview_box)
+            button.setText(text)
+            button.setCheckable(True)
+            button.setToolTip(tooltip)
+            button.setStyleSheet(
+                "QToolButton { padding: 4px 10px; border-radius: 6px; }"
+                "QToolButton:checked { background-color: #4263eb; color: white; }"
+            )
+            button.clicked.connect(lambda checked, m=mode: self._on_selector_toggled(m, checked))
+            self._selector_buttons[mode] = button
+            return button
+
+        selector_specs = (
+            ("Baseline", "baseline", "Click, then select a horizontal level to assign the baseline."),
+            ("Offset", "offset", "Assign an offset value from a horizontal line."),
+            ("Amplitude", "amplitude", "Assign an amplitude using a horizontal selector."),
+            ("Trigger", "trigger", "Assign the trigger/onset time from a vertical selector."),
+            ("Start", "start", "Assign the fit window start from a vertical selector."),
+            ("End", "end", "Assign the fit window end from a vertical selector."),
+        )
+        for text, mode, tip in selector_specs:
+            selector_row.addWidget(_create_selector_button(text, mode, tip))
+        selector_row.addStretch(1)
+        preview_layout.addLayout(selector_row)
+
+        self._preview_figure = Figure(figsize=(6.0, 3.6), constrained_layout=True)
+        self._preview_canvas = FigureCanvas(self._preview_figure)
+        self._preview_canvas.setMinimumHeight(260)
+        self._preview_toolbar = NavigationToolbar(self._preview_canvas, preview_box)
+        preview_layout.addWidget(self._preview_toolbar)
+        preview_layout.addWidget(self._preview_canvas, stretch=1)
+
+        self._preview_canvas.mpl_connect("button_press_event", self._on_preview_click)
+
+        layout.addWidget(preview_box, stretch=1)
+
         self.table = QTableWidget(self)
         self.table.setColumnCount(2)
         self.table.setHorizontalHeaderLabels(["Fit parameter", "Value"])
@@ -3791,6 +3863,19 @@ class FitParameterDialog(QDialog):
         dataset_path = self.dataset_combo.itemData(index)
         self._display_dataset(channel, dataset_path)
 
+    def _on_selector_toggled(self, mode: str, checked: bool) -> None:
+        if checked:
+            for other_mode, button in self._selector_buttons.items():
+                if other_mode == mode or not isinstance(button, QToolButton):
+                    continue
+                button.blockSignals(True)
+                button.setChecked(False)
+                button.blockSignals(False)
+            self._selector_mode = mode
+        else:
+            if self._selector_mode == mode:
+                self._selector_mode = None
+
     def _display_dataset(
         self,
         channel: Optional[str],
@@ -3840,6 +3925,10 @@ class FitParameterDialog(QDialog):
         self.info_label.setText(f"{channel} — {display_name}\n{dataset_path} — shape {array.shape}")
         if not preserve_feedback:
             self.feedback_label.clear()
+
+        self._sync_selector_values_from_table()
+        self._load_preview_series(channel, dataset_path)
+        self._update_preview_plot()
 
     def _dataset_display_name(self, channel: str, dataset_path: str) -> str:
         mass_label = _mass_identifier_from_path(dataset_path)
@@ -3985,6 +4074,8 @@ class FitParameterDialog(QDialog):
         self.image_charge_checkbox.setVisible(False)
         with QSignalBlocker(self.image_charge_checkbox):
             self.image_charge_checkbox.setChecked(False)
+        self._load_preview_series(None, None)
+        self._update_preview_plot()
 
     def _format_value(self, value: object) -> str:
         try:
@@ -4006,6 +4097,187 @@ class FitParameterDialog(QDialog):
         self._reset_callback(self._event_name, self._current_channel, self._current_dataset)
         self._display_dataset(self._current_channel, self._current_dataset, preserve_feedback=True)
         self._set_feedback("Reverted to values from the file.", success=False)
+
+    def _load_preview_series(self, channel: Optional[str], dataset_path: Optional[str]) -> None:
+        self._preview_time = np.array([], dtype=float)
+        self._preview_values = np.array([], dtype=float)
+        self._preview_ax = None
+        if not channel or not dataset_path:
+            self._update_selector_button_states()
+            return
+
+        data = self._channel_data.get(channel)
+        if not data:
+            self._update_selector_button_states()
+            return
+
+        derived = _fit_paths_from_param(dataset_path)
+        time_values: Optional[np.ndarray] = None
+        value_values: Optional[np.ndarray] = None
+        if derived:
+            result_path, time_path = derived
+            time_values = data.time_series.get(time_path)
+            value_values = data.value_series.get(result_path)
+
+        if time_values is None or value_values is None:
+            pair_key = _pair_key(dataset_path)
+            for _label, time_path, value_path, time_arr, value_arr in data.iter_time_result_pairs():
+                if _pair_key(time_path) == pair_key or _pair_key(value_path) == pair_key:
+                    time_values = time_arr
+                    value_values = value_arr
+                    break
+
+        if time_values is None or value_values is None:
+            self._update_selector_button_states()
+            return
+
+        self._preview_time = np.asarray(time_values, dtype=float).ravel()
+        self._preview_values = np.asarray(value_values, dtype=float).ravel()
+        self._update_selector_button_states()
+
+    def _update_preview_plot(self) -> None:
+        self._preview_figure.clear()
+        ax = self._preview_figure.add_subplot(111)
+        self._preview_ax = ax
+
+        if self._preview_time.size == 0 or self._preview_values.size == 0:
+            ax.text(0.5, 0.5, "No fit preview available for this dataset.", ha="center", va="center")
+            ax.set_axis_off()
+            self._preview_canvas.draw_idle()
+            return
+
+        order = np.argsort(self._preview_time)
+        time_data = self._preview_time[order]
+        value_data = self._preview_values[order]
+
+        finite_values = value_data[np.isfinite(value_data)]
+        offset = 0.0
+        if finite_values.size:
+            minimum = float(np.nanmin(finite_values))
+            if minimum <= 0.0:
+                offset = abs(minimum) + 1.0e-9
+
+        adjusted = value_data + offset
+        ax.plot(time_data, adjusted, color="#0c5da5", linewidth=1.8, label="Fit curve")
+        ax.set_xlabel("Time (µs)")
+        ax.set_ylabel("Value")
+        ax.grid(True, alpha=0.35)
+        ax.legend(loc="best")
+        self._preview_offset = offset
+        self._draw_preview_overlays(ax)
+        self._preview_canvas.draw_idle()
+
+    def _draw_preview_overlays(self, ax) -> None:
+        if ax is None:
+            return
+        color_map = {
+            "baseline": "#b02a37",
+            "offset": "#6f42c1",
+            "amplitude": "#0d6efd",
+            "trigger": "#0ca678",
+            "start": "#228be6",
+            "end": "#e8590c",
+        }
+        for mode, value in self._selector_values.items():
+            if value is None or not np.isfinite(value):
+                continue
+            color = color_map.get(mode, "#495057")
+            if mode in {"baseline", "offset", "amplitude"}:
+                ax.axhline(value + self._preview_offset, color=color, linestyle="--", linewidth=1.1, alpha=0.75)
+            else:
+                ax.axvline(value, color=color, linestyle="--", linewidth=1.1, alpha=0.75)
+
+    def _on_preview_click(self, event) -> None:
+        if self._selector_mode is None:
+            return
+        if event is None or event.inaxes != self._preview_ax:
+            return
+        mode = self._selector_mode
+        if mode in {"baseline", "offset", "amplitude"}:
+            if event.ydata is None:
+                return
+            value = float(event.ydata) - float(self._preview_offset)
+        else:
+            if event.xdata is None:
+                return
+            value = float(event.xdata)
+        self._apply_selector_value(mode, value)
+
+    def _find_parameter_rows_for_mode(self, mode: str) -> List[int]:
+        rows: List[int] = []
+        keywords = self._selector_keyword_map.get(mode, ())
+        if not keywords:
+            return rows
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            label = item.text().strip().lower() if item else ""
+            if not label:
+                continue
+            if any(keyword in label for keyword in keywords):
+                rows.append(row)
+        return rows
+
+    def _apply_selector_value(self, mode: str, value: float) -> None:
+        if not np.isfinite(value):
+            return
+        rows = self._find_parameter_rows_for_mode(mode)
+        if not rows:
+            self._set_feedback(f"No parameter labelled for {mode} in this dataset.", success=False)
+            return
+        selected_rows = {index.row() for index in self.table.selectionModel().selectedRows()} if self.table.selectionModel() else set()
+        target_row = rows[0]
+        for row in rows:
+            if row in selected_rows:
+                target_row = row
+                break
+        item = self.table.item(target_row, 1)
+        if item is None:
+            item = QTableWidgetItem()
+            self.table.setItem(target_row, 1, item)
+        formatted = self._format_value(value)
+        self._is_updating_table = True
+        try:
+            item.setText(formatted)
+        finally:
+            self._is_updating_table = False
+        if not self._apply_current_values(auto=True):
+            return
+        self._selector_values[mode] = value
+        self._set_feedback(f"Updated {mode} to {formatted} from selector.", success=True)
+        self._sync_selector_values_from_table()
+
+    def _sync_selector_values_from_table(self) -> None:
+        for mode in list(self._selector_values.keys()):
+            rows = self._find_parameter_rows_for_mode(mode)
+            value: Optional[float] = None
+            for row in rows:
+                item = self.table.item(row, 1)
+                if item is None:
+                    continue
+                text = item.text().strip()
+                if not text:
+                    continue
+                try:
+                    value = float(text)
+                except ValueError:
+                    continue
+                break
+            self._selector_values[mode] = value
+        self._update_selector_button_states()
+
+    def _update_selector_button_states(self) -> None:
+        has_preview = self._preview_time.size > 0 and self._preview_values.size > 0
+        for mode, button in self._selector_buttons.items():
+            if not isinstance(button, QToolButton):
+                continue
+            enabled = has_preview and bool(self._find_parameter_rows_for_mode(mode))
+            button.setEnabled(enabled)
+            if not enabled and button.isChecked():
+                button.blockSignals(True)
+                button.setChecked(False)
+                button.blockSignals(False)
+                if self._selector_mode == mode:
+                    self._selector_mode = None
 
     def _channel_supports_image_charge(self, channel: Optional[str]) -> bool:
         if not channel:

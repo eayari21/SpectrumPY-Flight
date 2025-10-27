@@ -65,6 +65,7 @@ try:  # pragma: no cover - Qt import guard
         QTableWidgetItem,
         QVBoxLayout,
         QWidget,
+        QToolButton,
     )
 except Exception:  # pragma: no cover - fallback to PyQt6
     from PyQt6.QtCore import Qt
@@ -92,6 +93,7 @@ except Exception:  # pragma: no cover - fallback to PyQt6
         QTableWidgetItem,
         QVBoxLayout,
         QWidget,
+        QToolButton,
     )
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
@@ -1545,12 +1547,59 @@ class InspectMassLineDialog(QDialog):
         figure_layout.setContentsMargins(0, 0, 0, 0)
         figure_layout.setSpacing(6)
 
+        self._selector_buttons: Dict[str, QToolButton] = {}
+        self._selector_mode: Optional[str] = None
+        self._plot_offset = 0.0
+        self._baseline_override: Optional[float] = None
+        self._selector_values: Dict[str, float] = {
+            "baseline": float(self._baseline),
+            "amplitude": float(self._line.amplitude),
+            "trigger": float(self._line.mu),
+            "start": float(self._line.time_start),
+            "end": float(self._line.time_end),
+        }
+        self._axis = None
+
+        selector_row = QHBoxLayout()
+        selector_row.setContentsMargins(0, 0, 0, 0)
+        selector_row.setSpacing(6)
+        selector_label = QLabel("Interactive selectors:", figure_container)
+        selector_label.setStyleSheet("font-weight: 600; font-size: 13px;")
+        selector_row.addWidget(selector_label)
+
+        def _create_selector_button(text: str, mode: str, tooltip: str) -> QToolButton:
+            button = QToolButton(figure_container)
+            button.setText(text)
+            button.setCheckable(True)
+            button.setToolTip(tooltip)
+            button.setStyleSheet(
+                "QToolButton { padding: 4px 10px; border-radius: 6px; }"
+                "QToolButton:checked { background-color: #845ef7; color: white; }"
+            )
+            button.clicked.connect(lambda checked, m=mode: self._on_selector_toggled(m, checked))
+            self._selector_buttons[mode] = button
+            return button
+
+        selector_specs = (
+            ("Baseline", "baseline", "Click to select a new baseline from a horizontal line."),
+            ("Amplitude", "amplitude", "Click to assign amplitude from a horizontal line."),
+            ("μ", "trigger", "Click to place the peak centre (μ)."),
+            ("Start", "start", "Click to assign the fit window start."),
+            ("End", "end", "Click to assign the fit window end."),
+        )
+        for text, mode, tip in selector_specs:
+            selector_row.addWidget(_create_selector_button(text, mode, tip))
+        selector_row.addStretch(1)
+        figure_layout.addLayout(selector_row)
+
         self.figure = Figure(figsize=(6.5, 3.8), constrained_layout=True)
         self.canvas = ScrollFriendlyFigureCanvas(self.figure)
         self.canvas.setMinimumSize(900, 420)
         self.toolbar = NavigationToolbar2QT(self.canvas, figure_container)
         figure_layout.addWidget(self.toolbar)
         figure_layout.addWidget(self.canvas)
+
+        self.canvas.mpl_connect("button_press_event", self._on_selector_click)
 
         content_layout.addWidget(figure_container, stretch=1)
 
@@ -1725,11 +1774,12 @@ class InspectMassLineDialog(QDialog):
         window_min = start - padding
         window_max = end + padding
         mask = (self._time_axis >= window_min) & (self._time_axis <= window_max)
+        baseline_value = self._baseline_override if self._baseline_override is not None else self._baseline
         time_data = self._time_axis[mask]
-        signal_data = self._signal[mask]
+        signal_data = self._signal[mask] - baseline_value
         if time_data.size == 0:
             time_data = self._time_axis
-            signal_data = self._signal
+            signal_data = self._signal - baseline_value
 
         fit_time = np.linspace(start, end, 1200)
         fit_values = _evaluate_line_shape(shape_key, fit_time, amplitude, mu, sigma, lam, extras)
@@ -1745,6 +1795,7 @@ class InspectMassLineDialog(QDialog):
 
         self.figure.clear()
         ax = self.figure.add_subplot(111)
+        self._axis = ax
         ax.scatter(time_data, signal_plot, s=22, c="#1f77b4", alpha=0.75, label="Waveform")
         ax.plot(
             fit_time,
@@ -1760,7 +1811,80 @@ class InspectMassLineDialog(QDialog):
         ax.set_title("Zoomed mass line view", fontsize=14, fontweight="bold")
         ax.legend(loc="best")
         ax.grid(True, which="both", linestyle="--", linewidth=0.6, alpha=0.35)
+        self._plot_offset = offset
+        self._selector_values.update(
+            {
+                "baseline": float(baseline_value),
+                "amplitude": float(self.amplitude_spin.value()),
+                "trigger": float(self.mu_spin.value()),
+                "start": float(self.start_spin.value()),
+                "end": float(self.end_spin.value()),
+            }
+        )
+        self._draw_selector_overlays(ax)
         self.canvas.draw_idle()
+
+    def _on_selector_toggled(self, mode: str, checked: bool) -> None:
+        if checked:
+            for other_mode, button in self._selector_buttons.items():
+                if other_mode == mode:
+                    continue
+                button.blockSignals(True)
+                button.setChecked(False)
+                button.blockSignals(False)
+            self._selector_mode = mode
+        else:
+            if self._selector_mode == mode:
+                self._selector_mode = None
+
+    def _draw_selector_overlays(self, ax) -> None:
+        if ax is None:
+            return
+        color_map = {
+            "baseline": "#b02a37",
+            "amplitude": "#0d6efd",
+            "trigger": "#0ca678",
+            "start": "#228be6",
+            "end": "#e8590c",
+        }
+        for mode, value in self._selector_values.items():
+            if value is None or not math.isfinite(value):
+                continue
+            color = color_map.get(mode, "#495057")
+            if mode == "baseline":
+                ax.axhline(value + self._plot_offset, color=color, linestyle="--", linewidth=1.1, alpha=0.75)
+            elif mode == "amplitude":
+                level = max(float(value), 0.0)
+                ax.axhline(level + self._plot_offset, color=color, linestyle=":", linewidth=1.1, alpha=0.6)
+            else:
+                ax.axvline(value, color=color, linestyle="--", linewidth=1.1, alpha=0.75)
+
+    def _on_selector_click(self, event) -> None:
+        if self._selector_mode is None or event is None:
+            return
+        if event.inaxes != self._axis:
+            return
+        mode = self._selector_mode
+        if mode in {"baseline", "amplitude"}:
+            if event.ydata is None:
+                return
+            value = float(event.ydata) - float(self._plot_offset)
+            if mode == "baseline":
+                self._baseline_override = value
+                self._selector_values["baseline"] = value
+                self._update_plot()
+            else:
+                self.amplitude_spin.setValue(max(abs(value), 1.0e-9))
+        else:
+            if event.xdata is None:
+                return
+            x_value = float(event.xdata)
+            if mode == "trigger":
+                self.mu_spin.setValue(x_value)
+            elif mode == "start":
+                self.start_spin.setValue(x_value)
+            elif mode == "end":
+                self.end_spin.setValue(x_value)
 
     def _shape_config(self, key: str) -> LineShapeConfig:
         return LINE_SHAPES.get(key, LINE_SHAPES["emg"])
@@ -1962,7 +2086,7 @@ class InspectMassLineDialog(QDialog):
                 mass_guess = float("nan")
         extras = self._collect_extra_parameters(validate=True)
         self._line.extra_params = extras
-        return {
+        result = {
             "label": label,
             "amplitude": amplitude,
             "mu": mu,
@@ -1976,6 +2100,9 @@ class InspectMassLineDialog(QDialog):
             "shape": shape_key,
             "extra_params": extras,
         }
+        if self._baseline_override is not None and math.isfinite(self._baseline_override):
+            result["baseline"] = float(self._baseline_override)
+        return result
 
     def _set_species_index(self, index: int) -> None:
         if 0 <= index < self.species_combo.count():
@@ -4052,6 +4179,15 @@ class DustCompositionWindow(QMainWindow):
         values = dialog.collected_values()
         if not values:
             return
+
+        baseline_candidate = values.get("baseline")
+        if baseline_candidate is not None:
+            try:
+                baseline_value = float(baseline_candidate)
+            except Exception:
+                baseline_value = None
+            if baseline_value is not None and math.isfinite(baseline_value):
+                self._set_baseline(baseline_value, from_user=True)
 
         line.label = str(values.get("label", line.label))
         line.amplitude = float(values.get("amplitude", line.amplitude))
