@@ -53,6 +53,7 @@ try:  # pragma: no cover - Qt import guard
         QMainWindow,
         QMessageBox,
         QPushButton,
+        QScrollArea,
         QSizePolicy,
         QSplitter,
         QStatusBar,
@@ -78,6 +79,7 @@ except Exception:  # pragma: no cover - fallback to PyQt6
         QMainWindow,
         QMessageBox,
         QPushButton,
+        QScrollArea,
         QSizePolicy,
         QSplitter,
         QStatusBar,
@@ -1467,41 +1469,55 @@ class InspectMassLineDialog(QDialog):
         self._assigned_mass: Optional[float] = line.assigned_mass
         self._block_species_signal = False
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(18, 18, 18, 18)
+        outer_layout.setSpacing(12)
 
-        self.header_label = QLabel("", self)
+        scroll_area = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        content = QWidget(scroll_area)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(12)
+
+        scroll_area.setWidget(content)
+        outer_layout.addWidget(scroll_area, stretch=1)
+
+        self.header_label = QLabel("", content)
         self.header_label.setStyleSheet("font-size: 20px; font-weight: 600;")
-        layout.addWidget(self.header_label)
+        content_layout.addWidget(self.header_label)
 
         config = LINE_SHAPES.get(self._line.shape, LINE_SHAPES["emg"])
 
-        self.formula_label = QLabel(self)
+        self.formula_label = QLabel(content)
         self.formula_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.formula_label.setTextFormat(Qt.TextFormat.RichText)
         self.formula_label.setWordWrap(True)
         self.formula_label.setText(config.formula_html)
-        layout.addWidget(self.formula_label)
+        content_layout.addWidget(self.formula_label)
 
-        source_label = QLabel(f"Signal source: {html.escape(self._source_name)}", self)
+        source_label = QLabel(f"Signal source: {html.escape(self._source_name)}", content)
         source_label.setStyleSheet("color: #495057; font-size: 13px;")
-        layout.addWidget(source_label)
+        content_layout.addWidget(source_label)
 
-        figure_container = QWidget(self)
+        figure_container = QWidget(content)
         figure_layout = QVBoxLayout(figure_container)
         figure_layout.setContentsMargins(0, 0, 0, 0)
         figure_layout.setSpacing(6)
 
         self.figure = Figure(figsize=(6.5, 3.8), constrained_layout=True)
         self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas.setMinimumSize(900, 420)
         self.toolbar = NavigationToolbar2QT(self.canvas, figure_container)
         figure_layout.addWidget(self.toolbar)
         figure_layout.addWidget(self.canvas)
 
-        layout.addWidget(figure_container, stretch=1)
+        content_layout.addWidget(figure_container, stretch=1)
 
-        parameter_box = QGroupBox("Editable parameters", self)
+        parameter_box = QGroupBox("Editable parameters", content)
         form = QFormLayout(parameter_box)
         form.setContentsMargins(12, 12, 12, 12)
         form.setSpacing(8)
@@ -1585,14 +1601,14 @@ class InspectMassLineDialog(QDialog):
         self._extra_fields: Dict[str, QWidget] = {}
         form.addRow(self.extra_box)
 
-        layout.addWidget(parameter_box)
+        content_layout.addWidget(parameter_box)
 
         self._set_shape_index(self._line.shape)
         self._apply_shape_config(self._line.shape)
 
-        self.mass_hint_label = QLabel("", self)
+        self.mass_hint_label = QLabel("", content)
         self.mass_hint_label.setStyleSheet("font-size: 14px; font-style: italic; color: #495057;")
-        layout.addWidget(self.mass_hint_label)
+        content_layout.addWidget(self.mass_hint_label)
 
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
@@ -1600,7 +1616,7 @@ class InspectMassLineDialog(QDialog):
         )
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
+        outer_layout.addWidget(button_box)
 
         initial_index = 0
         if self._assigned_species:
@@ -2275,7 +2291,15 @@ def _write_dataset(group: h5py.Group, name: str, data: np.ndarray) -> None:
 class DustCompositionWindow(QMainWindow):
     """Qt window that orchestrates the dust composition analysis workflow."""
 
-    def __init__(self, h5: h5py.File, event_name: str, parent: Optional[QWidget] = None):
+    def __init__(
+        self,
+        h5: h5py.File,
+        event_name: str,
+        *,
+        event_names: Optional[Sequence[str]] = None,
+        on_event_changed: Optional[Callable[[str], None]] = None,
+        parent: Optional[QWidget] = None,
+    ):
         super().__init__(parent)
 
         self._h5 = h5
@@ -2287,37 +2311,17 @@ class DustCompositionWindow(QMainWindow):
             if isinstance(grp, h5py.Group):
                 self._group = grp
 
+        self._event_names: List[str] = list(dict.fromkeys(event_names or []))
+        if event_name and event_name not in self._event_names:
+            self._event_names.append(event_name)
+        self._external_event_callback = on_event_changed
+        self._event_selector: Optional[QComboBox] = None
+        self._block_event_selector = False
+
         self.setWindowTitle(f"Dust Composition Analysis — Event {event_name}")
         self.resize(1320, 880)
 
-        self._time_axis = np.zeros(0)
-        self._waveforms: Dict[str, np.ndarray] = {}
-        self._combined: Optional[np.ndarray] = None
-        self._combined_cached_mass: Optional[np.ndarray] = None
-        self._baseline = 0.0
-        self._mass_params = {"stretch": 1.0, "shift": 0.0}
-        self._mass_params_loaded = False
-        self._mass_axis_lock_level = 0
-        self._mass_lines: List[MassLineFit] = []
-        self._mass_line_counter = 0
-        self._selected_line_id: Optional[int] = None
-        self._manual_sample_guess: Optional[str] = None
-        self._auto_sample_match: Optional[SampleMatch] = None
-        self._auto_mixture_match: Optional[MixtureMatch] = None
-        self._block_sample_guess_signal = False
-        self._anchor_displayed_line_id: Optional[int] = None
-
-        self._combined_axis = None
-        self._combined_time_axis = None
-        self._baseline_artist = None
-        self._span_selector: Optional[SpanSelector] = None
-        self._in_baseline_mode = False
-        self._block_table_signals = False
-        self._block_selection_signals = False
-        self._block_species_assignment = False
-        self._rsf_enabled = False
-        self._rsf_values: Dict[int, float] = {}
-        self._rsf_normalised: Dict[int, float] = {}
+        self._initialise_analysis_state()
 
         self._load_datasets()
         self._load_saved_state()
@@ -2338,13 +2342,20 @@ class DustCompositionWindow(QMainWindow):
         self.figure = Figure(figsize=(8.2, 6.4), constrained_layout=True)
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.canvas.setMinimumSize(1100, 720)
         self.canvas.mpl_connect("button_press_event", self._on_canvas_click)
 
         self.toolbar = NavigationToolbar2QT(self.canvas, figure_container)
 
         figure_layout.addWidget(self.toolbar)
         figure_layout.addWidget(self.canvas)
-        splitter.addWidget(figure_container)
+
+        figure_scroll = QScrollArea(self)
+        figure_scroll.setWidgetResizable(True)
+        figure_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        figure_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        figure_scroll.setWidget(figure_container)
+        splitter.addWidget(figure_scroll)
 
         self.control_panel = QWidget(self)
         self.control_layout = QVBoxLayout(self.control_panel)
@@ -2365,6 +2376,155 @@ class DustCompositionWindow(QMainWindow):
         self._update_mass_axis_lock()
 
     # ---- Data loading ---------------------------------------------------
+    def _initialise_analysis_state(self) -> None:
+        """Reset analysis state so a new event can be loaded cleanly."""
+
+        self._time_axis = np.zeros(0)
+        self._waveforms = {}
+        self._combined = None
+        self._combined_cached_mass = None
+        self._baseline = 0.0
+        self._mass_params = {"stretch": 1.0, "shift": 0.0}
+        self._mass_params_loaded = False
+        self._mass_axis_lock_level = 0
+        self._mass_lines = []
+        self._mass_line_counter = 0
+        self._selected_line_id = None
+        self._manual_sample_guess = None
+        self._auto_sample_match = None
+        self._auto_mixture_match = None
+        self._block_sample_guess_signal = False
+        self._anchor_displayed_line_id = None
+
+        self._combined_axis = None
+        self._combined_time_axis = None
+        self._baseline_artist = None
+        span_selector = getattr(self, "_span_selector", None)
+        if span_selector is not None:
+            try:
+                span_selector.disconnect_events()
+            except Exception:
+                pass
+        self._span_selector = None
+        self._in_baseline_mode = False
+        self._block_table_signals = False
+        self._block_selection_signals = False
+        self._block_species_assignment = False
+        self._rsf_enabled = False
+        self._rsf_values = {}
+        self._rsf_normalised = {}
+
+    def _ensure_event_listed(self, event_name: str) -> None:
+        if not event_name:
+            return
+        if event_name not in self._event_names:
+            self._event_names.append(event_name)
+            if self._event_selector is not None:
+                self._event_selector.addItem(event_name)
+        if self._event_selector is not None:
+            self._event_selector.setEnabled(len(self._event_names) > 1)
+
+    def _sync_event_selector(self, event_name: Optional[str]) -> None:
+        if self._event_selector is None or not event_name:
+            return
+        if event_name not in self._event_names:
+            self._ensure_event_listed(event_name)
+        try:
+            index = self._event_names.index(event_name)
+        except ValueError:
+            return
+        if self._event_selector.currentIndex() != index:
+            self._block_event_selector = True
+            try:
+                self._event_selector.setCurrentIndex(index)
+            finally:
+                self._block_event_selector = False
+        self._event_selector.setEnabled(len(self._event_names) > 1)
+
+    def _apply_loaded_state_to_controls(self) -> None:
+        if hasattr(self, "baseline_spin"):
+            self.baseline_spin.blockSignals(True)
+            self.baseline_spin.setValue(self._baseline)
+            self.baseline_spin.blockSignals(False)
+        if hasattr(self, "mass_stretch_spin"):
+            self.mass_stretch_spin.blockSignals(True)
+            self.mass_stretch_spin.setValue(self._mass_params.get("stretch", 1.0))
+            self.mass_stretch_spin.blockSignals(False)
+        if hasattr(self, "mass_shift_spin"):
+            self.mass_shift_spin.blockSignals(True)
+            self.mass_shift_spin.setValue(self._mass_params.get("shift", 0.0))
+            self.mass_shift_spin.blockSignals(False)
+        if hasattr(self, "combine_button"):
+            self.combine_button.blockSignals(True)
+            self.combine_button.setChecked(False)
+            self.combine_button.blockSignals(False)
+        if hasattr(self, "baseline_button"):
+            self.baseline_button.blockSignals(True)
+            self.baseline_button.setChecked(False)
+            self.baseline_button.blockSignals(False)
+        if hasattr(self, "add_mass_button"):
+            self.add_mass_button.blockSignals(True)
+            self.add_mass_button.setChecked(False)
+            self.add_mass_button.blockSignals(False)
+        if hasattr(self, "anchor_mass_spin"):
+            self.anchor_mass_spin.setEnabled(False)
+        if hasattr(self, "anchor_button"):
+            self.anchor_button.setEnabled(False)
+        self._set_span_selector_active(False)
+        self._in_baseline_mode = False
+
+    def _on_event_selector_changed(self, index: int) -> None:
+        if self._block_event_selector:
+            return
+        if 0 <= index < len(self._event_names):
+            self._switch_event(self._event_names[index], from_user=True)
+
+    def _switch_event(self, event_name: str, *, from_user: bool) -> None:
+        if not event_name:
+            return
+        self._ensure_event_listed(event_name)
+        previous = self._event
+        if event_name == previous:
+            self._sync_event_selector(event_name)
+            return
+
+        self._event = event_name
+        self._group = None
+        if self._h5 is not None:
+            grp = self._h5.get(event_name)
+            if isinstance(grp, h5py.Group):
+                self._group = grp
+
+        self.setWindowTitle(f"Dust Composition Analysis — Event {event_name}")
+
+        self._initialise_analysis_state()
+        self._load_datasets()
+        self._load_saved_state()
+        self._apply_loaded_state_to_controls()
+        self._refresh_plot(initial=True)
+        self._update_tables()
+        self._update_summary()
+        self._update_mass_axis_lock()
+        self._sync_event_selector(event_name)
+
+        try:
+            self.statusBar().showMessage(f"Loaded event {event_name}", 4000)
+        except Exception:
+            pass
+
+        if from_user and self._external_event_callback is not None:
+            try:
+                self._external_event_callback(event_name)
+            except Exception:
+                pass
+
+    def set_current_event(self, event_name: Optional[str]) -> None:
+        """Synchronise the window with the parent quicklook view."""
+
+        if not event_name:
+            return
+        self._switch_event(event_name, from_user=False)
+
     def _load_datasets(self) -> None:
         if not self._group:
             return
@@ -2727,6 +2887,7 @@ class DustCompositionWindow(QMainWindow):
 
     # ---- UI construction ------------------------------------------------
     def _build_controls(self) -> None:
+        self._build_event_selector()
         self._build_action_buttons()
         self._build_baseline_controls()
         self._build_mass_axis_controls()
@@ -2735,6 +2896,44 @@ class DustCompositionWindow(QMainWindow):
         self._build_mass_line_table()
         self._build_summary_section()
         self.control_layout.addStretch(1)
+
+    def _build_event_selector(self) -> None:
+        self._ensure_event_listed(self._event)
+        if not self._event_names:
+            return
+
+        box = QGroupBox("Event", self.control_panel)
+        layout = QVBoxLayout(box)
+        layout.setSpacing(6)
+
+        description = QLabel(
+            "Choose another event to review without leaving the analysis window.",
+            box,
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet("color: #495057; font-size: 13px;")
+        layout.addWidget(description)
+
+        combo = QComboBox(box)
+        combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        combo.setMinimumHeight(40)
+        combo.setStyleSheet("font-size: 15px;")
+        for name in self._event_names:
+            combo.addItem(name)
+        index = 0
+        if self._event and self._event in self._event_names:
+            index = self._event_names.index(self._event)
+        self._block_event_selector = True
+        try:
+            combo.setCurrentIndex(index)
+        finally:
+            self._block_event_selector = False
+        combo.currentIndexChanged.connect(self._on_event_selector_changed)
+        combo.setEnabled(len(self._event_names) > 1)
+        layout.addWidget(combo)
+
+        self._event_selector = combo
+        self.control_layout.addWidget(box)
 
     def _build_action_buttons(self) -> None:
         box = QGroupBox("Waveform Modes", self.control_panel)
@@ -4154,7 +4353,20 @@ class DustCompositionWindow(QMainWindow):
             QMessageBox.critical(self, "Save Error", f"Failed to save analysis:\n{exc}")
 
 
-def launch_dust_composition_window(h5: h5py.File, event_name: str, parent: Optional[QWidget] = None) -> DustCompositionWindow:
+def launch_dust_composition_window(
+    h5: h5py.File,
+    event_name: str,
+    *,
+    event_names: Optional[Sequence[str]] = None,
+    on_event_changed: Optional[Callable[[str], None]] = None,
+    parent: Optional[QWidget] = None,
+) -> DustCompositionWindow:
     """Convenience helper used by the main quicklook window."""
 
-    return DustCompositionWindow(h5=h5, event_name=event_name, parent=parent)
+    return DustCompositionWindow(
+        h5=h5,
+        event_name=event_name,
+        event_names=event_names,
+        on_event_changed=on_event_changed,
+        parent=parent,
+    )

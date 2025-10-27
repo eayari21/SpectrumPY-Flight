@@ -2548,7 +2548,13 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            window = launch_dust_composition_window(self._h5, self._current_event, parent=self)
+            window = launch_dust_composition_window(
+                self._h5,
+                self._current_event,
+                parent=self,
+                event_names=self._events,
+                on_event_changed=self._handle_child_event_change,
+            )
         except Exception as exc:
             QMessageBox.critical(
                 self,
@@ -2605,8 +2611,8 @@ class MainWindow(QMainWindow):
             for name, definition in CHANNEL_DEFS.items()
         ]
 
-        def loader(channel: str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-            values, times = self._resolve_channel_data(self._current_event, channel)
+        def loader(event: str, channel: str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+            values, times = self._resolve_channel_data(event, channel)
             return (
                 None if values is None else np.array(values, copy=True),
                 None if times is None else np.array(times, copy=True),
@@ -2617,6 +2623,8 @@ class MainWindow(QMainWindow):
                 event_name=self._current_event,
                 channels=channel_metas,
                 loader=loader,
+                event_names=self._events,
+                on_event_changed=self._handle_child_event_change,
                 parent=self,
             )
         except Exception as exc:
@@ -2898,6 +2906,23 @@ class MainWindow(QMainWindow):
         times = self._get_dataset(event, definition.time_dataset)
         return values, times
 
+    def _handle_child_event_change(self, event_name: str) -> None:
+        if not event_name or event_name not in self._events:
+            return
+        index = self._events.index(event_name)
+        if self.event_combo.currentIndex() != index:
+            self.event_combo.setCurrentIndex(index)
+        else:
+            self.plot_event(event_name)
+
+    def _broadcast_event_to_children(self, event_name: Optional[str]) -> None:
+        for window in list(self._child_windows):
+            if hasattr(window, "set_current_event"):
+                try:
+                    window.set_current_event(event_name)
+                except Exception:
+                    continue
+
     def open_file(self, path: str, preferred_event: Optional[str] = None):
         self._reset_state()
 
@@ -3022,6 +3047,7 @@ class MainWindow(QMainWindow):
             pass
 
         if not self._data_source or not event_name:
+            self._broadcast_event_to_children(None)
             self._current_event = None
             ax = self.figure.add_subplot(111)
             ax.text(
@@ -3041,6 +3067,7 @@ class MainWindow(QMainWindow):
             return
 
         self._current_event = event_name
+        self._broadcast_event_to_children(event_name)
         self._update_channel_button_states(event_name)
         self.refresh_fit_controls()
 
