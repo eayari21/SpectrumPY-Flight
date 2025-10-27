@@ -20,6 +20,7 @@ try:  # pragma: no cover - prefer PyQt6
         QLabel,
         QMainWindow,
         QMessageBox,
+        QScrollArea,
         QSizePolicy,
         QStatusBar,
         QVBoxLayout,
@@ -36,6 +37,7 @@ except Exception:  # pragma: no cover - fallback to PySide6
         QLabel,
         QMainWindow,
         QMessageBox,
+        QScrollArea,
         QSizePolicy,
         QStatusBar,
         QVBoxLayout,
@@ -137,8 +139,15 @@ class NoiseAnalysisWindow(QMainWindow):
             """
         )
 
-        central = QWidget(self)
-        self.setCentralWidget(central)
+        scroll_area = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setCentralWidget(scroll_area)
+
+        central = QWidget(scroll_area)
+        scroll_area.setWidget(central)
 
         layout = QVBoxLayout(central)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -311,6 +320,8 @@ class NoiseAnalysisWindow(QMainWindow):
         self.setWindowTitle(f"Noise Analysis — Event {event_name}")
         self._subtitle_label.setText(f"Event {event_name}")
         self._sync_event_combo(event_name)
+        previous_channel = self.channel_combo.currentText().strip()
+        self._populate_channels(preferred=previous_channel, trigger_update=False)
         try:
             self.statusBar().showMessage(f"Viewing event {event_name}", 4000)
         except Exception:
@@ -329,7 +340,12 @@ class NoiseAnalysisWindow(QMainWindow):
             return
         self._switch_event(event_name, from_user=False)
 
-    def _populate_channels(self) -> None:
+    def _populate_channels(
+        self,
+        *,
+        preferred: Optional[str] = None,
+        trigger_update: bool = True,
+    ) -> None:
         self.channel_combo.blockSignals(True)
         self.channel_combo.clear()
 
@@ -337,6 +353,8 @@ class NoiseAnalysisWindow(QMainWindow):
         for name in available:
             self.channel_combo.addItem(name)
         self.channel_combo.blockSignals(False)
+
+        self.channel_combo.setEnabled(bool(available))
 
         if not available:
             QMessageBox.information(
@@ -347,8 +365,13 @@ class NoiseAnalysisWindow(QMainWindow):
             self._clear_axes("No channel data available")
             return
 
-        self.channel_combo.setCurrentIndex(0)
-        self._update_analysis()
+        index = 0
+        if preferred and preferred in available:
+            index = available.index(preferred)
+        self.channel_combo.setCurrentIndex(index)
+
+        if trigger_update:
+            self._update_analysis()
 
     def _has_data(self, channel: str) -> bool:
         values, _ = self._get_channel_arrays(channel)
