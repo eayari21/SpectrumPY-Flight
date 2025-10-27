@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, Iterable, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
@@ -51,7 +51,7 @@ class ChannelMeta:
     unit: str = ""
 
 
-ChannelLoader = Callable[[str], Tuple[Optional[np.ndarray], Optional[np.ndarray]]]
+ChannelLoader = Callable[[str, str], Tuple[Optional[np.ndarray], Optional[np.ndarray]]]
 
 
 class NoiseAnalysisWindow(QMainWindow):
@@ -63,6 +63,8 @@ class NoiseAnalysisWindow(QMainWindow):
         event_name: str,
         channels: Iterable[ChannelMeta],
         loader: ChannelLoader,
+        event_names: Optional[Sequence[str]] = None,
+        on_event_changed: Optional[Callable[[str], None]] = None,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
@@ -73,12 +75,19 @@ class NoiseAnalysisWindow(QMainWindow):
         self._event_name = event_name
         self._loader = loader
         self._channel_definitions = list(channels)
-        self._data_cache: Dict[str, Tuple[Optional[np.ndarray], Optional[np.ndarray]]] = {}
+        self._event_names: List[str] = list(dict.fromkeys(event_names or []))
+        if event_name and event_name not in self._event_names:
+            self._event_names.append(event_name)
+        self._external_event_callback = on_event_changed
+        self._event_combo: Optional[QComboBox] = None
+        self._block_event_combo = False
+        self._data_cache: Dict[Tuple[str, str], Tuple[Optional[np.ndarray], Optional[np.ndarray]]] = {}
         self._channel_units: Dict[str, str] = {
             meta.name: meta.unit.strip() for meta in self._channel_definitions
         }
 
         self._build_ui()
+        self._populate_event_selector()
         self._populate_channels()
 
     # ------------------------------------------------------------------
@@ -155,6 +164,24 @@ class NoiseAnalysisWindow(QMainWindow):
 
         selection_card_layout.addLayout(header_layout)
 
+        event_layout = QHBoxLayout()
+        event_layout.setContentsMargins(0, 0, 0, 0)
+        event_layout.setSpacing(12)
+
+        event_label = QLabel("Event")
+        event_label.setObjectName("SummaryLabel")
+        event_layout.addWidget(event_label)
+
+        event_combo = QComboBox()
+        event_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        event_combo.setMinimumHeight(36)
+        event_combo.currentIndexChanged.connect(self._on_event_combo_changed)
+        event_layout.addWidget(event_combo, 1)
+
+        event_layout.addStretch()
+        selection_card_layout.addLayout(event_layout)
+        self._event_combo = event_combo
+
         combo_layout = QHBoxLayout()
         combo_layout.setContentsMargins(0, 0, 0, 0)
         combo_layout.setSpacing(12)
@@ -220,6 +247,88 @@ class NoiseAnalysisWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Channel management
     # ------------------------------------------------------------------
+    def _populate_event_selector(self) -> None:
+        combo = self._event_combo
+        if combo is None:
+            return
+        combo.blockSignals(True)
+        combo.clear()
+        if self._event_name and self._event_name not in self._event_names:
+            self._event_names.append(self._event_name)
+        for name in self._event_names:
+            combo.addItem(name)
+        index = 0
+        if self._event_name and self._event_name in self._event_names:
+            index = self._event_names.index(self._event_name)
+        combo.setCurrentIndex(index)
+        combo.blockSignals(False)
+        combo.setEnabled(combo.count() > 1)
+
+    def _ensure_event_listed(self, event_name: str) -> None:
+        if not event_name:
+            return
+        if event_name not in self._event_names:
+            self._event_names.append(event_name)
+            if self._event_combo is not None:
+                self._event_combo.addItem(event_name)
+        if self._event_combo is not None:
+            self._event_combo.setEnabled(self._event_combo.count() > 1)
+
+    def _sync_event_combo(self, event_name: Optional[str]) -> None:
+        combo = self._event_combo
+        if combo is None or not event_name:
+            return
+        if event_name not in self._event_names:
+            self._ensure_event_listed(event_name)
+        try:
+            index = self._event_names.index(event_name)
+        except ValueError:
+            return
+        if combo.currentIndex() != index:
+            self._block_event_combo = True
+            try:
+                combo.setCurrentIndex(index)
+            finally:
+                self._block_event_combo = False
+        combo.setEnabled(combo.count() > 1)
+
+    def _on_event_combo_changed(self, index: int) -> None:
+        if self._block_event_combo:
+            return
+        if 0 <= index < len(self._event_names):
+            self._switch_event(self._event_names[index], from_user=True)
+
+    def _switch_event(self, event_name: str, *, from_user: bool) -> None:
+        if not event_name:
+            return
+        self._ensure_event_listed(event_name)
+        previous = self._event_name
+        if event_name == previous:
+            self._sync_event_combo(event_name)
+            return
+
+        self._event_name = event_name
+        self.setWindowTitle(f"Noise Analysis — Event {event_name}")
+        self._subtitle_label.setText(f"Event {event_name}")
+        self._sync_event_combo(event_name)
+        try:
+            self.statusBar().showMessage(f"Viewing event {event_name}", 4000)
+        except Exception:
+            pass
+
+        self._update_analysis()
+
+        if from_user and self._external_event_callback is not None:
+            try:
+                self._external_event_callback(event_name)
+            except Exception:
+                pass
+
+    def set_current_event(self, event_name: Optional[str]) -> None:
+        if not event_name:
+            return
+        self._switch_event(event_name, from_user=False)
+
     def _populate_channels(self) -> None:
         self.channel_combo.blockSignals(True)
         self.channel_combo.clear()
@@ -250,9 +359,10 @@ class NoiseAnalysisWindow(QMainWindow):
         return flat.size > 0
 
     def _get_channel_arrays(self, channel: str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-        if channel not in self._data_cache:
-            self._data_cache[channel] = self._loader(channel)
-        return self._data_cache[channel]
+        key = (self._event_name, channel)
+        if key not in self._data_cache:
+            self._data_cache[key] = self._loader(self._event_name, channel)
+        return self._data_cache[key]
 
     # ------------------------------------------------------------------
     # Analysis & plotting
@@ -462,8 +572,17 @@ def launch_noise_analysis_window(
     event_name: str,
     channels: Iterable[ChannelMeta],
     loader: ChannelLoader,
+    event_names: Optional[Sequence[str]] = None,
+    on_event_changed: Optional[Callable[[str], None]] = None,
     parent: Optional[QWidget] = None,
 ) -> NoiseAnalysisWindow:
     """Create a :class:`NoiseAnalysisWindow` ready for display."""
 
-    return NoiseAnalysisWindow(event_name=event_name, channels=channels, loader=loader, parent=parent)
+    return NoiseAnalysisWindow(
+        event_name=event_name,
+        channels=channels,
+        loader=loader,
+        event_names=event_names,
+        on_event_changed=on_event_changed,
+        parent=parent,
+    )

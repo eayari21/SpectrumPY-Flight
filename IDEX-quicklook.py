@@ -2548,7 +2548,13 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            window = launch_dust_composition_window(self._h5, self._current_event, parent=self)
+            window = launch_dust_composition_window(
+                self._h5,
+                self._current_event,
+                parent=self,
+                event_names=self._events,
+                on_event_changed=self._handle_child_event_change,
+            )
         except Exception as exc:
             QMessageBox.critical(
                 self,
@@ -2605,8 +2611,8 @@ class MainWindow(QMainWindow):
             for name, definition in CHANNEL_DEFS.items()
         ]
 
-        def loader(channel: str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-            values, times = self._resolve_channel_data(self._current_event, channel)
+        def loader(event: str, channel: str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+            values, times = self._resolve_channel_data(event, channel)
             return (
                 None if values is None else np.array(values, copy=True),
                 None if times is None else np.array(times, copy=True),
@@ -2617,6 +2623,8 @@ class MainWindow(QMainWindow):
                 event_name=self._current_event,
                 channels=channel_metas,
                 loader=loader,
+                event_names=self._events,
+                on_event_changed=self._handle_child_event_change,
                 parent=self,
             )
         except Exception as exc:
@@ -2846,6 +2854,50 @@ class MainWindow(QMainWindow):
         self._write_rise_metrics(event, channel, metrics)
         return metrics
 
+    def _write_fit_parameters(self, dataset_path: str, values: np.ndarray) -> bool:
+        if self._h5 is None or h5py is None:
+            return False
+
+        cleaned = dataset_path.strip("/")
+        if not cleaned:
+            return False
+
+        try:
+            parent_path, dataset_name = cleaned.rsplit("/", 1)
+        except ValueError:
+            return False
+
+        try:
+            parent = self._h5[parent_path]
+        except Exception:
+            return False
+
+        if not isinstance(parent, h5py.Group):
+            return False
+
+        data = np.array(values, copy=True)
+        try:
+            if dataset_name in parent:
+                existing = parent[dataset_name]
+                if isinstance(existing, h5py.Dataset) and existing.shape == data.shape:
+                    existing[...] = data
+                else:
+                    try:
+                        del parent[dataset_name]
+                    except Exception:
+                        return False
+                    parent.create_dataset(dataset_name, data=data)
+            else:
+                parent.create_dataset(dataset_name, data=data)
+        except Exception:
+            return False
+
+        try:
+            self._h5.flush()
+        except Exception:
+            pass
+        return True
+
     def _resolve_channel_data(self, event: str, channel: str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         definition = CHANNEL_DEFS.get(channel)
         if not definition:
@@ -2853,6 +2905,23 @@ class MainWindow(QMainWindow):
         values = self._get_dataset(event, definition.dataset)
         times = self._get_dataset(event, definition.time_dataset)
         return values, times
+
+    def _handle_child_event_change(self, event_name: str) -> None:
+        if not event_name or event_name not in self._events:
+            return
+        index = self._events.index(event_name)
+        if self.event_combo.currentIndex() != index:
+            self.event_combo.setCurrentIndex(index)
+        else:
+            self.plot_event(event_name)
+
+    def _broadcast_event_to_children(self, event_name: Optional[str]) -> None:
+        for window in list(self._child_windows):
+            if hasattr(window, "set_current_event"):
+                try:
+                    window.set_current_event(event_name)
+                except Exception:
+                    continue
 
     def open_file(self, path: str, preferred_event: Optional[str] = None):
         self._reset_state()
@@ -2978,6 +3047,7 @@ class MainWindow(QMainWindow):
             pass
 
         if not self._data_source or not event_name:
+            self._broadcast_event_to_children(None)
             self._current_event = None
             ax = self.figure.add_subplot(111)
             ax.text(
@@ -2997,6 +3067,7 @@ class MainWindow(QMainWindow):
             return
 
         self._current_event = event_name
+        self._broadcast_event_to_children(event_name)
         self._update_channel_button_states(event_name)
         self.refresh_fit_controls()
 
@@ -3479,18 +3550,42 @@ class MainWindow(QMainWindow):
             return np.array(override, copy=True)
         return np.array(base_array, copy=True)
 
-    def update_fit_override(self, event: str, channel: str, dataset_path: str, values: np.ndarray):
+    def update_fit_override(
+        self,
+        event: str,
+        channel: str,
+        dataset_path: str,
+        values: np.ndarray,
+        *,
+        persist: bool = True,
+    ) -> bool:
         array = np.array(values, copy=True)
         self._fit_param_overrides[(event, channel, dataset_path)] = array
         self._remove_fit_override(event, channel, dataset_path)
         recomputed = self._recalculate_fit(event, channel, dataset_path, array)
+        saved_to_file = False
+        if persist:
+            saved_to_file = self._write_fit_parameters(dataset_path, array)
+
         if recomputed:
             message = f"Updated fit parameters for {channel}; recomputed fit curve (in-memory only)."
         else:
             message = f"Updated fit parameters for {channel}; fit curve unchanged (missing data)."
+
+        if persist:
+            if saved_to_file:
+                if "(in-memory only)" in message:
+                    message = message.replace("(in-memory only)", "and saved to file")
+                else:
+                    message += " Saved to file."
+            elif self._h5 is None or h5py is None:
+                message += " File changes unavailable in this session."
+            else:
+                message += " Unable to persist changes to the file."
         self.statusBar().showMessage(message, 6000)
         self._fit_cache.pop((event, channel), None)
         self.plot_event(self._current_event)
+        return saved_to_file
 
     def clear_fit_override(self, event: str, channel: str, dataset_path: str):
         key = (event, channel, dataset_path)
@@ -3851,13 +3946,27 @@ class FitParameterDialog(QDialog):
         if self._current_shape:
             array = array.reshape(self._current_shape)
 
-        self._save_callback(self._event_name, self._current_channel, self._current_dataset, array)
+        saved_to_file = bool(
+            self._save_callback(
+                self._event_name,
+                self._current_channel,
+                self._current_dataset,
+                array,
+                persist=not auto,
+            )
+        )
+        if saved_to_file:
+            self._param_arrays[(self._current_channel, self._current_dataset)] = np.array(array, copy=True)
+
         self._display_dataset(self._current_channel, self._current_dataset, preserve_feedback=True)
 
         if auto:
             self._set_feedback("Fit updated with latest parameters.", success=True)
         else:
-            self._set_feedback("Changes stored in-memory and fit recomputed.", success=True)
+            if saved_to_file:
+                self._set_feedback("Changes saved to file and fit recomputed.", success=True)
+            else:
+                self._set_feedback("Changes stored in-memory and fit recomputed.", success=True)
         return True
 
     def _on_table_item_changed(self, item: QTableWidgetItem):
