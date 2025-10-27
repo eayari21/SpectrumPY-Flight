@@ -1,5 +1,7 @@
 # SpectrumPY-Flight
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14948734.svg)](https://doi.org/10.5281/zenodo.14948734)
+
 > Ground-system decoding, fitting, and visualization tools for the LASP/IMPACT IDEX campaign.
 
 ![SpectrumPY overview](docs/media/quicklook_overview.svg)
@@ -110,15 +112,15 @@ modified versions without written permission. See [`LICENSE`](./LICENSE).
 ## Citation & DOI
 
 If you use this software in research or a product, please **cite it**. We archive
-releases on **Zenodo** to mint a DOI.
+releases on **Zenodo** to mint a DOI. You can also download machine-readable metadata from [`CITATION.cff`](./CITATION.cff).
 
 **How to cite (example):**
-> Ayari, E. (2025). SpectrumPY-Flight (vX.Y.Z) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.XXXXXXX
+> Ayari, E. (2025). SpectrumPY-Flight (v1.0.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.14948734
 
-After you create your first Zenodo-backed GitHub release, replace the placeholder above and add the badge:
+For convenience, you can embed the DOI badge anywhere documentation is published:
 
 ```
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14948734.svg)](https://doi.org/10.5281/zenodo.14948734)
 ```
 
 ## Contributing
