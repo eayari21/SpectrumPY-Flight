@@ -29,6 +29,7 @@ import json
 import math
 import re
 import unicodedata
+from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -46,6 +47,7 @@ try:  # pragma: no cover - Qt import guard
         QDialogButtonBox,
         QDoubleSpinBox,
         QFormLayout,
+        QGridLayout,
         QGroupBox,
         QHBoxLayout,
         QLabel,
@@ -72,6 +74,7 @@ except Exception:  # pragma: no cover - fallback to PyQt6
         QDialogButtonBox,
         QDoubleSpinBox,
         QFormLayout,
+        QGridLayout,
         QGroupBox,
         QHBoxLayout,
         QLabel,
@@ -93,6 +96,8 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolb
 from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from matplotlib.widgets import SpanSelector
+
+from plot_style import apply_plot_style
 
 from line_shapes import (
     double_emg as _line_double_emg,
@@ -1972,6 +1977,585 @@ class InspectMassLineDialog(QDialog):
         return self._result
 
 # ---------------------------------------------------------------------------
+# Ternary composition explorer
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TernaryAxisSelection:
+    mode: str  # "value" or "ratio"
+    primary: Optional[str]
+    secondary: Optional[str]
+
+
+class TernaryAxisSelector(QWidget):
+    """Composite widget that mirrors the axis selector used in the HDF explorer."""
+
+    def __init__(self, title: str, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+
+        self._title_label = QLabel(title, self)
+        self._title_label.setStyleSheet("font-weight: 600;")
+
+        self._mode_combo = QComboBox(self)
+        self._mode_combo.addItems(["Value", "Ratio"])
+
+        self._primary_combo = QComboBox(self)
+        self._primary_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._secondary_combo = QComboBox(self)
+        self._secondary_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+
+        self._divider_label = QLabel("÷", self)
+        self._divider_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self._secondary_combo.setVisible(False)
+        self._divider_label.setVisible(False)
+
+        self._mode_combo.currentIndexChanged.connect(self._update_secondary_visibility)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        layout.addWidget(self._title_label)
+
+        mode_row = QHBoxLayout()
+        mode_row.setContentsMargins(0, 0, 0, 0)
+        mode_row.setSpacing(6)
+        mode_row.addWidget(QLabel("Mode:", self))
+        mode_row.addWidget(self._mode_combo, stretch=1)
+        layout.addLayout(mode_row)
+
+        selector_row = QHBoxLayout()
+        selector_row.setContentsMargins(0, 0, 0, 0)
+        selector_row.setSpacing(6)
+        selector_row.addWidget(self._primary_combo, stretch=1)
+        selector_row.addWidget(self._divider_label)
+        selector_row.addWidget(self._secondary_combo, stretch=1)
+        layout.addLayout(selector_row)
+
+    # ------------------------------------------------------------------
+    def _update_secondary_visibility(self) -> None:
+        is_ratio = self._mode_combo.currentText().strip().lower() == "ratio"
+        self._secondary_combo.setVisible(is_ratio)
+        self._divider_label.setVisible(is_ratio)
+
+    # ------------------------------------------------------------------
+    def _apply_items(self, combo: QComboBox, items: Sequence[str]) -> None:
+        current = combo.currentText()
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("— Select —")
+        for label in items:
+            combo.addItem(label)
+        if current and current in items:
+            combo.setCurrentText(current)
+        combo.blockSignals(False)
+
+    # ------------------------------------------------------------------
+    def set_items(self, items: Sequence[str]) -> None:
+        labels = list(items)
+        if not labels:
+            labels = ["No scalar data detected"]
+        self._apply_items(self._primary_combo, labels)
+        self._apply_items(self._secondary_combo, labels)
+        self._update_secondary_visibility()
+
+    # ------------------------------------------------------------------
+    def current(self) -> TernaryAxisSelection:
+        mode = self._mode_combo.currentText().strip().lower()
+        primary = self._primary_combo.currentText()
+        secondary = self._secondary_combo.currentText()
+        if self._primary_combo.currentIndex() <= 0:
+            primary = None
+        if self._secondary_combo.currentIndex() <= 0:
+            secondary = None
+        if mode != "ratio":
+            secondary = None
+        return TernaryAxisSelection(mode=mode, primary=primary, secondary=secondary)
+
+
+@dataclass
+class ScalarRepository:
+    events: List[str] = field(default_factory=list)
+    scalars: Dict[str, List[float]] = field(default_factory=dict)
+
+    def append_event(self, name: str) -> int:
+        index = len(self.events)
+        self.events.append(name)
+        for values in self.scalars.values():
+            values.append(math.nan)
+        return index
+
+    def assign(self, key: str, index: int, value: float) -> None:
+        if key not in self.scalars:
+            self.scalars[key] = [math.nan] * len(self.events)
+        series = self.scalars[key]
+        if index >= len(series):
+            series.extend([math.nan] * (index + 1 - len(series)))
+        series[index] = value
+
+    def keys(self) -> List[str]:
+        return sorted(self.scalars.keys())
+
+    def resolve(self, key: Optional[str]) -> np.ndarray:
+        if not key or key not in self.scalars:
+            return np.array([])
+        return np.asarray(self.scalars[key], dtype=float)
+
+
+class TernaryCompositionDialog(QDialog):
+    """Interactive ternary plotter for event-level scalar quantities."""
+
+    _SQRT3_OVER_2 = math.sqrt(3.0) / 2.0
+
+    _REFERENCE_REGIONS: Tuple[Tuple[str, Dict[str, float]], ...] = (
+        ("Forsterite (Mg₂SiO₄)", {"Mg": 0.92, "Fe": 0.04, "Ca": 0.04}),
+        ("Fayalite (Fe₂SiO₄)", {"Fe": 0.92, "Mg": 0.04, "Ca": 0.04}),
+        ("Monticellite (CaMgSiO₄)", {"Ca": 0.52, "Mg": 0.40, "Fe": 0.08}),
+        ("Kirschsteinite (CaFeSiO₄)", {"Ca": 0.52, "Fe": 0.40, "Mg": 0.08}),
+        ("Enstatite (MgSiO₃)", {"Mg": 0.70, "Fe": 0.15, "Ca": 0.15}),
+        ("Diopside (CaMgSiO₃)", {"Ca": 0.60, "Mg": 0.32, "Fe": 0.08}),
+        ("Hedenbergite (CaFeSiO₃)", {"Ca": 0.60, "Fe": 0.32, "Mg": 0.08}),
+        ("Anorthite (CaAl₂Si₂O₈)", {"Ca": 0.78, "Mg": 0.11, "Fe": 0.11}),
+    )
+
+    def __init__(self, parent: Optional[QWidget], handle: Optional[h5py.File]):
+        super().__init__(parent)
+
+        self.setModal(False)
+        self.setWindowTitle("SpectrumPY — Ternary composition explorer")
+        self.resize(960, 760)
+
+        apply_plot_style()
+
+        self._handle = handle
+        self._repository = self._collect_repository(handle)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        intro = QLabel(
+            "Select any three scalar quantities to plot them on a ternary diagram. "
+            "Values are normalised per-event so that the vertices represent 100 %.",
+            self,
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        selector_group = QGroupBox("Axis configuration", self)
+        selector_layout = QGridLayout(selector_group)
+        selector_layout.setContentsMargins(12, 12, 12, 12)
+        selector_layout.setHorizontalSpacing(14)
+        selector_layout.setVerticalSpacing(10)
+
+        self.axis_a = TernaryAxisSelector("Vertex A (bottom left)", selector_group)
+        self.axis_b = TernaryAxisSelector("Vertex B (bottom right)", selector_group)
+        self.axis_c = TernaryAxisSelector("Vertex C (top)", selector_group)
+
+        selector_layout.addWidget(self.axis_a, 0, 0)
+        selector_layout.addWidget(self.axis_b, 0, 1)
+        selector_layout.addWidget(self.axis_c, 1, 0)
+
+        self.reference_checkbox = QCheckBox(
+            "Annotate Mg–Fe–Ca mineral fields when applicable",
+            selector_group,
+        )
+        self.reference_checkbox.setChecked(True)
+        selector_layout.addWidget(self.reference_checkbox, 1, 1)
+
+        layout.addWidget(selector_group)
+
+        button_row = QHBoxLayout()
+        button_row.setSpacing(8)
+        button_row.addStretch(1)
+        self.plot_button = QPushButton("Render ternary plot", self)
+        self.plot_button.clicked.connect(self._render_plot)
+        button_row.addWidget(self.plot_button)
+        layout.addLayout(button_row)
+
+        figure_container = QWidget(self)
+        figure_layout = QVBoxLayout(figure_container)
+        figure_layout.setContentsMargins(0, 0, 0, 0)
+        figure_layout.setSpacing(6)
+        self.figure = Figure(figsize=(6.8, 5.4), constrained_layout=False)
+        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.toolbar = NavigationToolbar2QT(self.canvas, figure_container)
+        figure_layout.addWidget(self.toolbar)
+        figure_layout.addWidget(self.canvas, stretch=1)
+        layout.addWidget(figure_container, stretch=1)
+
+        self.result_table = QTableWidget(self)
+        self.result_table.setColumnCount(4)
+        self.result_table.setHorizontalHeaderLabels([
+            "Event",
+            "Vertex A (%)",
+            "Vertex B (%)",
+            "Vertex C (%)",
+        ])
+        self.result_table.verticalHeader().setVisible(False)
+        self.result_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.result_table.setAlternatingRowColors(True)
+        header = self.result_table.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.setDefaultSectionSize(160)
+        layout.addWidget(self.result_table)
+
+        self.status_label = QLabel("Select axes and click ‘Render ternary plot’.", self)
+        self.status_label.setStyleSheet("color: #495057;")
+        layout.addWidget(self.status_label)
+
+        scalar_labels = self._repository.keys()
+        for selector in (self.axis_a, self.axis_b, self.axis_c):
+            selector.set_items(scalar_labels)
+
+        if not scalar_labels:
+            self.plot_button.setEnabled(False)
+            self.status_label.setText("No scalar quantities found in the loaded events.")
+            self._draw_placeholder("Load analysis data with scalar quantities to begin.")
+
+    # ------------------------------------------------------------------
+    def _collect_repository(self, handle: Optional[h5py.File]) -> ScalarRepository:
+        repo = ScalarRepository()
+        if handle is None:
+            return repo
+        for event_name, group in handle.items():
+            if not isinstance(group, h5py.Group):
+                continue
+            index = repo.append_event(str(event_name))
+            analysis = group.get("Analysis")
+            if isinstance(analysis, h5py.Group):
+                self._collect_group_scalars(repo, index, analysis, prefix="Analysis/")
+                self._collect_mass_line_scalars(repo, index, analysis)
+            metadata = group.get("Metadata")
+            if isinstance(metadata, h5py.Group):
+                self._collect_group_scalars(repo, index, metadata, prefix="Metadata/")
+        return repo
+
+    # ------------------------------------------------------------------
+    def _collect_group_scalars(
+        self,
+        repo: ScalarRepository,
+        index: int,
+        group: h5py.Group,
+        *,
+        prefix: str,
+    ) -> None:
+        for name, obj in group.items():
+            if isinstance(obj, h5py.Group):
+                self._collect_group_scalars(repo, index, obj, prefix=f"{prefix}{name}/")
+            elif isinstance(obj, h5py.Dataset):
+                value = self._extract_scalar(obj)
+                if value is not None and math.isfinite(value):
+                    repo.assign(f"{prefix}{name}", index, float(value))
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _extract_scalar(dataset: h5py.Dataset) -> Optional[float]:
+        try:
+            raw = dataset[()]
+        except Exception:
+            return None
+        array = np.asarray(raw)
+        if array.size == 0:
+            return None
+        if array.ndim == 0:
+            return TernaryCompositionDialog._coerce_float(array.item())
+        if array.ndim == 1 and array.size == 1:
+            return TernaryCompositionDialog._coerce_float(array.reshape(-1)[0])
+        return None
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _coerce_float(value: object) -> Optional[float]:
+        if isinstance(value, np.generic):
+            value = value.item()
+        if isinstance(value, (bytes, bytearray)):
+            try:
+                value = value.decode("utf-8", errors="ignore")
+            except Exception:
+                return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            try:
+                return float(stripped)
+            except ValueError:
+                return None
+        try:
+            numeric = float(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if not math.isfinite(numeric):
+            return None
+        return numeric
+
+    # ------------------------------------------------------------------
+    def _collect_mass_line_scalars(self, repo: ScalarRepository, index: int, analysis: h5py.Group) -> None:
+        dust_group = analysis.get(DUST_GROUP)
+        if not isinstance(dust_group, h5py.Group):
+            return
+        dataset = dust_group.get(MASS_LINES_DATASET)
+        if not isinstance(dataset, h5py.Dataset):
+            return
+        try:
+            table = dataset[()]
+        except Exception:
+            return
+        dtype = getattr(table, "dtype", None)
+        if dtype is None or not getattr(dtype, "names", None):
+            return
+        species_totals: Dict[str, float] = {}
+        element_totals: Dict[str, float] = defaultdict(float)
+
+        entries = np.atleast_1d(table)
+
+        def _get_field(entry: np.void, candidates: Sequence[str]) -> Optional[object]:
+            for field in candidates:
+                if field in entry.dtype.names:
+                    return entry[field]
+            return None
+
+        for entry in entries:
+            abundance_raw = _get_field(entry, ("abundance", "relative_abundance"))
+            if abundance_raw is None:
+                continue
+            abundance = self._coerce_float(abundance_raw)
+            if abundance is None or abundance <= 0.0:
+                continue
+            label_raw = _get_field(entry, ("assigned_species", "label", "name", "species"))
+            if label_raw in (None, "", b""):
+                continue
+            if isinstance(label_raw, (bytes, bytearray)):
+                try:
+                    label = label_raw.decode("utf-8", errors="ignore")
+                except Exception:
+                    label = str(label_raw)
+            else:
+                label = str(label_raw)
+            label = label.strip()
+            if not label:
+                continue
+            species_totals[label] = species_totals.get(label, 0.0) + abundance
+            for element in _formula_to_elements(label):
+                element_totals[element] += abundance
+
+        for species, total in species_totals.items():
+            repo.assign(f"Dust/Species/{species}", index, total)
+        for element, total in element_totals.items():
+            repo.assign(f"Dust/Element/{element}", index, total)
+
+    # ------------------------------------------------------------------
+    def _resolve_axis(self, selection: TernaryAxisSelection) -> np.ndarray:
+        base = self._repository.resolve(selection.primary)
+        if selection.mode != "ratio" or not selection.secondary:
+            return base
+        denominator = self._repository.resolve(selection.secondary)
+        if base.size == 0 or denominator.size == 0 or base.size != denominator.size:
+            return np.array([])
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = np.divide(base, denominator, out=np.full_like(base, np.nan), where=denominator != 0)
+        return ratio
+
+    # ------------------------------------------------------------------
+    def _render_plot(self) -> None:
+        selections = [self.axis_a.current(), self.axis_b.current(), self.axis_c.current()]
+        labels = [sel.primary for sel in selections]
+        if any(label is None for label in labels):
+            QMessageBox.information(self, "Select quantities", "Choose three quantities before plotting.")
+            return
+        arrays = [self._resolve_axis(sel) for sel in selections]
+        if any(arr.size == 0 for arr in arrays):
+            self._draw_placeholder("Selected axes do not have overlapping data across events.")
+            self.status_label.setText("No overlapping samples for the chosen axes.")
+            self.result_table.setRowCount(0)
+            return
+
+        matrix = np.vstack(arrays)
+        event_indices = np.arange(matrix.shape[1])
+        finite_mask = np.all(np.isfinite(matrix), axis=0)
+        matrix = matrix[:, finite_mask]
+        event_indices = event_indices[finite_mask]
+        if matrix.shape[1] == 0:
+            self._draw_placeholder("All selected values are NaN or infinite.")
+            self.status_label.setText("All selected values are NaN or infinite.")
+            self.result_table.setRowCount(0)
+            return
+        non_negative = np.all(matrix >= 0.0, axis=0)
+        matrix = matrix[:, non_negative]
+        event_indices = event_indices[non_negative]
+        if matrix.shape[1] == 0:
+            self._draw_placeholder("Selected ratios produced negative values; ternary plotting requires non-negative inputs.")
+            self.status_label.setText("Ratios must yield non-negative values to plot in barycentric space.")
+            self.result_table.setRowCount(0)
+            return
+
+        totals = matrix.sum(axis=0)
+        positive = totals > 0.0
+        matrix = matrix[:, positive]
+        event_indices = event_indices[positive]
+        totals = totals[positive]
+        if matrix.shape[1] == 0:
+            self._draw_placeholder("All selected values sum to zero; cannot normalise.")
+            self.status_label.setText("All selected values sum to zero for the available events.")
+            self.result_table.setRowCount(0)
+            return
+
+        normalised = matrix / totals
+        vertex_labels = [self._format_axis_label(sel) for sel in selections]
+
+        xs = normalised[1, :] + 0.5 * normalised[2, :]
+        ys = self._SQRT3_OVER_2 * normalised[2, :]
+
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        self._draw_triangle(ax)
+        self._draw_grid(ax)
+
+        scatter = ax.scatter(
+            xs,
+            ys,
+            c="#0c5da5",
+            s=48,
+            edgecolor="#111111",
+            linewidths=0.6,
+            alpha=0.85,
+            label="Events",
+        )
+        scatter.set_picker(True)
+
+        ax.legend(loc="upper right", frameon=False)
+
+        self._label_vertices(ax, vertex_labels)
+        self._maybe_add_reference_fields(ax, selections)
+
+        self.canvas.draw_idle()
+
+        self._populate_table(event_indices, normalised)
+        count = normalised.shape[1]
+        event_word = "event" if count == 1 else "events"
+        self.status_label.setText(f"Rendered ternary plot for {count} {event_word}.")
+
+    # ------------------------------------------------------------------
+    def _draw_triangle(self, ax):
+        vertices = np.array([
+            (0.0, 0.0),
+            (1.0, 0.0),
+            (0.5, self._SQRT3_OVER_2),
+            (0.0, 0.0),
+        ])
+        ax.plot(vertices[:, 0], vertices[:, 1], color="#343a40", linewidth=1.4)
+        ax.set_xlim(-0.05, 1.05)
+        ax.set_ylim(-0.05, self._SQRT3_OVER_2 + 0.08)
+        ax.set_aspect("equal", "box")
+        ax.axis("off")
+
+    # ------------------------------------------------------------------
+    def _draw_grid(self, ax) -> None:
+        fractions = (0.2, 0.4, 0.6, 0.8)
+        color = "#adb5bd"
+        alpha = 0.5
+        for frac in fractions:
+            # Lines parallel to base (constant C)
+            p1 = self._barycentric_to_cartesian(1.0 - frac, 0.0, frac)
+            p2 = self._barycentric_to_cartesian(0.0, 1.0 - frac, frac)
+            ax.plot((p1[0], p2[0]), (p1[1], p2[1]), color=color, linewidth=0.8, alpha=alpha)
+
+            # Lines parallel to left side (constant B)
+            p3 = self._barycentric_to_cartesian(1.0 - frac, frac, 0.0)
+            p4 = self._barycentric_to_cartesian(0.0, frac, 1.0 - frac)
+            ax.plot((p3[0], p4[0]), (p3[1], p4[1]), color=color, linewidth=0.8, alpha=alpha)
+
+            # Lines parallel to right side (constant A)
+            p5 = self._barycentric_to_cartesian(frac, 1.0 - frac, 0.0)
+            p6 = self._barycentric_to_cartesian(frac, 0.0, 1.0 - frac)
+            ax.plot((p5[0], p6[0]), (p5[1], p6[1]), color=color, linewidth=0.8, alpha=alpha)
+
+    # ------------------------------------------------------------------
+    def _label_vertices(self, ax, labels: Sequence[str]) -> None:
+        offsets = [(0.0, -0.08, "left"), (0.0, -0.08, "right"), (0.0, 0.06, "center")]
+        positions = [
+            (0.0, 0.0),
+            (1.0, 0.0),
+            (0.5, self._SQRT3_OVER_2),
+        ]
+        for (x, y), text, (dx, dy, align) in zip(positions, labels, offsets):
+            ax.text(
+                x + dx,
+                y + dy,
+                text,
+                ha=align,
+                va="center" if align == "center" else "top",
+                fontsize=13,
+                fontweight="semibold",
+            )
+
+    # ------------------------------------------------------------------
+    def _maybe_add_reference_fields(self, ax, selections: Sequence[TernaryAxisSelection]) -> None:
+        if not self.reference_checkbox.isChecked():
+            return
+        axis_elements = [self._infer_axis_element(sel) for sel in selections]
+        if None in axis_elements:
+            return
+        element_map = {"A": axis_elements[0], "B": axis_elements[1], "C": axis_elements[2]}
+        required = {"Mg", "Fe", "Ca"}
+        if set(element_map.values()) != required:
+            return
+        for label, fractions in self._REFERENCE_REGIONS:
+            a = fractions.get(element_map["A"], 0.0)
+            b = fractions.get(element_map["B"], 0.0)
+            c = fractions.get(element_map["C"], 0.0)
+            if a + b + c <= 0.0:
+                continue
+            a_norm = a / (a + b + c)
+            b_norm = b / (a + b + c)
+            c_norm = c / (a + b + c)
+            x, y = self._barycentric_to_cartesian(a_norm, b_norm, c_norm)
+            ax.text(x, y, label, ha="center", va="center", fontsize=11, color="#495057")
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _barycentric_to_cartesian(a: float, b: float, c: float) -> Tuple[float, float]:
+        x = b + 0.5 * c
+        y = TernaryCompositionDialog._SQRT3_OVER_2 * c
+        return (x, y)
+
+    # ------------------------------------------------------------------
+    def _format_axis_label(self, selection: TernaryAxisSelection) -> str:
+        if selection.mode == "ratio" and selection.secondary:
+            return f"{selection.primary} ÷ {selection.secondary}"
+        return selection.primary or "—"
+
+    # ------------------------------------------------------------------
+    def _populate_table(self, event_indices: np.ndarray, values: np.ndarray) -> None:
+        names = [self._repository.events[int(idx)] for idx in event_indices]
+        self.result_table.setRowCount(len(names))
+        for row, (event_name, a, b, c) in enumerate(zip(names, values[0], values[1], values[2])):
+            self.result_table.setItem(row, 0, QTableWidgetItem(str(event_name)))
+            self.result_table.setItem(row, 1, QTableWidgetItem(f"{a * 100.0:.2f}"))
+            self.result_table.setItem(row, 2, QTableWidgetItem(f"{b * 100.0:.2f}"))
+            self.result_table.setItem(row, 3, QTableWidgetItem(f"{c * 100.0:.2f}"))
+        self.result_table.resizeColumnsToContents()
+
+    # ------------------------------------------------------------------
+    def _draw_placeholder(self, message: str) -> None:
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        ax.axis("off")
+        ax.text(0.5, 0.5, message, ha="center", va="center", fontsize=14, transform=ax.transAxes)
+        self.canvas.draw_idle()
+
+    # ------------------------------------------------------------------
+    def _infer_axis_element(self, selection: TernaryAxisSelection) -> Optional[str]:
+        if selection.mode == "ratio" or not selection.primary:
+            return None
+        token = selection.primary.split("/")[-1]
+        symbol = _infer_element_symbol(token)
+        return symbol
+
+# ---------------------------------------------------------------------------
 # Relative sensitivity factors dialog
 # ---------------------------------------------------------------------------
 
@@ -2321,6 +2905,35 @@ class DustCompositionWindow(QMainWindow):
         self.setWindowTitle(f"Dust Composition Analysis — Event {event_name}")
         self.resize(1320, 880)
 
+        self._time_axis = np.zeros(0)
+        self._waveforms: Dict[str, np.ndarray] = {}
+        self._combined: Optional[np.ndarray] = None
+        self._combined_cached_mass: Optional[np.ndarray] = None
+        self._baseline = 0.0
+        self._mass_params = {"stretch": 1.0, "shift": 0.0}
+        self._mass_params_loaded = False
+        self._mass_axis_lock_level = 0
+        self._mass_lines: List[MassLineFit] = []
+        self._mass_line_counter = 0
+        self._selected_line_id: Optional[int] = None
+        self._manual_sample_guess: Optional[str] = None
+        self._auto_sample_match: Optional[SampleMatch] = None
+        self._auto_mixture_match: Optional[MixtureMatch] = None
+        self._block_sample_guess_signal = False
+        self._anchor_displayed_line_id: Optional[int] = None
+
+        self._combined_axis = None
+        self._combined_time_axis = None
+        self._baseline_artist = None
+        self._span_selector: Optional[SpanSelector] = None
+        self._in_baseline_mode = False
+        self._block_table_signals = False
+        self._block_selection_signals = False
+        self._block_species_assignment = False
+        self._rsf_enabled = False
+        self._rsf_values: Dict[int, float] = {}
+        self._rsf_normalised: Dict[int, float] = {}
+        self._ternary_dialog: Optional[TernaryCompositionDialog] = None
         self._initialise_analysis_state()
 
         self._load_datasets()
@@ -2954,6 +3567,12 @@ class DustCompositionWindow(QMainWindow):
         self.save_button.setToolTip("Persist the current dust composition analysis back into the HDF5 file.")
         self.save_button.clicked.connect(self._save_to_file)
         layout.addWidget(self.save_button)
+        self.ternary_button = QPushButton("Ternary Plot…", box)
+        self.ternary_button.setToolTip(
+            "Open a ternary composition explorer using scalar quantities collected across all events."
+        )
+        self.ternary_button.clicked.connect(self._open_ternary_plot)
+        layout.addWidget(self.ternary_button)
         self.control_layout.addWidget(box)
 
     def _build_baseline_controls(self) -> None:
@@ -3205,6 +3824,26 @@ class DustCompositionWindow(QMainWindow):
             self._rsf_values.clear()
             self._rsf_normalised.clear()
         self._update_summary()
+
+    def _open_ternary_plot(self) -> None:
+        if self._h5 is None:
+            QMessageBox.information(
+                self,
+                "No data",
+                "Open a dataset before launching the ternary explorer.",
+            )
+            return
+        create_new = self._ternary_dialog is None or not self._ternary_dialog.isVisible()
+        if create_new:
+            self._ternary_dialog = TernaryCompositionDialog(self, self._h5)
+        if self._ternary_dialog is None:
+            return
+        self._ternary_dialog.show()
+        self._ternary_dialog.raise_()
+        try:
+            self._ternary_dialog.activateWindow()
+        except Exception:
+            pass
 
     def _prompt_manual_mass_line(self) -> None:
         defaults = self._manual_mass_defaults()
