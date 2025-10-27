@@ -1495,6 +1495,8 @@ class InspectMassLineDialog(QDialog):
 
         self.figure = Figure(figsize=(6.5, 3.8), constrained_layout=True)
         self.canvas = FigureCanvasQTAgg(self.figure)
+        self.toolbar = NavigationToolbar2QT(self.canvas, figure_container)
+        figure_layout.addWidget(self.toolbar)
         figure_layout.addWidget(self.canvas)
 
         layout.addWidget(figure_container, stretch=1)
