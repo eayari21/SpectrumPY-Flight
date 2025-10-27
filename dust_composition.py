@@ -37,6 +37,8 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 import h5py
 import numpy as np
 
+from matplotlib.collections import PathCollection
+
 try:  # pragma: no cover - Qt import guard
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import (
@@ -63,6 +65,7 @@ try:  # pragma: no cover - Qt import guard
         QTableWidgetItem,
         QVBoxLayout,
         QWidget,
+        QToolButton,
     )
 except Exception:  # pragma: no cover - fallback to PyQt6
     from PyQt6.QtCore import Qt
@@ -90,6 +93,7 @@ except Exception:  # pragma: no cover - fallback to PyQt6
         QTableWidgetItem,
         QVBoxLayout,
         QWidget,
+        QToolButton,
     )
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
@@ -165,6 +169,18 @@ GAIN_MAP = {
     "TOF M": GAIN_MEDIUM,
     "TOF L": GAIN_LOW,
 }
+
+DEFAULT_MASS_STRETCH = 1.492
+DEFAULT_MASS_SHIFT = -10.0
+MIN_MASS_STRETCH = 1.3
+MAX_MASS_STRETCH = 1.6
+
+
+def _clamp_mass_stretch(value: float) -> float:
+    """Return *value* constrained to the allowed stretch window."""
+
+    return float(min(MAX_MASS_STRETCH, max(MIN_MASS_STRETCH, value)))
+
 
 COMBINED_DATASET = "CombinedSignal"
 COMBINED_TIME_DATASET = "CombinedTime"
@@ -1531,12 +1547,59 @@ class InspectMassLineDialog(QDialog):
         figure_layout.setContentsMargins(0, 0, 0, 0)
         figure_layout.setSpacing(6)
 
+        self._selector_buttons: Dict[str, QToolButton] = {}
+        self._selector_mode: Optional[str] = None
+        self._plot_offset = 0.0
+        self._baseline_override: Optional[float] = None
+        self._selector_values: Dict[str, float] = {
+            "baseline": float(self._baseline),
+            "amplitude": float(self._line.amplitude),
+            "trigger": float(self._line.mu),
+            "start": float(self._line.time_start),
+            "end": float(self._line.time_end),
+        }
+        self._axis = None
+
+        selector_row = QHBoxLayout()
+        selector_row.setContentsMargins(0, 0, 0, 0)
+        selector_row.setSpacing(6)
+        selector_label = QLabel("Interactive selectors:", figure_container)
+        selector_label.setStyleSheet("font-weight: 600; font-size: 13px;")
+        selector_row.addWidget(selector_label)
+
+        def _create_selector_button(text: str, mode: str, tooltip: str) -> QToolButton:
+            button = QToolButton(figure_container)
+            button.setText(text)
+            button.setCheckable(True)
+            button.setToolTip(tooltip)
+            button.setStyleSheet(
+                "QToolButton { padding: 4px 10px; border-radius: 6px; }"
+                "QToolButton:checked { background-color: #845ef7; color: white; }"
+            )
+            button.clicked.connect(lambda checked, m=mode: self._on_selector_toggled(m, checked))
+            self._selector_buttons[mode] = button
+            return button
+
+        selector_specs = (
+            ("Baseline", "baseline", "Click to select a new baseline from a horizontal line."),
+            ("Amplitude", "amplitude", "Click to assign amplitude from a horizontal line."),
+            ("μ", "trigger", "Click to place the peak centre (μ)."),
+            ("Start", "start", "Click to assign the fit window start."),
+            ("End", "end", "Click to assign the fit window end."),
+        )
+        for text, mode, tip in selector_specs:
+            selector_row.addWidget(_create_selector_button(text, mode, tip))
+        selector_row.addStretch(1)
+        figure_layout.addLayout(selector_row)
+
         self.figure = Figure(figsize=(6.5, 3.8), constrained_layout=True)
         self.canvas = ScrollFriendlyFigureCanvas(self.figure)
         self.canvas.setMinimumSize(900, 420)
         self.toolbar = NavigationToolbar2QT(self.canvas, figure_container)
         figure_layout.addWidget(self.toolbar)
         figure_layout.addWidget(self.canvas)
+
+        self.canvas.mpl_connect("button_press_event", self._on_selector_click)
 
         content_layout.addWidget(figure_container, stretch=1)
 
@@ -1711,11 +1774,12 @@ class InspectMassLineDialog(QDialog):
         window_min = start - padding
         window_max = end + padding
         mask = (self._time_axis >= window_min) & (self._time_axis <= window_max)
+        baseline_value = self._baseline_override if self._baseline_override is not None else self._baseline
         time_data = self._time_axis[mask]
-        signal_data = self._signal[mask]
+        signal_data = self._signal[mask] - baseline_value
         if time_data.size == 0:
             time_data = self._time_axis
-            signal_data = self._signal
+            signal_data = self._signal - baseline_value
 
         fit_time = np.linspace(start, end, 1200)
         fit_values = _evaluate_line_shape(shape_key, fit_time, amplitude, mu, sigma, lam, extras)
@@ -1731,6 +1795,7 @@ class InspectMassLineDialog(QDialog):
 
         self.figure.clear()
         ax = self.figure.add_subplot(111)
+        self._axis = ax
         ax.scatter(time_data, signal_plot, s=22, c="#1f77b4", alpha=0.75, label="Waveform")
         ax.plot(
             fit_time,
@@ -1746,7 +1811,80 @@ class InspectMassLineDialog(QDialog):
         ax.set_title("Zoomed mass line view", fontsize=14, fontweight="bold")
         ax.legend(loc="best")
         ax.grid(True, which="both", linestyle="--", linewidth=0.6, alpha=0.35)
+        self._plot_offset = offset
+        self._selector_values.update(
+            {
+                "baseline": float(baseline_value),
+                "amplitude": float(self.amplitude_spin.value()),
+                "trigger": float(self.mu_spin.value()),
+                "start": float(self.start_spin.value()),
+                "end": float(self.end_spin.value()),
+            }
+        )
+        self._draw_selector_overlays(ax)
         self.canvas.draw_idle()
+
+    def _on_selector_toggled(self, mode: str, checked: bool) -> None:
+        if checked:
+            for other_mode, button in self._selector_buttons.items():
+                if other_mode == mode:
+                    continue
+                button.blockSignals(True)
+                button.setChecked(False)
+                button.blockSignals(False)
+            self._selector_mode = mode
+        else:
+            if self._selector_mode == mode:
+                self._selector_mode = None
+
+    def _draw_selector_overlays(self, ax) -> None:
+        if ax is None:
+            return
+        color_map = {
+            "baseline": "#b02a37",
+            "amplitude": "#0d6efd",
+            "trigger": "#0ca678",
+            "start": "#228be6",
+            "end": "#e8590c",
+        }
+        for mode, value in self._selector_values.items():
+            if value is None or not math.isfinite(value):
+                continue
+            color = color_map.get(mode, "#495057")
+            if mode == "baseline":
+                ax.axhline(value + self._plot_offset, color=color, linestyle="--", linewidth=1.1, alpha=0.75)
+            elif mode == "amplitude":
+                level = max(float(value), 0.0)
+                ax.axhline(level + self._plot_offset, color=color, linestyle=":", linewidth=1.1, alpha=0.6)
+            else:
+                ax.axvline(value, color=color, linestyle="--", linewidth=1.1, alpha=0.75)
+
+    def _on_selector_click(self, event) -> None:
+        if self._selector_mode is None or event is None:
+            return
+        if event.inaxes != self._axis:
+            return
+        mode = self._selector_mode
+        if mode in {"baseline", "amplitude"}:
+            if event.ydata is None:
+                return
+            value = float(event.ydata) - float(self._plot_offset)
+            if mode == "baseline":
+                self._baseline_override = value
+                self._selector_values["baseline"] = value
+                self._update_plot()
+            else:
+                self.amplitude_spin.setValue(max(abs(value), 1.0e-9))
+        else:
+            if event.xdata is None:
+                return
+            x_value = float(event.xdata)
+            if mode == "trigger":
+                self.mu_spin.setValue(x_value)
+            elif mode == "start":
+                self.start_spin.setValue(x_value)
+            elif mode == "end":
+                self.end_spin.setValue(x_value)
 
     def _shape_config(self, key: str) -> LineShapeConfig:
         return LINE_SHAPES.get(key, LINE_SHAPES["emg"])
@@ -1948,7 +2086,7 @@ class InspectMassLineDialog(QDialog):
                 mass_guess = float("nan")
         extras = self._collect_extra_parameters(validate=True)
         self._line.extra_params = extras
-        return {
+        result = {
             "label": label,
             "amplitude": amplitude,
             "mu": mu,
@@ -1962,6 +2100,9 @@ class InspectMassLineDialog(QDialog):
             "shape": shape_key,
             "extra_params": extras,
         }
+        if self._baseline_override is not None and math.isfinite(self._baseline_override):
+            result["baseline"] = float(self._baseline_override)
+        return result
 
     def _set_species_index(self, index: int) -> None:
         if 0 <= index < self.species_combo.count():
@@ -2200,6 +2341,13 @@ class TernaryCompositionDialog(QDialog):
         self.figure = Figure(figsize=(6.8, 5.4), constrained_layout=False)
         self.canvas = ScrollFriendlyFigureCanvas(self.figure)
         self.toolbar = NavigationToolbar2QT(self.canvas, figure_container)
+        self._scatter_artist: Optional[PathCollection] = None
+        self._scatter_sizes = np.array([], dtype=float)
+        self._latest_event_indices = np.array([], dtype=int)
+        self._latest_normalised = np.zeros((3, 0), dtype=float)
+        self._row_by_event_index: Dict[int, int] = {}
+        self._selected_point: Optional[int] = None
+        self.canvas.mpl_connect("pick_event", self._on_point_picked)
         figure_layout.addWidget(self.toolbar)
         figure_layout.addWidget(self.canvas, stretch=1)
         layout.addWidget(figure_container, stretch=1)
@@ -2443,6 +2591,12 @@ class TernaryCompositionDialog(QDialog):
             label="Events",
         )
         scatter.set_picker(True)
+        self._scatter_artist = scatter
+        self._scatter_sizes = np.full(event_indices.shape, 48.0, dtype=float)
+        scatter.set_sizes(self._scatter_sizes)
+        self._latest_event_indices = event_indices.astype(int, copy=True)
+        self._latest_normalised = normalised.copy()
+        self._selected_point = None
 
         ax.legend(loc="upper right", frameon=False)
 
@@ -2493,19 +2647,20 @@ class TernaryCompositionDialog(QDialog):
 
     # ------------------------------------------------------------------
     def _label_vertices(self, ax, labels: Sequence[str]) -> None:
-        offsets = [(0.0, -0.08, "left"), (0.0, -0.08, "right"), (0.0, 0.06, "center")]
+        offsets = [(-0.04, -0.085, "right"), (0.04, -0.085, "left"), (0.0, 0.08, "center")]
         positions = [
             (0.0, 0.0),
             (1.0, 0.0),
             (0.5, self._SQRT3_OVER_2),
         ]
         for (x, y), text, (dx, dy, align) in zip(positions, labels, offsets):
+            vertical = "bottom" if align == "center" else "top"
             ax.text(
                 x + dx,
                 y + dy,
                 text,
                 ha=align,
-                va="center" if align == "center" else "top",
+                va=vertical,
                 fontsize=13,
                 fontweight="semibold",
             )
@@ -2534,6 +2689,71 @@ class TernaryCompositionDialog(QDialog):
             ax.text(x, y, label, ha="center", va="center", fontsize=11, color="#495057")
 
     # ------------------------------------------------------------------
+    def _highlight_point(self, index: int) -> None:
+        if self._scatter_artist is None or self._scatter_sizes.size == 0:
+            return
+        if index < 0 or index >= self._scatter_sizes.size:
+            return
+        if self._selected_point == index and math.isclose(self._scatter_sizes[index], 96.0):
+            return
+        self._scatter_sizes[:] = 48.0
+        self._scatter_sizes[index] = 96.0
+        self._scatter_artist.set_sizes(self._scatter_sizes)
+        self._selected_point = index
+        self.canvas.draw_idle()
+
+    # ------------------------------------------------------------------
+    def _select_table_row(self, event_index: int) -> None:
+        row = self._row_by_event_index.get(int(event_index))
+        if row is None:
+            return
+        self.result_table.setCurrentCell(row, 0)
+        self.result_table.selectRow(row)
+        item = self.result_table.item(row, 0)
+        if item is not None:
+            self.result_table.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
+
+    # ------------------------------------------------------------------
+    def _on_point_picked(self, event) -> None:
+        if self._scatter_artist is None or not isinstance(event.artist, PathCollection):
+            return
+        if event.artist is not self._scatter_artist:
+            return
+        indices = getattr(event, "ind", [])
+        if not indices:
+            return
+        index = int(indices[0])
+        if index < 0 or index >= self._latest_event_indices.size:
+            return
+        event_idx = int(self._latest_event_indices[index])
+        if event_idx < 0 or event_idx >= len(self._repository.events):
+            return
+        fractions = self._latest_normalised[:, index]
+        try:
+            event_name = self._repository.events[event_idx]
+        except IndexError:
+            return
+        self._highlight_point(index)
+        self._select_table_row(event_idx)
+        self.status_label.setText(
+            "Selected event {}: A {:.1f} %, B {:.1f} %, C {:.1f} %.".format(
+                event_name,
+                fractions[0] * 100.0,
+                fractions[1] * 100.0,
+                fractions[2] * 100.0,
+            )
+        )
+        parent = self.parent()
+        setter = getattr(parent, "set_current_event", None) if parent is not None else None
+        if callable(setter):
+            try:
+                setter(event_name)
+                parent.raise_()
+                parent.activateWindow()
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
     @staticmethod
     def _barycentric_to_cartesian(a: float, b: float, c: float) -> Tuple[float, float]:
         x = b + 0.5 * c
@@ -2550,15 +2770,24 @@ class TernaryCompositionDialog(QDialog):
     def _populate_table(self, event_indices: np.ndarray, values: np.ndarray) -> None:
         names = [self._repository.events[int(idx)] for idx in event_indices]
         self.result_table.setRowCount(len(names))
+        self.result_table.clearSelection()
+        self._row_by_event_index = {}
         for row, (event_name, a, b, c) in enumerate(zip(names, values[0], values[1], values[2])):
             self.result_table.setItem(row, 0, QTableWidgetItem(str(event_name)))
             self.result_table.setItem(row, 1, QTableWidgetItem(f"{a * 100.0:.2f}"))
             self.result_table.setItem(row, 2, QTableWidgetItem(f"{b * 100.0:.2f}"))
             self.result_table.setItem(row, 3, QTableWidgetItem(f"{c * 100.0:.2f}"))
+            self._row_by_event_index[int(event_indices[row])] = row
         self.result_table.resizeColumnsToContents()
 
     # ------------------------------------------------------------------
     def _draw_placeholder(self, message: str) -> None:
+        self._scatter_artist = None
+        self._scatter_sizes = np.array([], dtype=float)
+        self._latest_event_indices = np.array([], dtype=int)
+        self._latest_normalised = np.zeros((3, 0), dtype=float)
+        self._row_by_event_index.clear()
+        self._selected_point = None
         self.figure.clear()
         ax = self.figure.add_subplot(111)
         ax.axis("off")
@@ -2928,7 +3157,7 @@ class DustCompositionWindow(QMainWindow):
         self._combined: Optional[np.ndarray] = None
         self._combined_cached_mass: Optional[np.ndarray] = None
         self._baseline = 0.0
-        self._mass_params = {"stretch": 1.0, "shift": 0.0}
+        self._mass_params = {"stretch": DEFAULT_MASS_STRETCH, "shift": DEFAULT_MASS_SHIFT}
         self._mass_params_loaded = False
         self._mass_axis_lock_level = 0
         self._mass_lines: List[MassLineFit] = []
@@ -3022,7 +3251,7 @@ class DustCompositionWindow(QMainWindow):
         self._combined = None
         self._combined_cached_mass = None
         self._baseline = 0.0
-        self._mass_params = {"stretch": 1.0, "shift": 0.0}
+        self._mass_params = {"stretch": DEFAULT_MASS_STRETCH, "shift": DEFAULT_MASS_SHIFT}
         self._mass_params_loaded = False
         self._mass_axis_lock_level = 0
         self._mass_lines = []
@@ -3086,11 +3315,11 @@ class DustCompositionWindow(QMainWindow):
             self.baseline_spin.blockSignals(False)
         if hasattr(self, "mass_stretch_spin"):
             self.mass_stretch_spin.blockSignals(True)
-            self.mass_stretch_spin.setValue(self._mass_params.get("stretch", 1.0))
+            self.mass_stretch_spin.setValue(self._mass_params.get("stretch", DEFAULT_MASS_STRETCH))
             self.mass_stretch_spin.blockSignals(False)
         if hasattr(self, "mass_shift_spin"):
             self.mass_shift_spin.blockSignals(True)
-            self.mass_shift_spin.setValue(self._mass_params.get("shift", 0.0))
+            self.mass_shift_spin.setValue(self._mass_params.get("shift", DEFAULT_MASS_SHIFT))
             self.mass_shift_spin.blockSignals(False)
         if hasattr(self, "combine_button"):
             self.combine_button.blockSignals(True)
@@ -3206,11 +3435,14 @@ class DustCompositionWindow(QMainWindow):
         except Exception:
             self._baseline = 0.0
         try:
-            self._mass_params["stretch"] = float(dust_group.attrs.get("MassStretch", 1.0))
-            self._mass_params["shift"] = float(dust_group.attrs.get("MassShift", 0.0))
+            stored_stretch = float(dust_group.attrs.get("MassStretch", DEFAULT_MASS_STRETCH))
+            if math.isfinite(stored_stretch) and stored_stretch > MAX_MASS_STRETCH * 10:
+                stored_stretch /= 1000.0
+            self._mass_params["stretch"] = stored_stretch
+            self._mass_params["shift"] = float(dust_group.attrs.get("MassShift", DEFAULT_MASS_SHIFT))
             self._mass_params_loaded = True
         except Exception:
-            self._mass_params = {"stretch": 1.0, "shift": 0.0}
+            self._mass_params = {"stretch": DEFAULT_MASS_STRETCH, "shift": DEFAULT_MASS_SHIFT}
             self._mass_params_loaded = False
         table = None
         if MASS_LINES_DATASET in dust_group:
@@ -3436,6 +3668,7 @@ class DustCompositionWindow(QMainWindow):
             return
         if not math.isfinite(stretch) or abs(stretch) < 1.0e-12:
             return
+        stretch = _clamp_mass_stretch(stretch)
         shift = -intercept / stretch
         self._mass_params["stretch"] = stretch
         self._mass_params["shift"] = shift
@@ -3483,7 +3716,7 @@ class DustCompositionWindow(QMainWindow):
             if previous_level < 1 and assigned_lines:
                 line = assigned_lines[0]
                 try:
-                    stretch = float(self._mass_params.get("stretch", 1.0))
+                    stretch = float(self._mass_params.get("stretch", DEFAULT_MASS_STRETCH))
                     mu = float(line.mu)
                     mass = float(line.assigned_mass)
                 except Exception:
@@ -3629,14 +3862,16 @@ class DustCompositionWindow(QMainWindow):
         self.mass_stretch_spin.setDecimals(6)
         self.mass_stretch_spin.setRange(1e-6, 1e6)
         self.mass_stretch_spin.setValue(self._mass_params["stretch"])
+        self.mass_stretch_spin.setSuffix(" µs")
         self.mass_stretch_spin.valueChanged.connect(self._on_mass_params_changed)
-        layout.addRow("Stretch:", self.mass_stretch_spin)
+        layout.addRow("Stretch (µs):", self.mass_stretch_spin)
         self.mass_shift_spin = QDoubleSpinBox(box)
         self.mass_shift_spin.setDecimals(6)
         self.mass_shift_spin.setRange(-1e6, 1e6)
         self.mass_shift_spin.setValue(self._mass_params["shift"])
+        self.mass_shift_spin.setSuffix(" µs")
         self.mass_shift_spin.valueChanged.connect(self._on_mass_params_changed)
-        layout.addRow("Shift:", self.mass_shift_spin)
+        layout.addRow("Shift (µs):", self.mass_shift_spin)
 
         anchor_row = QWidget(box)
         anchor_row_layout = QHBoxLayout(anchor_row)
@@ -3945,6 +4180,15 @@ class DustCompositionWindow(QMainWindow):
         if not values:
             return
 
+        baseline_candidate = values.get("baseline")
+        if baseline_candidate is not None:
+            try:
+                baseline_value = float(baseline_candidate)
+            except Exception:
+                baseline_value = None
+            if baseline_value is not None and math.isfinite(baseline_value):
+                self._set_baseline(baseline_value, from_user=True)
+
         line.label = str(values.get("label", line.label))
         line.amplitude = float(values.get("amplitude", line.amplitude))
         line.mu = float(values.get("mu", line.mu))
@@ -4096,8 +4340,8 @@ class DustCompositionWindow(QMainWindow):
         return True
 
     def _apply_mass_params_update(self, previous: Dict[str, float]) -> None:
-        stretch = float(self._mass_params.get("stretch", 1.0))
-        shift = float(self._mass_params.get("shift", 0.0))
+        stretch = float(self._mass_params.get("stretch", DEFAULT_MASS_STRETCH))
+        shift = float(self._mass_params.get("shift", DEFAULT_MASS_SHIFT))
         if hasattr(self, "mass_stretch_spin") and hasattr(self, "mass_shift_spin"):
             self.mass_stretch_spin.blockSignals(True)
             self.mass_shift_spin.blockSignals(True)
@@ -4106,8 +4350,8 @@ class DustCompositionWindow(QMainWindow):
             self.mass_stretch_spin.blockSignals(False)
             self.mass_shift_spin.blockSignals(False)
         if (
-            not math.isclose(previous.get("stretch", 1.0), stretch, rel_tol=1e-9, abs_tol=1e-9)
-            or not math.isclose(previous.get("shift", 0.0), shift, rel_tol=1e-9, abs_tol=1e-9)
+            not math.isclose(previous.get("stretch", DEFAULT_MASS_STRETCH), stretch, rel_tol=1e-9, abs_tol=1e-9)
+            or not math.isclose(previous.get("shift", DEFAULT_MASS_SHIFT), shift, rel_tol=1e-9, abs_tol=1e-9)
         ):
             self._on_mass_params_changed()
         else:
@@ -4175,7 +4419,7 @@ class DustCompositionWindow(QMainWindow):
                 "The selected mass line does not have a valid centre time (μ).",
             )
             return
-        stretch = float(self._mass_params.get("stretch", 1.0))
+        stretch = float(self._mass_params.get("stretch", DEFAULT_MASS_STRETCH))
         if not math.isfinite(stretch) or abs(stretch) < 1.0e-12:
             QMessageBox.warning(
                 self,
@@ -4491,13 +4735,13 @@ class DustCompositionWindow(QMainWindow):
         return mass
 
     def _time_to_mass(self, time_values: np.ndarray) -> np.ndarray:
-        stretch = self._mass_params.get("stretch", 1.0)
-        shift = self._mass_params.get("shift", 0.0)
+        stretch = self._mass_params.get("stretch", DEFAULT_MASS_STRETCH)
+        shift = self._mass_params.get("shift", DEFAULT_MASS_SHIFT)
         return stretch * (np.asarray(time_values, dtype=float) - shift)
 
     def _mass_to_time(self, mass_values: np.ndarray) -> np.ndarray:
-        stretch = self._mass_params.get("stretch", 1.0)
-        shift = self._mass_params.get("shift", 0.0)
+        stretch = self._mass_params.get("stretch", DEFAULT_MASS_STRETCH)
+        shift = self._mass_params.get("shift", DEFAULT_MASS_SHIFT)
         if stretch == 0:
             stretch = 1.0
         return np.asarray(mass_values, dtype=float) / stretch + shift
@@ -4953,8 +5197,8 @@ class DustCompositionWindow(QMainWindow):
             if combined is not None:
                 _write_dataset(dust_group, COMBINED_DATASET, combined)
             dust_group.attrs["Baseline"] = self._baseline
-            dust_group.attrs["MassStretch"] = self._mass_params.get("stretch", 1.0)
-            dust_group.attrs["MassShift"] = self._mass_params.get("shift", 0.0)
+            dust_group.attrs["MassStretch"] = self._mass_params.get("stretch", DEFAULT_MASS_STRETCH)
+            dust_group.attrs["MassShift"] = self._mass_params.get("shift", DEFAULT_MASS_SHIFT)
             if self._mass_lines:
                 str_dtype = h5py.string_dtype(encoding="utf-8", length=120)
                 extras_dtype = h5py.string_dtype(encoding="utf-8", length=2048)

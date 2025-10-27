@@ -27,6 +27,10 @@ from scipy.signal import find_peaks
 apply_plot_style()
 plt.rcParams['agg.path.chunksize'] = 10_000
 
+MASS_STRETCH_MIN_NS = 1300.0
+MASS_STRETCH_MAX_NS = 1600.0
+
+
 def peak_time2mass(TOF, time):
     """Same as the original time2mass algorithm, but now we use peak locations 
     to create a simpler comb where every mass line has an amplitude of 1."""
@@ -213,7 +217,7 @@ def peak_time2mass(TOF, time):
     plt.grid(True)
     plt.show()
 
-def time2mass(TOF, time):
+def time2mass(TOF, time, *, allow_out_of_range: bool = False):
     r"""Return an optimized mass axis for a TOF waveform.
 
     The routine estimates the stretch (``A``) and temporal offset (``t0``)
@@ -225,6 +229,20 @@ def time2mass(TOF, time):
     :datafile:`mass_comb.csv`. The optimization keeps the resulting mass scale
     inside a physically realistic 1–300 amu window (allowing a small buffer up
     to 400 amu for the heaviest species).
+
+    Parameters
+    ----------
+    TOF, time:
+        Waveform amplitude and corresponding time vectors.
+    allow_out_of_range:
+        Set to ``True`` to disable the default stretch clamp (1.3–1.6 µs).
+
+    Returns
+    -------
+    stretch_microseconds, shift_microseconds, mass_scale
+        Optimised stretch/shift parameters in microseconds and the derived mass
+        axis. The stretch is constrained to the 1.3–1.6 µs range unless
+        ``allow_out_of_range`` is enabled.
     """
 
     mass_table = pd.read_csv(Path(__file__).resolve().with_name("mass_comb.csv"))
@@ -260,7 +278,7 @@ def time2mass(TOF, time):
         # Fallback to a default mapping if no peaks are detected.
         default_stretch_ns = 1450.0
         mass_scale = _compute_mass_axis(time_ns, default_stretch_ns, 0.0)
-        return default_stretch_ns, 0.0, mass_scale
+        return default_stretch_ns / 1000.0, 0.0, mass_scale
 
     # Focus on the most intense peaks to drive the calibration.
     peak_order = np.argsort(tof[peaks])[-min(len(peaks), 20):]
@@ -309,12 +327,16 @@ def time2mass(TOF, time):
     else:
         best_stretch_ns, best_shift_ns = result.x
 
+    if not allow_out_of_range:
+        best_stretch_ns = float(np.clip(best_stretch_ns, MASS_STRETCH_MIN_NS, MASS_STRETCH_MAX_NS))
+
     mass_scale = _compute_mass_axis(time_ns, best_stretch_ns, best_shift_ns)
 
-    # Convert the temporal shift to seconds for downstream consumers.
-    shift_seconds = best_shift_ns * 1e-9
+    # Convert the temporal parameters to microseconds for downstream consumers.
+    stretch_microseconds = best_stretch_ns / 1000.0
+    shift_microseconds = best_shift_ns / 1000.0
 
-    return float(best_stretch_ns), float(shift_seconds), mass_scale
+    return float(stretch_microseconds), float(shift_microseconds), mass_scale
 
 
 def _compute_mass_axis(time_ns: np.ndarray, stretch_ns: float, shift_ns: float) -> np.ndarray:
