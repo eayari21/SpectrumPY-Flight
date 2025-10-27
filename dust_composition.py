@@ -2295,6 +2295,7 @@ class DustCompositionWindow(QMainWindow):
         self._baseline = 0.0
         self._mass_params = {"stretch": 1.0, "shift": 0.0}
         self._mass_params_loaded = False
+        self._mass_axis_lock_level = 0
         self._mass_lines: List[MassLineFit] = []
         self._mass_line_counter = 0
         self._selected_line_id: Optional[int] = None
@@ -2359,6 +2360,7 @@ class DustCompositionWindow(QMainWindow):
         self._refresh_plot(initial=True)
         self._update_tables()
         self._update_summary()
+        self._update_mass_axis_lock()
 
     # ---- Data loading ---------------------------------------------------
     def _load_datasets(self) -> None:
@@ -2639,6 +2641,87 @@ class DustCompositionWindow(QMainWindow):
         self._mass_params["shift"] = shift
         self._mass_params_loaded = True
         self._combined_cached_mass = None
+
+    def _assigned_reference_lines(self) -> List[MassLineFit]:
+        lines: List[MassLineFit] = []
+        for line in self._mass_lines:
+            mass = line.assigned_mass
+            if mass is None or not math.isfinite(mass):
+                continue
+            try:
+                mu = float(line.mu)
+            except Exception:
+                continue
+            if not math.isfinite(mu):
+                continue
+            lines.append(line)
+        return lines
+
+    def _apply_mass_axis_lock(self) -> None:
+        level = getattr(self, "_mass_axis_lock_level", 0)
+        if hasattr(self, "mass_shift_spin"):
+            self.mass_shift_spin.setEnabled(level == 0)
+        if hasattr(self, "mass_stretch_spin"):
+            self.mass_stretch_spin.setEnabled(level < 2)
+        if hasattr(self, "auto_mass_button"):
+            self.auto_mass_button.setEnabled(level == 0)
+        # Anchor controls mirror the lock level: once reference lines are
+        # assigned the shift should be governed solely by those references.
+        self._refresh_anchor_controls()
+
+    def _update_mass_axis_lock(self) -> None:
+        assigned_lines = self._assigned_reference_lines()
+        previous_level = getattr(self, "_mass_axis_lock_level", 0)
+        new_level = 2 if len(assigned_lines) >= 2 else 1 if len(assigned_lines) == 1 else 0
+
+        if new_level == 0:
+            self._mass_axis_lock_level = 0
+            self._apply_mass_axis_lock()
+            return
+
+        if new_level == 1:
+            if previous_level < 1 and assigned_lines:
+                line = assigned_lines[0]
+                try:
+                    stretch = float(self._mass_params.get("stretch", 1.0))
+                    mu = float(line.mu)
+                    mass = float(line.assigned_mass)
+                except Exception:
+                    stretch = float("nan")
+                    mu = float("nan")
+                    mass = float("nan")
+                if (
+                    math.isfinite(stretch)
+                    and abs(stretch) >= 1.0e-12
+                    and math.isfinite(mu)
+                    and math.isfinite(mass)
+                ):
+                    shift = mu - mass / stretch
+                    if math.isfinite(shift):
+                        previous = dict(self._mass_params)
+                        self._mass_params["shift"] = shift
+                        self._apply_mass_params_update(previous)
+            self._mass_axis_lock_level = 1
+            self._apply_mass_axis_lock()
+            return
+
+        if new_level >= 2:
+            if previous_level < 2:
+                pairs: List[Tuple[float, float]] = []
+                for line in assigned_lines:
+                    try:
+                        mu = float(line.mu)
+                        mass = float(line.assigned_mass)
+                    except Exception:
+                        continue
+                    if math.isfinite(mu) and math.isfinite(mass):
+                        pairs.append((mu, mass))
+                if len(pairs) >= 2:
+                    previous = dict(self._mass_params)
+                    self._estimate_mass_axis(pairs)
+                    self._apply_mass_params_update(previous)
+            self._mass_axis_lock_level = 2
+            self._apply_mass_axis_lock()
 
     # ---- UI construction ------------------------------------------------
     def _build_controls(self) -> None:
@@ -3018,7 +3101,6 @@ class DustCompositionWindow(QMainWindow):
         line.time_end = float(values.get("time_end", line.time_end))
         assigned_species = str(values.get("assigned_species", "")).strip()
         assigned_mass_value = values.get("assigned_mass")
-        needs_axis_update = False
         try:
             assigned_mass = float(assigned_mass_value)
         except Exception:
@@ -3029,7 +3111,6 @@ class DustCompositionWindow(QMainWindow):
             line.mass_guess = assigned_mass
             if assigned_species:
                 line.label = assigned_species
-            needs_axis_update = True
         else:
             line.assigned_species = None
             line.assigned_mass = None
@@ -3045,8 +3126,7 @@ class DustCompositionWindow(QMainWindow):
         self._update_tables()
         self._update_summary()
         self._refresh_plot()
-        if needs_axis_update:
-            self._update_mass_axis_from_lines(show_warning=False)
+        self._update_mass_axis_lock()
 
     def _set_span_selector_active(self, active: bool) -> None:
         if self._span_selector is not None:
@@ -3103,6 +3183,11 @@ class DustCompositionWindow(QMainWindow):
     def _refresh_anchor_controls(self) -> None:
         if not hasattr(self, "anchor_mass_spin") or not hasattr(self, "anchor_button"):
             return
+        if getattr(self, "_mass_axis_lock_level", 0) >= 1:
+            self.anchor_mass_spin.setEnabled(False)
+            self.anchor_button.setEnabled(False)
+            self._anchor_displayed_line_id = None
+            return
         line = self._current_mass_line()
         if line is None:
             self.anchor_mass_spin.setEnabled(False)
@@ -3124,6 +3209,8 @@ class DustCompositionWindow(QMainWindow):
             self._anchor_displayed_line_id = line.line_id
 
     def _update_mass_axis_from_lines(self, *, show_warning: bool) -> bool:
+        if getattr(self, "_mass_axis_lock_level", 0) >= 1:
+            return False
         pairs: List[Tuple[float, float]] = []
         for line in self._mass_lines:
             mu = float(line.mu)
@@ -3193,7 +3280,6 @@ class DustCompositionWindow(QMainWindow):
         self._update_tables()
         self._update_summary()
         self._refresh_plot()
-        self._update_mass_axis_from_lines(show_warning=False)
         self._refresh_assignment_display()
         self._set_mass_assignment_index(0)
 
@@ -3202,6 +3288,7 @@ class DustCompositionWindow(QMainWindow):
         line.mass_guess = species_mass
         line.assigned_species = species_label
         line.assigned_mass = species_mass
+        self._update_mass_axis_lock()
 
     def _anchor_selected_line(self) -> None:
         line = self._current_mass_line()
@@ -3271,17 +3358,12 @@ class DustCompositionWindow(QMainWindow):
             return
         line = self._mass_lines[row]
         text = item.text().strip()
-        recalc_axis = False
         try:
             if column == 0:
                 new_label = text or line.label
+                previous_assigned = line.assigned_species
                 line.label = new_label
-                species_match = _species_for_label(new_label)
-                if species_match is not None:
-                    species_label, species_mass = species_match
-                    self._assign_species_to_line(line, species_label, float(species_mass))
-                    recalc_axis = True
-                else:
+                if previous_assigned and new_label != previous_assigned:
                     line.assigned_species = None
                     line.assigned_mass = None
             elif column == 1:
@@ -3309,8 +3391,7 @@ class DustCompositionWindow(QMainWindow):
         self._update_tables()
         self._update_summary()
         self._refresh_plot()
-        if recalc_axis:
-            self._update_mass_axis_from_lines(show_warning=False)
+        self._update_mass_axis_lock()
 
     # ---- Plotting -------------------------------------------------------
     def _refresh_plot(self, show_combined: Optional[bool] = None, initial: bool = False) -> None:
@@ -3792,6 +3873,7 @@ class DustCompositionWindow(QMainWindow):
             self._update_summary()
             self._refresh_plot()
             self._update_inspect_button_state()
+            self._update_mass_axis_lock()
     def _update_mass_line_abundances(self) -> None:
         if self._combined is None or self._combined.size == 0:
             for line in self._mass_lines:
