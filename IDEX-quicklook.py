@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Set
 
 import html
 import textwrap
@@ -87,6 +87,16 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
+
+class ScrollFriendlyFigureCanvas(FigureCanvas):
+    """Matplotlib canvas that plays nicely inside scroll areas."""
+
+    def wheelEvent(self, event):  # type: ignore[override]
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            super().wheelEvent(event)
+            return
+        event.ignore()
+
 # --------- Qt binding-agnostic imports (prefer PySide6, fallback PyQt6) ---------
 _QT = None
 try:
@@ -98,7 +108,7 @@ try:
         QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
         QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton, QTextBrowser,
         QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter,
-        QScrollArea, QFrame
+        QScrollArea, QFrame, QGroupBox
     )
     _QT = "PySide6"
 except Exception:
@@ -110,7 +120,7 @@ except Exception:
         QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
         QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton, QTextBrowser,
         QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter,
-        QScrollArea, QFrame
+        QScrollArea, QFrame, QGroupBox
     )
     _QT = "PyQt6"
 
@@ -1851,10 +1861,14 @@ class MainWindow(QMainWindow):
         self._tmpdir = tempfile.TemporaryDirectory(prefix="idex_quicklook_")
         self._fit_cache: Dict[Tuple[str, str], FitData] = {}
         self._fit_param_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
+        self._fit_fixed_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
         self._fit_result_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
         self._fit_time_overrides: Dict[Tuple[str, str, str], np.ndarray] = {}
         self._baseline_cache: Dict[Tuple[str, str], float] = {}
         self._rise_metric_cache: Dict[Tuple[str, str], Dict[str, float]] = {}
+        self._low_rate_waveform_cache: Dict[
+            Tuple[str, str], Tuple[np.ndarray, np.ndarray]
+        ] = {}
         self._show_fit: Dict[str, bool] = {name: False for name in FIT_ELIGIBLE_CHANNELS}
         # ``refresh_fit_controls`` is invoked as soon as data are loaded, so make
         # sure ``fit_buttons`` always exists even before the control panel is
@@ -2731,10 +2745,12 @@ class MainWindow(QMainWindow):
         self._current_event = None
         self._fit_cache.clear()
         self._fit_param_overrides.clear()
+        self._fit_fixed_overrides.clear()
         self._fit_result_overrides.clear()
         self._fit_time_overrides.clear()
         self._baseline_cache.clear()
         self._rise_metric_cache.clear()
+        self._low_rate_waveform_cache.clear()
         self._show_fit = {name: False for name in FIT_ELIGIBLE_CHANNELS}
 
         self.event_combo.blockSignals(True)
@@ -3538,8 +3554,10 @@ class MainWindow(QMainWindow):
             event_name=self._current_event,
             channel_data=available,
             value_getter=self.get_parameter_values,
+            fixed_getter=self.get_parameter_fixed_mask,
             save_callback=self.update_fit_override,
             reset_callback=self.clear_fit_override,
+            waveform_getter=self.get_low_rate_waveform,
         )
         dialog.exec()
 
@@ -3550,17 +3568,114 @@ class MainWindow(QMainWindow):
             return np.array(override, copy=True)
         return np.array(base_array, copy=True)
 
+    def get_parameter_fixed_mask(
+        self,
+        event: str,
+        channel: str,
+        dataset_path: str,
+        base_array: np.ndarray,
+    ) -> np.ndarray:
+        key = (event, channel, dataset_path)
+        override = self._fit_fixed_overrides.get(key)
+        if override is not None:
+            mask = np.array(override, copy=True, dtype=bool)
+        else:
+            mask = np.zeros_like(base_array, dtype=bool)
+
+        if mask.shape != base_array.shape:
+            resized = np.zeros_like(base_array, dtype=bool)
+            flat_mask = np.asarray(mask, dtype=bool).ravel()
+            flat_target = resized.ravel()
+            limit = min(flat_mask.size, flat_target.size)
+            if limit:
+                flat_target[:limit] = flat_mask[:limit]
+            mask = resized
+        return mask
+
+    def _downsample_waveform(
+        self,
+        time_axis: np.ndarray,
+        waveform: np.ndarray,
+        *,
+        max_points: int = 4096,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Return evenly-spaced samples limited to ``max_points``."""
+
+        count = min(time_axis.size, waveform.size)
+        if count <= max_points:
+            return time_axis[:count], waveform[:count]
+
+        indices = np.linspace(0, count - 1, max_points, dtype=int)
+        if indices.size == 0:
+            return time_axis[:count], waveform[:count]
+        return time_axis[indices], waveform[indices]
+
+    def get_low_rate_waveform(
+        self, event: str, channel: str
+    ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        key = (event, channel)
+        cached = self._low_rate_waveform_cache.get(key)
+        if cached is not None:
+            return np.array(cached[0], copy=True), np.array(cached[1], copy=True)
+
+        values, times = self._resolve_channel_data(event, channel)
+        if values is None or times is None:
+            return None, None
+
+        try:
+            time_axis = np.asarray(times, dtype=float).ravel()
+        except Exception:
+            return None, None
+
+        try:
+            waveform = np.asarray(values, dtype=float).ravel()
+        except Exception:
+            return None, None
+
+        if time_axis.size == 0 or waveform.size == 0:
+            return None, None
+
+        count = min(time_axis.size, waveform.size)
+        if count == 0:
+            return None, None
+
+        time_axis = time_axis[:count]
+        waveform = waveform[:count]
+        waveform = self._apply_plot_scale(channel, waveform)
+
+        down_time, down_values = self._downsample_waveform(time_axis, waveform)
+        self._low_rate_waveform_cache[key] = (
+            np.array(down_time, copy=True),
+            np.array(down_values, copy=True),
+        )
+        return down_time, down_values
+
     def update_fit_override(
         self,
         event: str,
         channel: str,
         dataset_path: str,
         values: np.ndarray,
+        fixed_mask: Optional[np.ndarray] = None,
         *,
         persist: bool = True,
     ) -> bool:
         array = np.array(values, copy=True)
         self._fit_param_overrides[(event, channel, dataset_path)] = array
+        mask_key = (event, channel, dataset_path)
+        mask_array: Optional[np.ndarray]
+        if fixed_mask is not None:
+            mask_array = np.array(fixed_mask, copy=True, dtype=bool)
+            if mask_array.size == array.size:
+                mask_array = mask_array.reshape(array.shape)
+        else:
+            mask_array = None
+
+        if mask_array is not None and mask_array.any():
+            self._fit_fixed_overrides[mask_key] = mask_array
+        else:
+            self._fit_fixed_overrides.pop(mask_key, None)
+
         self._remove_fit_override(event, channel, dataset_path)
         recomputed = self._recalculate_fit(event, channel, dataset_path, array)
         saved_to_file = False
@@ -3590,8 +3705,9 @@ class MainWindow(QMainWindow):
     def clear_fit_override(self, event: str, channel: str, dataset_path: str):
         key = (event, channel, dataset_path)
         removed_param = self._fit_param_overrides.pop(key, None) is not None
+        mask_removed = self._fit_fixed_overrides.pop(key, None) is not None
         removed_curve = self._remove_fit_override(event, channel, dataset_path)
-        if removed_param or removed_curve:
+        if removed_param or removed_curve or mask_removed:
             self.statusBar().showMessage(f"Reverted fit parameters for {channel}.", 6000)
             self._fit_cache.pop((event, channel), None)
             self.plot_event(self._current_event)
@@ -3658,29 +3774,45 @@ class FitParameterDialog(QDialog):
         event_name: str,
         channel_data: Dict[str, FitData],
         value_getter: Callable[[str, str, str, np.ndarray], np.ndarray],
-        save_callback: Callable[[str, str, str, np.ndarray], None],
+        fixed_getter: Callable[[str, str, str, np.ndarray], np.ndarray],
+        save_callback: Callable[..., bool],
         reset_callback: Callable[[str, str, str], None],
+        waveform_getter: Callable[[str, str], Tuple[Optional[np.ndarray], Optional[np.ndarray]]],
     ):
         super().__init__(parent)
         self.setModal(True)
         self.setWindowTitle(f"Fit Parameters — Event {event_name}")
-        self.setMinimumSize(580, 520)
+        self.setMinimumSize(760, 720)
 
         self._event_name = event_name
         self._channel_data = channel_data
         self._value_getter = value_getter
+        self._fixed_getter = fixed_getter
         self._save_callback = save_callback
         self._reset_callback = reset_callback
+        self._waveform_getter = waveform_getter
 
         self._param_arrays: Dict[Tuple[str, str], np.ndarray] = {}
+        self._channel_datasets: Dict[str, List[str]] = {}
         for channel, data in channel_data.items():
+            entries: List[str] = []
             for path, array in data.iter_parameter_items():
                 self._param_arrays[(channel, path)] = np.asarray(array)
+                entries.append(path)
+            if entries:
+                entries.sort(key=lambda value: _dataset_sort_key(channel, value))
+                self._channel_datasets[channel] = entries
+
+        self._fixed_masks: Dict[Tuple[str, str], np.ndarray] = {}
+        self._waveform_cache: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
+        self._missing_waveforms: Set[str] = set()
 
         self._current_channel: Optional[str] = None
         self._current_dataset: Optional[str] = None
         self._current_shape: Optional[Tuple[int, ...]] = None
         self._is_updating_table = False
+        self._preview_manual_selection = False
+        self._updating_preview_selection = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -3719,6 +3851,55 @@ class FitParameterDialog(QDialog):
         chooser_row.addStretch(1)
         layout.addLayout(chooser_row)
 
+        preview_group = QGroupBox("Low-rate waveform preview", self)
+        preview_layout = QVBoxLayout(preview_group)
+        preview_layout.setContentsMargins(10, 12, 10, 12)
+        preview_layout.setSpacing(8)
+
+        preview_controls = QHBoxLayout()
+        preview_controls.setSpacing(8)
+        preview_controls.addWidget(QLabel("Waveform:", preview_group))
+
+        self.waveform_combo = QComboBox(preview_group)
+        self.waveform_combo.setStyleSheet("font-size: 14px; min-height: 32px;")
+        self.waveform_combo.currentIndexChanged.connect(self._on_waveform_channel_changed)
+        preview_controls.addWidget(self.waveform_combo)
+
+        self.overlay_checkbox = QCheckBox("Overlay current fit", preview_group)
+        self.overlay_checkbox.setChecked(True)
+        self.overlay_checkbox.setStyleSheet("font-size: 14px;")
+        self.overlay_checkbox.stateChanged.connect(self._on_overlay_toggled)
+        preview_controls.addWidget(self.overlay_checkbox)
+        preview_controls.addStretch(1)
+        preview_layout.addLayout(preview_controls)
+
+        figure_wrapper = QWidget(preview_group)
+        figure_layout = QVBoxLayout(figure_wrapper)
+        figure_layout.setContentsMargins(0, 0, 0, 0)
+        figure_layout.setSpacing(6)
+        self.preview_figure = Figure(figsize=(7.0, 3.8), constrained_layout=True)
+        self.preview_ax = self.preview_figure.add_subplot(111)
+        self.preview_ax.set_facecolor("#f8f9fb")
+        self.preview_canvas = ScrollFriendlyFigureCanvas(self.preview_figure)
+        self.preview_canvas.setMinimumSize(980, 420)
+        self.preview_toolbar = NavigationToolbar(self.preview_canvas, figure_wrapper)
+        figure_layout.addWidget(self.preview_toolbar)
+        figure_layout.addWidget(self.preview_canvas)
+
+        self.preview_scroll = QScrollArea(preview_group)
+        self.preview_scroll.setWidgetResizable(True)
+        self.preview_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.preview_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.preview_scroll.setWidget(figure_wrapper)
+        preview_layout.addWidget(self.preview_scroll)
+
+        self.preview_status_label = QLabel("", preview_group)
+        self.preview_status_label.setStyleSheet("font-size: 13px; color: #555555;")
+        self.preview_status_label.setWordWrap(True)
+        preview_layout.addWidget(self.preview_status_label)
+
+        layout.addWidget(preview_group)
+
         self.image_charge_checkbox = QCheckBox("Include image charge component", self)
         self.image_charge_checkbox.setStyleSheet("font-size: 14px;")
         self.image_charge_checkbox.stateChanged.connect(self._on_image_charge_toggled)
@@ -3726,11 +3907,12 @@ class FitParameterDialog(QDialog):
         layout.addWidget(self.image_charge_checkbox)
 
         self.table = QTableWidget(self)
-        self.table.setColumnCount(2)
-        self.table.setHorizontalHeaderLabels(["Fit parameter", "Value"])
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["Fit parameter", "Value", "Fixed"])
         header_view = self.table.horizontalHeader()
         header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectItems)
@@ -3753,10 +3935,16 @@ class FitParameterDialog(QDialog):
         layout.addWidget(self.feedback_label)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
+
+        self.recompute_button = QPushButton("Recompute Fit", self)
+        self.recompute_button.setStyleSheet("font-size: 15px; padding: 8px 18px;")
+        self.recompute_button.clicked.connect(self.recompute_fit)
+        buttons.addButton(self.recompute_button, QDialogButtonBox.ButtonRole.ActionRole)
+
         self.apply_button = QPushButton("Apply Changes", self)
         self.apply_button.setStyleSheet("font-size: 15px; font-weight: bold; padding: 8px 18px;")
         self.apply_button.clicked.connect(self.apply_changes)
-        buttons.addButton(self.apply_button, QDialogButtonBox.ButtonRole.ActionRole)
+        buttons.addButton(self.apply_button, QDialogButtonBox.ButtonRole.AcceptRole)
 
         self.reset_button = QPushButton("Reset to File Values", self)
         self.reset_button.setStyleSheet("font-size: 15px; padding: 8px 18px;")
@@ -3766,15 +3954,37 @@ class FitParameterDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+        self._populate_waveform_options()
+
         if self.channel_combo.count() > 0:
             self._on_channel_changed(self.channel_combo.currentText())
+        else:
+            self._update_waveform_plot()
+        self._update_action_states()
 
     # ---- UI helpers -----------------------------------------------------
+    def _populate_waveform_options(self) -> None:
+        channels = ["Ion Grid", "Target L", "Target H"]
+        available: List[str] = []
+        for name in channels:
+            if self._get_waveform(name) is not None:
+                available.append(name)
+
+        self.waveform_combo.blockSignals(True)
+        self.waveform_combo.clear()
+        for name in available:
+            self.waveform_combo.addItem(name, name)
+        self.waveform_combo.blockSignals(False)
+
+        if not available:
+            self.preview_status_label.setText("Waveform preview unavailable for this event.")
+        else:
+            self._preview_manual_selection = False
+
     def _on_channel_changed(self, channel: str):
         self.dataset_combo.blockSignals(True)
         self.dataset_combo.clear()
-        entries = [path for (chan, path) in self._param_arrays.keys() if chan == channel]
-        entries.sort(key=lambda value: _dataset_sort_key(channel, value))
+        entries = self._channel_datasets.get(channel, [])
         for path in entries:
             label = self._dataset_display_name(channel, path)
             self.dataset_combo.addItem(label, path)
@@ -3817,7 +4027,17 @@ class FitParameterDialog(QDialog):
         self._current_dataset = dataset_path
         self._current_shape = array.shape
 
+        mask_key = (channel, dataset_path)
+        mask_array = self._fixed_masks.get(mask_key)
+        if mask_array is None:
+            base_mask = self._fixed_getter(self._event_name, channel, dataset_path, base_array)
+            mask_array = self._ensure_mask_shape(base_mask, array.shape)
+        else:
+            mask_array = self._ensure_mask_shape(mask_array, array.shape)
+        self._fixed_masks[mask_key] = mask_array
+
         flat = array.ravel()
+        flat_mask = mask_array.ravel()
         labels = self._parameter_labels(channel, dataset_path, flat.size)
         self._update_image_charge_controls(channel, dataset_path, flat)
 
@@ -3828,18 +4048,34 @@ class FitParameterDialog(QDialog):
                 label = labels[idx] if idx < len(labels) else f"p{idx + 1}"
                 idx_item = QTableWidgetItem(label)
                 idx_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+
                 value_item = QTableWidgetItem(self._format_value(value))
                 value_item.setFlags(value_item.flags() | Qt.ItemFlag.ItemIsEditable)
+
+                fixed_item = QTableWidgetItem("")
+                fixed_item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsUserCheckable
+                    | Qt.ItemFlag.ItemIsSelectable
+                )
+                fixed_item.setCheckState(
+                    Qt.CheckState.Checked if flat_mask[idx] else Qt.CheckState.Unchecked
+                )
+
                 self.table.setItem(idx, 0, idx_item)
                 self.table.setItem(idx, 1, value_item)
+                self.table.setItem(idx, 2, fixed_item)
         finally:
             self._is_updating_table = False
 
         self.table.resizeColumnsToContents()
-        display_name = self._dataset_display_name(channel, dataset_path)
-        self.info_label.setText(f"{channel} — {display_name}\n{dataset_path} — shape {array.shape}")
+        self._update_info_label(channel, dataset_path, array, flat_mask)
         if not preserve_feedback:
             self.feedback_label.clear()
+
+        self._update_waveform_selection(channel)
+        self._update_action_states()
+        self._update_waveform_plot()
 
     def _dataset_display_name(self, channel: str, dataset_path: str) -> str:
         mass_label = _mass_identifier_from_path(dataset_path)
@@ -3894,6 +4130,31 @@ class FitParameterDialog(QDialog):
                 self.formula_label.setText(html.escape(model.latex))
         self.formula_label.setToolTip(model.latex)
 
+    def _ensure_mask_shape(self, source: np.ndarray, shape: Tuple[int, ...]) -> np.ndarray:
+        mask = np.zeros(shape, dtype=bool)
+        src_flat = np.asarray(source, dtype=bool).ravel()
+        dst_flat = mask.ravel()
+        limit = min(src_flat.size, dst_flat.size)
+        if limit:
+            dst_flat[:limit] = src_flat[:limit]
+        return mask
+
+    def _update_info_label(
+        self,
+        channel: str,
+        dataset_path: str,
+        array: np.ndarray,
+        mask: np.ndarray,
+    ) -> None:
+        display_name = self._dataset_display_name(channel, dataset_path)
+        total = mask.size
+        fixed = int(np.count_nonzero(mask)) if total else 0
+        fixed_text = f"Fixed parameters: {fixed}/{total}" if total else ""
+        text = f"{channel} — {display_name}\n{dataset_path} — shape {array.shape}"
+        if fixed_text:
+            text += f"\n{fixed_text}"
+        self.info_label.setText(text)
+
     def _set_feedback(self, text: str, *, success: bool):
         if not text:
             self.feedback_label.clear()
@@ -3929,10 +4190,15 @@ class FitParameterDialog(QDialog):
                     QMessageBox.warning(self, "Invalid value", message)
                 return False
 
-        if self._current_shape:
-            expected = int(np.prod(self._current_shape))
-        else:
-            expected = len(values)
+        mask_flat = self._collect_fixed_mask()
+        if mask_flat is None:
+            if auto:
+                self._set_feedback("Unable to read fixed-parameter states.", success=False)
+            else:
+                QMessageBox.warning(self, "Invalid state", "Unable to read fixed-parameter states.")
+            return False
+
+        expected = int(np.prod(self._current_shape)) if self._current_shape else len(values)
 
         if len(values) != expected:
             message = "The number of edited values does not match the original parameter shape."
@@ -3943,8 +4209,13 @@ class FitParameterDialog(QDialog):
             return False
 
         array = np.array(values, dtype=float)
+        mask_array = np.array(mask_flat, dtype=bool)
         if self._current_shape:
             array = array.reshape(self._current_shape)
+            mask_array = mask_array.reshape(self._current_shape)
+
+        self._param_arrays[(self._current_channel, self._current_dataset)] = np.array(array, copy=True)
+        self._fixed_masks[(self._current_channel, self._current_dataset)] = np.array(mask_array, copy=True)
 
         saved_to_file = bool(
             self._save_callback(
@@ -3952,11 +4223,10 @@ class FitParameterDialog(QDialog):
                 self._current_channel,
                 self._current_dataset,
                 array,
+                mask_array,
                 persist=not auto,
             )
         )
-        if saved_to_file:
-            self._param_arrays[(self._current_channel, self._current_dataset)] = np.array(array, copy=True)
 
         self._display_dataset(self._current_channel, self._current_dataset, preserve_feedback=True)
 
@@ -3970,9 +4240,37 @@ class FitParameterDialog(QDialog):
         return True
 
     def _on_table_item_changed(self, item: QTableWidgetItem):
-        if self._is_updating_table or item is None or item.column() != 1:
+        if self._is_updating_table or item is None:
             return
-        self._apply_current_values(auto=True)
+
+        if item.column() == 1:
+            self._set_row_fixed(item.row(), True)
+            self._apply_current_values(auto=True)
+        elif item.column() == 2:
+            state = item.checkState() == Qt.CheckState.Checked
+            self._set_row_fixed(item.row(), state)
+            self._apply_current_values(auto=True)
+
+    def _set_row_fixed(self, row: int, fixed: bool) -> None:
+        if not self._current_channel or not self._current_dataset:
+            return
+        mask = self._fixed_masks.get((self._current_channel, self._current_dataset))
+        if mask is None:
+            return
+        flat = mask.ravel()
+        if 0 <= row < flat.size:
+            flat[row] = fixed
+        item = self.table.item(row, 2)
+        if item is not None:
+            with QSignalBlocker(self.table):
+                item.setCheckState(Qt.CheckState.Checked if fixed else Qt.CheckState.Unchecked)
+        param_array = self._param_arrays.get((self._current_channel, self._current_dataset), np.array([]))
+        self._update_info_label(
+            self._current_channel,
+            self._current_dataset,
+            param_array,
+            mask.ravel(),
+        )
 
     def _clear_table(self, message: str = ""):
         self.table.setRowCount(0)
@@ -3985,6 +4283,7 @@ class FitParameterDialog(QDialog):
         self.image_charge_checkbox.setVisible(False)
         with QSignalBlocker(self.image_charge_checkbox):
             self.image_charge_checkbox.setChecked(False)
+        self._update_action_states()
 
     def _format_value(self, value: object) -> str:
         try:
@@ -4000,10 +4299,15 @@ class FitParameterDialog(QDialog):
     def apply_changes(self):
         self._apply_current_values(auto=False)
 
+    def recompute_fit(self):
+        if self._apply_current_values(auto=True):
+            self._set_feedback("Fit recomputed with current parameters (not saved).", success=True)
+
     def reset_changes(self):
         if not self._current_channel or not self._current_dataset:
             return
         self._reset_callback(self._event_name, self._current_channel, self._current_dataset)
+        self._fixed_masks.pop((self._current_channel, self._current_dataset), None)
         self._display_dataset(self._current_channel, self._current_dataset, preserve_feedback=True)
         self._set_feedback("Reverted to values from the file.", success=False)
 
@@ -4047,23 +4351,179 @@ class FitParameterDialog(QDialog):
                 return None
         return values
 
-    def _replace_table_values(self, channel: str, dataset_path: str, values: Iterable[float]) -> None:
-        value_list = list(values)
-        labels = self._parameter_labels(channel, dataset_path, len(value_list))
-        self._is_updating_table = True
+    def _collect_fixed_mask(self) -> Optional[List[bool]]:
+        mask: List[bool] = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 2)
+            if item is None:
+                return None
+            mask.append(item.checkState() == Qt.CheckState.Checked)
+        return mask
+
+    def _update_action_states(self) -> None:
+        enabled = self._current_channel is not None and self.table.rowCount() > 0
+        self.recompute_button.setEnabled(enabled)
+        self.apply_button.setEnabled(enabled)
+        self.reset_button.setEnabled(enabled)
+
+    def _get_waveform(self, channel: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        if channel in self._waveform_cache:
+            return self._waveform_cache[channel]
+        if channel in self._missing_waveforms:
+            return None
         try:
-            self.table.setRowCount(len(value_list))
-            for idx, value in enumerate(value_list):
-                label = labels[idx] if idx < len(labels) else f"p{idx + 1}"
-                idx_item = QTableWidgetItem(label)
-                idx_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-                value_item = QTableWidgetItem(self._format_value(value))
-                value_item.setFlags(value_item.flags() | Qt.ItemFlag.ItemIsEditable)
-                self.table.setItem(idx, 0, idx_item)
-                self.table.setItem(idx, 1, value_item)
+            times, values = self._waveform_getter(self._event_name, channel)
+        except Exception:
+            times = None
+            values = None
+        if times is None or values is None:
+            self._missing_waveforms.add(channel)
+            return None
+        pair = (np.asarray(times, dtype=float), np.asarray(values, dtype=float))
+        if pair[0].size == 0 or pair[1].size == 0:
+            self._missing_waveforms.add(channel)
+            return None
+        self._waveform_cache[channel] = pair
+        return pair
+
+    def _on_waveform_channel_changed(self, _index: int):
+        if self._updating_preview_selection:
+            return
+        self._preview_manual_selection = True
+        self._update_waveform_plot()
+
+    def _on_overlay_toggled(self, _state: int):
+        self._update_waveform_plot()
+
+    def _update_waveform_selection(self, channel: str) -> None:
+        if self._preview_manual_selection:
+            return
+        index = self.waveform_combo.findData(channel)
+        if index < 0:
+            return
+        if self.waveform_combo.currentIndex() == index:
+            return
+        self._updating_preview_selection = True
+        try:
+            self.waveform_combo.setCurrentIndex(index)
         finally:
-            self._is_updating_table = False
-        self.table.resizeColumnsToContents()
+            self._updating_preview_selection = False
+
+    def _update_waveform_plot(self) -> None:
+        self.preview_ax.clear()
+        self.preview_ax.set_facecolor("#f8f9fb")
+        channel = self.waveform_combo.currentData()
+        if not channel:
+            self.preview_status_label.setText("Select a waveform to preview.")
+            self.preview_canvas.draw_idle()
+            return
+
+        data = self._get_waveform(channel)
+        if data is None:
+            self.preview_status_label.setText(f"No waveform samples available for {channel}.")
+            self.preview_canvas.draw_idle()
+            return
+
+        time_axis, waveform = data
+        count = min(time_axis.size, waveform.size)
+        if count == 0:
+            self.preview_status_label.setText(f"No waveform samples available for {channel}.")
+            self.preview_canvas.draw_idle()
+            return
+
+        time_values = np.asarray(time_axis[:count], dtype=float)
+        signal_values = np.asarray(waveform[:count], dtype=float)
+        finite_mask = np.isfinite(time_values) & np.isfinite(signal_values)
+        if not np.any(finite_mask):
+            self.preview_status_label.setText(f"Waveform contains no finite samples for {channel}.")
+            self.preview_canvas.draw_idle()
+            return
+
+        time_values = time_values[finite_mask]
+        signal_values = signal_values[finite_mask]
+        if time_values.size == 0:
+            self.preview_status_label.setText(f"Waveform contains no finite samples for {channel}.")
+            self.preview_canvas.draw_idle()
+            return
+
+        self.preview_ax.plot(time_values, signal_values, color="#1f77b4", label=f"{channel} waveform")
+
+        show_overlay = False
+        if self.overlay_checkbox.isChecked():
+            params = self._parameters_for_preview(channel)
+            if params is not None:
+                curve = _evaluate_fit_curve(channel, time_values, params)
+                if curve is not None:
+                    overlay = np.asarray(curve, dtype=float)
+                    overlay = overlay[: time_values.size]
+                    overlay_mask = np.isfinite(overlay)
+                    if np.any(overlay_mask):
+                        overlay_time = time_values[: overlay_mask.size][overlay_mask]
+                        overlay = overlay[overlay_mask]
+                        if overlay.size and overlay_time.size:
+                            self.preview_ax.plot(
+                                overlay_time,
+                                overlay,
+                                color="#d9480f",
+                                label="Fit",
+                            )
+                            show_overlay = True
+
+        self.preview_ax.set_xlabel("Time (µs)")
+        self.preview_ax.set_ylabel(y_label_with_units(channel))
+        self.preview_ax.grid(True, alpha=0.35)
+        if show_overlay:
+            self.preview_ax.legend(loc="upper right")
+
+        amplitude = float(np.nanmax(np.abs(signal_values))) if signal_values.size else 0.0
+        if np.isfinite(amplitude) and amplitude > 0.0:
+            threshold = amplitude * 0.02
+            strong = np.where(np.abs(signal_values) >= threshold)[0]
+            if strong.size:
+                left = max(int(strong[0]) - 3, 0)
+                right = min(int(strong[-1]) + 3, signal_values.size - 1)
+                self.preview_ax.set_xlim(time_values[left], time_values[right])
+
+        if signal_values.size:
+            y_min = float(np.nanmin(signal_values))
+            y_max = float(np.nanmax(signal_values))
+            if np.isfinite(y_min) and np.isfinite(y_max):
+                if y_min == y_max:
+                    pad = abs(y_max) * 0.1 if y_max else 1.0
+                    self.preview_ax.set_ylim(y_min - pad, y_max + pad)
+                else:
+                    span = y_max - y_min
+                    pad = max(span * 0.08, 1e-9)
+                    self.preview_ax.set_ylim(y_min - pad, y_max + pad)
+
+        status_parts = [f"{channel}: {time_values.size} samples"]
+        if time_values.size:
+            start = float(time_values[0])
+            end = float(time_values[-1])
+            if np.isfinite(start) and np.isfinite(end):
+                status_parts.append(f"{start:.3f}–{end:.3f} µs")
+        status_parts.append("fit overlay enabled" if show_overlay else "fit overlay hidden")
+        self.preview_status_label.setText("; ".join(status_parts))
+        self.preview_canvas.draw_idle()
+
+    def _parameters_for_preview(self, channel: str) -> Optional[np.ndarray]:
+        if self._current_channel == channel and self._current_dataset:
+            values = self._collect_table_values()
+            if values is not None:
+                return np.asarray(values, dtype=float)
+        dataset_path = self._default_dataset_for_channel(channel)
+        if dataset_path is None:
+            return None
+        array = self._param_arrays.get((channel, dataset_path))
+        if array is None:
+            return None
+        return np.asarray(array, dtype=float).ravel()
+
+    def _default_dataset_for_channel(self, channel: str) -> Optional[str]:
+        entries = self._channel_datasets.get(channel)
+        if not entries:
+            return None
+        return entries[0]
 
     def _ensure_image_charge_values(self, values: Iterable[float]) -> List[float]:
         value_list = list(values)
@@ -4130,7 +4590,37 @@ class FitParameterDialog(QDialog):
             new_values = self._ensure_legacy_values(values)
 
         self._current_shape = (len(new_values),)
-        self._replace_table_values(self._current_channel, self._current_dataset, new_values)
+        mask_key = (self._current_channel, self._current_dataset)
+        mask = self._fixed_masks.get(mask_key, np.zeros(len(new_values), dtype=bool))
+        mask = self._ensure_mask_shape(mask, (len(new_values),))
+        self._fixed_masks[mask_key] = mask
+
+        labels = self._parameter_labels(self._current_channel, self._current_dataset, len(new_values))
+        flat_mask = mask.ravel()
+        self._is_updating_table = True
+        try:
+            self.table.setRowCount(len(new_values))
+            for idx, value in enumerate(new_values):
+                label = labels[idx] if idx < len(labels) else f"p{idx + 1}"
+                idx_item = QTableWidgetItem(label)
+                idx_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+                value_item = QTableWidgetItem(self._format_value(value))
+                value_item.setFlags(value_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                fixed_item = QTableWidgetItem("")
+                fixed_item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsUserCheckable
+                    | Qt.ItemFlag.ItemIsSelectable
+                )
+                fixed_item.setCheckState(
+                    Qt.CheckState.Checked if flat_mask[idx] else Qt.CheckState.Unchecked
+                )
+                self.table.setItem(idx, 0, idx_item)
+                self.table.setItem(idx, 1, value_item)
+                self.table.setItem(idx, 2, fixed_item)
+        finally:
+            self._is_updating_table = False
+        self.table.resizeColumnsToContents()
 
         if not self._apply_current_values(auto=True):
             with QSignalBlocker(self.image_charge_checkbox):
