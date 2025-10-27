@@ -2361,7 +2361,14 @@ class DustCompositionWindow(QMainWindow):
         self.control_layout = QVBoxLayout(self.control_panel)
         self.control_layout.setContentsMargins(0, 0, 0, 0)
         self.control_layout.setSpacing(12)
-        splitter.addWidget(self.control_panel)
+
+        control_scroll = QScrollArea(self)
+        control_scroll.setWidgetResizable(True)
+        control_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        control_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        control_scroll.setWidget(self.control_panel)
+
+        splitter.addWidget(control_scroll)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
 
