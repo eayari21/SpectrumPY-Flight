@@ -1,0 +1,42 @@
+Ayari Public No-Derivatives License (APND) v1.0
+===============================================
+
+Copyright (c) © 2025 Ethan Ayari
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to
+download, reproduce, and run the Software in **unmodified** form for any purpose,
+including academic and commercial use.
+
+The following actions are expressly **NOT** permitted without prior written
+permission from the copyright holder:
+  1. Modifying the Software or creating derivative works.
+  2. Distributing, publishing, or sublicensing modified versions of the Software.
+  3. Removing or altering copyright, license, or attribution notices.
+
+Redistribution of **verbatim, unmodified** copies of the Software is permitted,
+provided that this license and all copyright notices are included.
+
+NO WARRANTY
+-----------
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+PATENT NOTICE
+-------------
+To the extent the authors own any patent rights that are necessarily
+infringed by **using the unmodified Software as distributed**, you are granted
+a non-exclusive, worldwide, royalty-free patent license to use the Software
+**as-is**. This patent license does **not** extend to modifications or
+derivative works.
+
+CONTACT
+-------
+For exceptions (e.g., derivative licenses), contact: ethan.ayari@colorado.edu
+
+SPDX-License-Identifier: LicenseRef-APND-1.0

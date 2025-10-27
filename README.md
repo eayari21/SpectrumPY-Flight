@@ -99,3 +99,36 @@ The executable runs without root privileges and extracts its shared libraries on
 * **Packaging playbook** – Extended release checklists, validation steps, and troubleshooting strategies for desktop builds.【F:docs/packaging_tutorial.md†L1-L198】
 
 Launch the in-app documentation center anytime (`F1`) to search and read these guides inside the Quicklook viewer.【F:IDEX-quicklook.py†L1888-L1964】
+
+<!-- policy:begin -->
+## License
+
+This repository is released under the **Ayari Public No-Derivatives License (APND) v1.0**.
+You may **download and use the software as-is**. You may **not** modify it or distribute
+modified versions without written permission. See [`LICENSE`](./LICENSE).
+
+## Citation & DOI
+
+If you use this software in research or a product, please **cite it**. We archive
+releases on **Zenodo** to mint a DOI.
+
+**How to cite (example):**
+> Ayari, E. (2025). SpectrumPY-Flight (vX.Y.Z) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.XXXXXXX
+
+After you create your first Zenodo-backed GitHub release, replace the placeholder above and add the badge:
+
+```
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+```
+
+## Contributing
+
+This is a **read-only** public release. We do **not** accept external pull requests or patches.
+Please open an **issue** for bugs or feature requests. For derivative-use exceptions, contact the author.
+
+## Repro/Use
+
+- Clone or download a release tarball.
+- Use **unmodified** sources/binaries as described in the docs.
+- Do **not** redistribute modified versions.
+<!-- policy:end -->

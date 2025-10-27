@@ -1,0 +1,20 @@
+{
+  "license": "other-open", 
+  "title": "SpectrumPY-Flight",
+  "creators": [
+    {
+      "name": "Ayari, Ethan",
+      "affiliation": "University of Colorado Boulder (UCB), Department of Physics, LASP, IMPACT",
+      "orcid": "0000-0000-0000-0000"
+    }
+  ],
+  "keywords": ["IDEX", "IMAP", "dust", "mass spectrometry", "Python"],
+  "related_identifiers": [
+    {
+      "relation": "isSupplementTo",
+      "identifier": "https://github.com/eayari21/4_Flight"
+    }
+  ],
+  "access_right": "open",
+  "notes": "Source-available, no-derivatives license. See LICENSE."
+}
