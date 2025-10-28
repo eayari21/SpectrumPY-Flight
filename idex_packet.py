@@ -18,6 +18,7 @@ import h5py
 import shutil
 import struct
 import matplotlib.pyplot as plt
+from pathlib import Path
 from plot_style import apply_plot_style
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
@@ -516,8 +517,9 @@ class IDEXEvent:
     def __init__(self, filename: str):
         """Test parsing a real XTCE document"""
         # TODO: CHge location of xml definition
-        idex_xtce = 'idex_combined_science_definition.xml'
-        idex_definition = xtcedef.XtcePacketDefinition(xtce_document=idex_xtce)
+        module_root = Path(__file__).resolve().parent
+        idex_xtce = module_root / "idex_combined_science_definition.xml"
+        idex_definition = xtcedef.XtcePacketDefinition(xtce_document=str(idex_xtce))
         # assert isinstance(idex_definition, xtcedef.XtcePacketDefinition)
 
 
@@ -539,6 +541,13 @@ class IDEXEvent:
         idex_packet_generator = idex_parser.generator(idex_binary_data)
         self.data = {}
         self.header={}
+        self.lspretrigblocks = 0
+        self.lsposttrigblocks = 0
+        self.hspretrigblocks = 0
+        self.hsposttrigblocks = 0
+        self.hgdelay = 0
+        self.hstime = np.array([], dtype=float)
+        self.lstime = np.array([], dtype=float)
         evtnum = 0
         for pkt in idex_packet_generator:
             print(evtnum)
@@ -979,8 +988,25 @@ class IDEXEvent:
 
     # ||
     # ||
-    # || Gather all of the events 
+    # || Gather all of the events
     # || and plot them
+    def _high_trigger_offset(self) -> float:
+        pre_blocks = getattr(self, "lspretrigblocks", 0)
+        delay = getattr(self, "hgdelay", 0)
+        return 8 * (1.0 / 4.0625) * (pre_blocks + 1) - (1.0 / 260.0) * delay
+
+    def _low_trigger_offset(self) -> float:
+        pre_blocks = getattr(self, "hspretrigblocks", 0)
+        return 512 * (1.0 / 260.0) * (pre_blocks + 1)
+
+    def _build_time_array(self, sample_count: int, *, high_rate: bool) -> np.ndarray:
+        if sample_count <= 0:
+            return np.array([], dtype=float)
+        spacing = 1.0 / 260.0 if high_rate else 1.0 / 4.0625
+        offset = self._high_trigger_offset() if high_rate else self._low_trigger_offset()
+        time_values = np.arange(sample_count, dtype=float) * spacing
+        return time_values - offset
+
     def plot_all_data(self, packets, fname: str):
         fname = os.path.split(fname)[-1]
         # Create a folder to store the plots
@@ -1096,16 +1122,17 @@ class IDEXEvent:
     # || Write the waveform data 
     # || to an HDF5 file
     def write_to_hdf5(self, waveforms: dict, filename: str):
-        os.chdir('./HDF5/')
-        filename = os.path.split(filename)[-1]  # Just get the name of the file
-        # Prepend HDF5 folder to filename
+        output_path = Path(filename)
+        if not output_path.is_absolute():
+            default_dir = Path.cwd() / "HDF5"
+            default_dir.mkdir(parents=True, exist_ok=True)
+            output_path = default_dir / output_path.name
+        else:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # print(waveforms.keys())
-        # print(waveforms.values())
-
-        if os.path.exists(filename):
-            os.remove(filename)
-        h = h5py.File(filename,'w')
+        if output_path.exists():
+            output_path.unlink()
+        h = h5py.File(output_path, 'w')
 
         for (evtnum, key), value in self.header.items():
             # Skip fields starting with "IDX__" for waveforms
@@ -1142,14 +1169,17 @@ class IDEXEvent:
 
         waveform_items = list(waveforms.items())
 
-        time_lookup = {
-            'TOF H': self.hstime,
-            'TOF M': self.hstime,
-            'TOF L': self.hstime,
-            'Ion Grid': self.lstime,
-            'Target H': self.lstime,
-            'Target L': self.lstime,
-        }
+        high_sample_count = next(
+            (len(data) for (_, channel), data in waveform_items if channel in {'TOF H', 'TOF M', 'TOF L'}),
+            0,
+        )
+        low_sample_count = next(
+            (len(data) for (_, channel), data in waveform_items if channel in {'Ion Grid', 'Target H', 'Target L'}),
+            0,
+        )
+
+        self.hstime = self._build_time_array(high_sample_count, high_rate=True)
+        self.lstime = self._build_time_array(low_sample_count, high_rate=False)
         target_channels = {'Target L', 'Target H', 'Ion Grid'}
 
         def _prepare_waveform(item):
@@ -1163,6 +1193,7 @@ class IDEXEvent:
                 'mass': None,
                 'target_fit': None,
                 'logs': [],
+                'time_array': np.array([], dtype=float),
             }
 
             if channel in conversion_factors:
@@ -1170,8 +1201,15 @@ class IDEXEvent:
                 analysis['transformed'] = transformed_data
                 analysis['channel_saturated'] = detect_saturation(analysis['data'])
 
-                time_array = time_lookup.get(channel)
-                if time_array is not None:
+                if channel in {'TOF H', 'TOF M', 'TOF L'}:
+                    time_array = self._build_time_array(len(transformed_data), high_rate=True)
+                elif channel in target_channels or channel == 'Ion Grid':
+                    time_array = self._build_time_array(len(transformed_data), high_rate=False)
+                else:
+                    time_array = np.arange(len(transformed_data), dtype=float)
+                analysis['time_array'] = time_array
+
+                if time_array.size:
                     min_len = min(len(time_array), len(transformed_data))
                     if min_len > 0:
                         snr_value = calculate_snr(transformed_data[:min_len], time_array[:min_len])
@@ -1182,7 +1220,7 @@ class IDEXEvent:
                 analysis['snr'] = snr_value
 
                 if channel == 'TOF H':
-                    stretch, shift, mass_scale = time2mass(transformed_data, self.hstime)
+                    stretch, shift, mass_scale = time2mass(transformed_data, analysis['time_array'])
                     stretch = float(np.clip(stretch, MASS_STRETCH_MIN, MASS_STRETCH_MAX))
                     peaks, _ = find_peaks(transformed_data, prominence=.01)
                     analysis['logs'].append(f"peaks = {peaks}")
@@ -1190,7 +1228,7 @@ class IDEXEvent:
                     for idx, peak in enumerate(peaks):
                         start = max(0, peak - 5)
                         end = min(len(transformed_data), peak + 6)
-                        x_slice = self.hstime[start:end]
+                        x_slice = analysis['time_array'][start:end]
                         y_slice = transformed_data[start:end]
                         analysis['logs'].append(f"Analyzing peak {peak}")
                         analysis['logs'].append(f"x_slice = {x_slice}, y_slice = {y_slice}")
@@ -1231,7 +1269,12 @@ class IDEXEvent:
                     }
 
             if channel in target_channels:
-                analysis['target_fit'] = FitTargetSignal(self.lstime, analysis['data'])
+                if analysis['time_array'].size == len(analysis['data']):
+                    target_time = analysis['time_array']
+                else:
+                    target_time = self._build_time_array(len(analysis['data']), high_rate=False)
+                analysis['target_fit'] = FitTargetSignal(target_time, analysis['data'])
+                analysis['time_array'] = target_time
 
             return analysis
 
@@ -1299,9 +1342,16 @@ class IDEXEvent:
                     create_dataset_if_not_exists(h, f"/{event_id}/Mass", data=mass_data['mass_scale'])
 
                     peaks = mass_data['peaks']
+                    time_for_mass = analysis.get('time_array', np.array([], dtype=float))
+                    if time_for_mass.size != transformed.size:
+                        time_for_mass = self._build_time_array(len(transformed), high_rate=True)
+                    self.hstime = time_for_mass
+
                     plt.figure(figsize=(10, 6))
-                    plt.plot(self.hstime, transformed, label="Transformed Data", color="blue")
-                    plt.scatter(self.hstime[peaks], transformed[peaks], color="red", label="Peaks", marker="x", s=100)
+                    plt.plot(time_for_mass, transformed, label="Transformed Data", color="blue")
+                    if peaks.size:
+                        valid_indices = peaks[peaks < len(time_for_mass)]
+                        plt.scatter(time_for_mass[valid_indices], transformed[valid_indices], color="red", label="Peaks", marker="x", s=100)
                     plt.xlabel("Time (hstime)")
                     plt.ylabel("Transformed Data")
                     plt.title("Transformed Data with Detected Peaks")
@@ -1354,9 +1404,13 @@ class IDEXEvent:
                 h.create_dataset(f"/{event_id}/{channel}", data=data)
 
             if channel == 'TOF L':
-                h.create_dataset(f"/{event_id}/Time (high sampling)", data=self.hstime)
+                time_data = analysis.get('time_array', self._build_time_array(len(data), high_rate=True))
+                self.hstime = time_data
+                h.create_dataset(f"/{event_id}/Time (high sampling)", data=time_data)
             if channel == 'Ion Grid':
-                h.create_dataset(f"/{event_id}/Time (low sampling)", data=self.lstime)
+                time_data = analysis.get('time_array', self._build_time_array(len(data), high_rate=False))
+                self.lstime = time_data
+                h.create_dataset(f"/{event_id}/Time (low sampling)", data=time_data)
         for evt, saturated in event_saturation_flags.items():
             create_dataset_if_not_exists(
                 h,
@@ -1364,7 +1418,7 @@ class IDEXEvent:
                 data=np.array([int(saturated)], dtype=np.int8),
             )
 
-        os.chdir('../')
+        h.close()
         # h.create_dataset("Time since ")
 
 # ||
