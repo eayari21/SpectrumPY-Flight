@@ -9,6 +9,7 @@ np = pytest.importorskip("numpy")
 h5py = pytest.importorskip("h5py")
 
 from idex_packet import IDEXEvent
+from olivine_metrics import generate_olivine_metrics
 
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "Data"
@@ -62,7 +63,7 @@ def test_olivine_analysis_generates_mass_lines_and_flags(tmp_path, data_path):
     with h5py.File(output_path, "r") as handle:
         for event_id in handle.keys():
             analysis_base = f"{event_id}/Analysis"
-            assert _h5_has_path(handle, analysis_base), "Analysis group missing from event." 
+            assert _h5_has_path(handle, analysis_base), "Analysis group missing from event."
 
             flag_base = f"{analysis_base}/Flags"
             assert _h5_has_path(handle, f"{flag_base}/FailedFits"), "Failed fit flags missing."
@@ -88,3 +89,10 @@ def test_olivine_analysis_generates_mass_lines_and_flags(tmp_path, data_path):
                     charge_path = f"{analysis_base}/{channel}ImpactCharge"
                     assert _h5_has_path(handle, mass_estimate_path), f"Missing mass estimate for {channel}."
                     assert _h5_has_path(handle, charge_path), f"Missing impact charge for {channel}."
+
+    report_dir = tmp_path / "metrics"
+    report = generate_olivine_metrics([output_path], report_dir)
+    pdf_path = report["pdf"]
+    summary_path = report["summary"]
+    assert pdf_path.exists(), "Expected PDF metrics report was not created."
+    assert summary_path.exists(), "Expected metrics JSON summary was not created."

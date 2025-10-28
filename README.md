@@ -99,6 +99,7 @@ The executable runs without root privileges and extracts its shared libraries on
 * **Quicklook tutorial** – Guided walkthrough of the GUI workflow, shortcuts, and recommended analysis order.【F:docs/quicklook_tutorial.md†L1-L123】
 * **Fitting reference** – Deep dive into baseline handling, Data Browser correlations, and variable-definition lookups.【F:docs/fitting_reference.md†L1-L115】
 * **Packaging playbook** – Extended release checklists, validation steps, and troubleshooting strategies for desktop builds.【F:docs/packaging_tutorial.md†L1-L198】
+* **Olivine metrics** – Instructions for running the olivine regression and locating the generated SNR, timing, and saturation reports.【F:docs/olivine_metrics.md†L1-L64】
 
 Launch the in-app documentation center anytime (`F1`) to search and read these guides inside the Quicklook viewer.【F:IDEX-quicklook.py†L1888-L1964】
 
