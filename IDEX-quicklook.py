@@ -3852,6 +3852,7 @@ class FitParameterDialog(QDialog):
         layout.addLayout(chooser_row)
 
         preview_group = QGroupBox("Low-rate waveform preview", self)
+        preview_group.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         preview_layout = QVBoxLayout(preview_group)
         preview_layout.setContentsMargins(10, 12, 10, 12)
         preview_layout.setSpacing(8)
@@ -3873,38 +3874,19 @@ class FitParameterDialog(QDialog):
         preview_controls.addStretch(1)
         preview_layout.addLayout(preview_controls)
 
-        figure_wrapper = QWidget(preview_group)
-        figure_layout = QVBoxLayout(figure_wrapper)
-        figure_layout.setContentsMargins(0, 0, 0, 0)
-        figure_layout.setSpacing(6)
         self.preview_figure = Figure(figsize=(7.0, 3.8), constrained_layout=True)
         self.preview_ax = self.preview_figure.add_subplot(111)
         self.preview_ax.set_facecolor("#f8f9fb")
         self.preview_canvas = ScrollFriendlyFigureCanvas(self.preview_figure)
-        self.preview_canvas.setMinimumSize(980, 420)
-        self.preview_toolbar = NavigationToolbar(self.preview_canvas, figure_wrapper)
-        figure_layout.addWidget(self.preview_toolbar)
-        figure_layout.addWidget(self.preview_canvas)
-
-        self.preview_scroll = QScrollArea(preview_group)
-        self.preview_scroll.setWidgetResizable(True)
-        self.preview_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.preview_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.preview_scroll.setWidget(figure_wrapper)
-        preview_layout.addWidget(self.preview_scroll)
+        self.preview_canvas.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        self.preview_toolbar = NavigationToolbar(self.preview_canvas, preview_group)
+        preview_layout.addWidget(self.preview_toolbar)
+        preview_layout.addWidget(self.preview_canvas, stretch=1)
 
         self.preview_status_label = QLabel("", preview_group)
         self.preview_status_label.setStyleSheet("font-size: 13px; color: #555555;")
         self.preview_status_label.setWordWrap(True)
         preview_layout.addWidget(self.preview_status_label)
-
-        layout.addWidget(preview_group)
-
-        self.image_charge_checkbox = QCheckBox("Include image charge component", self)
-        self.image_charge_checkbox.setStyleSheet("font-size: 14px;")
-        self.image_charge_checkbox.stateChanged.connect(self._on_image_charge_toggled)
-        self.image_charge_checkbox.setVisible(False)
-        layout.addWidget(self.image_charge_checkbox)
 
         self._selector_keyword_map: Dict[str, Tuple[str, ...]] = {
             "baseline": ("baseline",),
@@ -3930,6 +3912,7 @@ class FitParameterDialog(QDialog):
         self._preview_offset = 0.0
 
         preview_box = QGroupBox("Fit preview", self)
+        preview_box.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         preview_layout = QVBoxLayout(preview_box)
         preview_layout.setContentsMargins(12, 12, 12, 12)
         preview_layout.setSpacing(6)
@@ -3969,14 +3952,12 @@ class FitParameterDialog(QDialog):
 
         self._preview_figure = Figure(figsize=(6.0, 3.6), constrained_layout=True)
         self._preview_canvas = FigureCanvas(self._preview_figure)
-        self._preview_canvas.setMinimumHeight(260)
+        self._preview_canvas.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         self._preview_toolbar = NavigationToolbar(self._preview_canvas, preview_box)
         preview_layout.addWidget(self._preview_toolbar)
         preview_layout.addWidget(self._preview_canvas, stretch=1)
 
         self._preview_canvas.mpl_connect("button_press_event", self._on_preview_click)
-
-        layout.addWidget(preview_box, stretch=1)
 
         self.table = QTableWidget(self)
         self.table.setColumnCount(3)
@@ -3994,17 +3975,40 @@ class FitParameterDialog(QDialog):
         )
         self.table.setStyleSheet("font-size: 15px;")
         self.table.itemChanged.connect(self._on_table_item_changed)
-        layout.addWidget(self.table)
 
         self.info_label = QLabel("", self)
         self.info_label.setStyleSheet("font-size: 14px; color: #555555;")
         self.info_label.setWordWrap(True)
-        layout.addWidget(self.info_label)
 
         self.feedback_label = QLabel("", self)
         self.feedback_label.setStyleSheet("font-size: 14px; color: #146c43;")
         self.feedback_label.setWordWrap(True)
-        layout.addWidget(self.feedback_label)
+
+        self.image_charge_checkbox = QCheckBox("Include image charge component", self)
+        self.image_charge_checkbox.setStyleSheet("font-size: 14px;")
+        self.image_charge_checkbox.stateChanged.connect(self._on_image_charge_toggled)
+        self.image_charge_checkbox.setVisible(False)
+
+        table_panel = QWidget(self)
+        table_panel.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        table_layout = QVBoxLayout(table_panel)
+        table_layout.setContentsMargins(0, 0, 0, 0)
+        table_layout.setSpacing(8)
+        table_layout.addWidget(self.image_charge_checkbox, alignment=Qt.AlignmentFlag.AlignLeft)
+        table_layout.addWidget(self.table, stretch=1)
+        table_layout.addWidget(self.info_label)
+        table_layout.addWidget(self.feedback_label)
+
+        self.content_splitter = QSplitter(Qt.Orientation.Vertical, self)
+        self.content_splitter.setChildrenCollapsible(False)
+        self.content_splitter.setHandleWidth(10)
+        self.content_splitter.addWidget(preview_group)
+        self.content_splitter.addWidget(preview_box)
+        self.content_splitter.addWidget(table_panel)
+        self.content_splitter.setStretchFactor(0, 3)
+        self.content_splitter.setStretchFactor(1, 2)
+        self.content_splitter.setStretchFactor(2, 3)
+        layout.addWidget(self.content_splitter, stretch=1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
 
@@ -4455,20 +4459,12 @@ class FitParameterDialog(QDialog):
         time_data = self._preview_time[order]
         value_data = self._preview_values[order]
 
-        finite_values = value_data[np.isfinite(value_data)]
-        offset = 0.0
-        if finite_values.size:
-            minimum = float(np.nanmin(finite_values))
-            if minimum <= 0.0:
-                offset = abs(minimum) + 1.0e-9
-
-        adjusted = value_data + offset
-        ax.plot(time_data, adjusted, color="#0c5da5", linewidth=1.8, label="Fit curve")
+        ax.plot(time_data, value_data, color="#0c5da5", linewidth=1.8, label="Fit curve")
         ax.set_xlabel("Time (µs)")
         ax.set_ylabel("Value")
         ax.grid(True, alpha=0.35)
         ax.legend(loc="best")
-        self._preview_offset = offset
+        self._preview_offset = 0.0
         self._draw_preview_overlays(ax)
         self._preview_canvas.draw_idle()
 
@@ -4488,7 +4484,7 @@ class FitParameterDialog(QDialog):
                 continue
             color = color_map.get(mode, "#495057")
             if mode in {"baseline", "offset", "amplitude"}:
-                ax.axhline(value + self._preview_offset, color=color, linestyle="--", linewidth=1.1, alpha=0.75)
+                ax.axhline(value, color=color, linestyle="--", linewidth=1.1, alpha=0.75)
             else:
                 ax.axvline(value, color=color, linestyle="--", linewidth=1.1, alpha=0.75)
 
@@ -4501,7 +4497,7 @@ class FitParameterDialog(QDialog):
         if mode in {"baseline", "offset", "amplitude"}:
             if event.ydata is None:
                 return
-            value = float(event.ydata) - float(self._preview_offset)
+            value = float(event.ydata)
         else:
             if event.xdata is None:
                 return
