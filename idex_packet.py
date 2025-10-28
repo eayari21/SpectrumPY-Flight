@@ -1166,6 +1166,7 @@ class IDEXEvent:
         }
 
         event_saturation_flags = {}
+        flags_by_event = {}
 
         waveform_items = list(waveforms.items())
 
@@ -1194,6 +1195,8 @@ class IDEXEvent:
                 'target_fit': None,
                 'logs': [],
                 'time_array': np.array([], dtype=float),
+                'fit_failures': [],
+                'notes': [],
             }
 
             if channel in conversion_factors:
@@ -1237,6 +1240,10 @@ class IDEXEvent:
                         analysis['logs'].append(f"Calculating mass fit for peak {mass_value}")
                         param, param_cov, sig_amp, fitted_curve = FitEMG(x_slice, y_slice)
                         if param is None:
+                            analysis['fit_failures'].append(f"{channel}Peak{idx}")
+                            analysis['notes'].append(
+                                f"EMG fit failed for peak {idx} (mass={mass_value})"
+                            )
                             continue
                         area = calculate_area_under_emg(x_slice, param)
                         analysis['logs'].append(f"Area under the EMG fit for peak {mass_value}: {area}")
@@ -1273,7 +1280,12 @@ class IDEXEvent:
                     target_time = analysis['time_array']
                 else:
                     target_time = self._build_time_array(len(analysis['data']), high_rate=False)
-                analysis['target_fit'] = FitTargetSignal(target_time, analysis['data'])
+                target_fit = FitTargetSignal(target_time, analysis['data'])
+                analysis['target_fit'] = target_fit
+                params = np.asarray(target_fit.get('params', np.array([])), dtype=float)
+                if params.size == 0 or not np.all(np.isfinite(params)):
+                    analysis['fit_failures'].append(f"{channel}Fit")
+                    analysis['notes'].append(f"Target fit for {channel} returned invalid parameters")
                 analysis['time_array'] = target_time
 
             return analysis
@@ -1290,6 +1302,14 @@ class IDEXEvent:
                 print(log)
 
             event_saturation_flags.setdefault(event_id, False)
+            event_flags = flags_by_event.setdefault(
+                event_id,
+                {
+                    'failed_fits': [],
+                    'saturated_channels': [],
+                    'notes': [],
+                },
+            )
 
             ra_values = np.deg2rad(np.random.uniform(0, 15, size=1))
             dec_values = np.deg2rad(np.random.uniform(-5, 5, size=1))
@@ -1329,6 +1349,14 @@ class IDEXEvent:
                 )
                 if channel_saturated:
                     event_saturation_flags[event_id] = True
+                    event_flags['saturated_channels'].append(channel)
+                    event_flags['notes'].append(f"{channel} channel saturation detected")
+
+                if analysis['fit_failures']:
+                    event_flags['failed_fits'].extend(analysis['fit_failures'])
+
+                if analysis['notes']:
+                    event_flags['notes'].extend(analysis['notes'])
 
                 if analysis['snr'] is not None:
                     create_dataset_if_not_exists(
@@ -1417,6 +1445,31 @@ class IDEXEvent:
                 f"/{evt}/Metadata/AnyChannelSaturated",
                 data=np.array([int(saturated)], dtype=np.int8),
             )
+
+        string_dtype = h5py.string_dtype(encoding='utf-8')
+        for evt, flag_values in flags_by_event.items():
+            flag_base = f"/{evt}/Analysis/Flags"
+            flag_group = h.require_group(flag_base)
+
+            failed = sorted(set(flag_values['failed_fits']))
+            saturated = sorted(set(flag_values['saturated_channels']))
+            notes = sorted(set(flag_values['notes']))
+
+            datasets = {
+                'FailedFits': failed,
+                'SaturatedChannels': saturated,
+                'Notes': notes,
+            }
+
+            for name, entries in datasets.items():
+                dataset_path = f"{flag_base}/{name}"
+                if dataset_path in h:
+                    continue
+                if entries:
+                    data = np.array(entries, dtype=object)
+                    flag_group.create_dataset(name, data=data, dtype=string_dtype)
+                else:
+                    flag_group.create_dataset(name, shape=(0,), dtype=string_dtype)
 
         h.close()
         # h.create_dataset("Time since ")
