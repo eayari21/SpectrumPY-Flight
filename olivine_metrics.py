@@ -14,6 +14,17 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
+from line_shapes import emg as _emg_profile
+from time2mass import time2mass as optimise_time2mass
+
+try:  # pragma: no cover - SciPy is optional in some environments
+    from scipy.optimize import curve_fit as _curve_fit  # type: ignore
+
+    _HAVE_CURVE_FIT = True
+except Exception:  # pragma: no cover - gracefully degrade without SciPy
+    _HAVE_CURVE_FIT = False
+    _curve_fit = None
+
 
 SNR_CHANNELS: Sequence[str] = (
     "TOF L",
@@ -31,6 +42,30 @@ TRIGGER_PAIRS: Mapping[str, tuple[str, str]] = {
     "TOF H vs Target": ("TOF H", "Target"),
     "Target vs Ion Grid": ("Target", "Ion Grid"),
 }
+
+EXPECTED_MASS_LINES: Sequence[tuple[str, float]] = (
+    ("1H", 1.0),
+    ("12C", 12.0),
+    ("16O", 16.0),
+    ("23Na", 23.0),
+    ("24Mg", 24.0),
+    ("25Mg", 25.0),
+    ("26Mg", 26.0),
+    ("28Si", 28.0),
+    ("29Si", 29.0),
+    ("30Si", 30.0),
+    ("38K", 38.0),
+    ("54Fe", 54.0),
+    ("56Fe", 56.0),
+    ("57Fe", 57.0),
+    ("58Fe", 58.0),
+)
+
+MG_ISOTOPES = {"24Mg", "25Mg", "26Mg"}
+SI_ISOTOPES = {"28Si", "29Si", "30Si"}
+FE_ISOTOPES = {"54Fe", "56Fe", "57Fe", "58Fe"}
+
+MASS_FIT_WINDOW = 0.6
 
 
 def _finite_values(values: Iterable[float] | np.ndarray | float) -> np.ndarray:
@@ -91,6 +126,100 @@ def _hist_figure(
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     fig.text(0.5, 0.02, caption, ha="center", fontsize=10)
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    return fig
+
+
+def _mass_abundance_figure(results: Sequence["MassAnalysisResult"]) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(10, 6))
+    species_order = [name for name, _ in EXPECTED_MASS_LINES]
+
+    if results and any(r.total_area > 0 for r in results):
+        medians = []
+        for species in species_order:
+            values = [r.relative_abundances.get(species, 0.0) for r in results]
+            arr = _finite_values(values)
+            medians.append(float(np.median(arr)) if arr.size else 0.0)
+
+        positions = np.arange(len(species_order))
+        ax.bar(positions, medians, color="#2a6ea6", edgecolor="white")
+        ax.set_xticks(positions, species_order, rotation=45, ha="right")
+        ax.set_ylabel("Median relative abundance")
+        ax.set_ylim(0.0, 1.0)
+        caption = "Median per-event relative abundance for the expected olivine mass lines."
+    else:
+        ax.axis("off")
+        ax.text(
+            0.5,
+            0.5,
+            "No mass spectral fits were available to compute relative abundances.",
+            ha="center",
+            va="center",
+            fontsize=12,
+        )
+        caption = (
+            "Mass spectrum analysis requires valid TOF H waveforms and SciPy's curve_fit."
+        )
+
+    fig.suptitle("Olivine Mass Line Relative Abundances")
+    fig.text(0.5, 0.02, caption, ha="center", fontsize=10)
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    return fig
+
+
+def _ternary_to_cartesian(mg: float, si: float, fe: float) -> tuple[float, float]:
+    vertices = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, np.sqrt(3.0) / 2.0]])
+    bary = np.array([mg, si, fe], dtype=float)
+    total = float(bary.sum())
+    if total <= 0.0:
+        bary = np.array([1.0, 0.0, 0.0])
+        total = 1.0
+    bary = bary / total
+    coord = bary @ vertices
+    return float(coord[0]), float(coord[1])
+
+
+def _ternary_figure(points: Sequence[tuple[float, float, float]]) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(8, 7))
+    ax.set_axis_off()
+
+    vertices = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, np.sqrt(3.0) / 2.0]])
+    loop = np.vstack([vertices, vertices[0]])
+    ax.plot(loop[:, 0], loop[:, 1], color="#444444", linewidth=1.5)
+    ax.text(-0.05, -0.05, "Mg", fontsize=12, fontweight="bold")
+    ax.text(1.05, -0.05, "Si", fontsize=12, fontweight="bold", ha="right")
+    ax.text(0.5, np.sqrt(3.0) / 2.0 + 0.05, "Fe", fontsize=12, fontweight="bold", ha="center")
+
+    if points:
+        coords = np.array([_ternary_to_cartesian(*p) for p in points])
+        ax.scatter(
+            coords[:, 0],
+            coords[:, 1],
+            c="#2a6ea6",
+            edgecolor="white",
+            linewidth=0.75,
+            s=60,
+        )
+    else:
+        ax.text(
+            0.5,
+            0.4,
+            "No events provided Mg–Si–Fe abundances for the ternary diagram.",
+            ha="center",
+            va="center",
+            fontsize=12,
+        )
+
+    ax.set_xlim(-0.1, 1.1)
+    ax.set_ylim(-0.1, np.sqrt(3.0) / 2.0 + 0.1)
+    fig.suptitle("Mg–Si–Fe Ternary Composition")
+    fig.text(
+        0.5,
+        0.02,
+        "Points are normalised per event using the fitted Mg, Si, and Fe line areas.",
+        ha="center",
+        fontsize=10,
+    )
     fig.tight_layout(rect=(0, 0.04, 1, 1))
     return fig
 
@@ -191,6 +320,241 @@ def _infer_trigger_time(event_group: h5py.Group, analysis_group: h5py.Group | No
 
 
 @dataclass
+class MassLineFit:
+    species: str
+    target_mass: float
+    fit_mass: float | None
+    sigma: float | None
+    tau: float | None
+    area: float
+    success: bool
+
+    def to_dict(self) -> dict[str, float | bool | None]:
+        return {
+            "species": self.species,
+            "target_mass": float(self.target_mass),
+            "fit_mass": None if self.fit_mass is None else float(self.fit_mass),
+            "sigma": None if self.sigma is None else float(self.sigma),
+            "tau": None if self.tau is None else float(self.tau),
+            "area": float(self.area),
+            "success": bool(self.success),
+        }
+
+
+@dataclass
+class MassAnalysisResult:
+    event_id: str
+    baseline: float
+    stretch_us: float
+    shift_us: float
+    fits: list[MassLineFit]
+    relative_abundances: dict[str, float]
+    raw_areas: dict[str, float]
+
+    def __post_init__(self) -> None:
+        self.baseline = float(self.baseline)
+        self.stretch_us = float(self.stretch_us)
+        self.shift_us = float(self.shift_us)
+
+    @property
+    def total_area(self) -> float:
+        return float(sum(self.raw_areas.values()))
+
+    def ternary_point(self) -> tuple[float, float, float] | None:
+        mg = sum(self.raw_areas.get(species, 0.0) for species in MG_ISOTOPES)
+        si = sum(self.raw_areas.get(species, 0.0) for species in SI_ISOTOPES)
+        fe = sum(self.raw_areas.get(species, 0.0) for species in FE_ISOTOPES)
+        if mg <= 0.0 or si <= 0.0 or fe <= 0.0:
+            return None
+        total = mg + si + fe
+        if total <= 0.0:
+            return None
+        return float(mg / total), float(si / total), float(fe / total)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "event_id": self.event_id,
+            "baseline": float(self.baseline),
+            "stretch_us": float(self.stretch_us),
+            "shift_us": float(self.shift_us),
+            "relative_abundances": {k: float(v) for k, v in self.relative_abundances.items()},
+            "raw_areas": {k: float(v) for k, v in self.raw_areas.items()},
+            "fits": [fit.to_dict() for fit in self.fits],
+        }
+
+
+def _fit_mass_line(
+    mass_axis: np.ndarray,
+    signal: np.ndarray,
+    species: str,
+    target_mass: float,
+) -> MassLineFit:
+    mask = (mass_axis >= target_mass - MASS_FIT_WINDOW) & (
+        mass_axis <= target_mass + MASS_FIT_WINDOW
+    )
+    if not np.any(mask):
+        return MassLineFit(species, target_mass, None, None, None, 0.0, False)
+
+    mass_window = np.asarray(mass_axis[mask], dtype=float)
+    intensity_window = np.asarray(signal[mask], dtype=float)
+    if mass_window.size < 5 or not np.any(np.isfinite(intensity_window)):
+        return MassLineFit(species, target_mass, None, None, None, 0.0, False)
+
+    finite_mask = np.isfinite(intensity_window)
+    if not np.any(finite_mask):
+        return MassLineFit(species, target_mass, None, None, None, 0.0, False)
+
+    intensity_window = intensity_window[finite_mask]
+    mass_window = mass_window[finite_mask]
+
+    if mass_window.size < 5:
+        return MassLineFit(species, target_mass, None, None, None, 0.0, False)
+
+    positive_mask = intensity_window > 0.0
+    area_guess = float(
+        np.trapz(np.maximum(intensity_window, 0.0), mass_window)
+    )
+    if area_guess <= 0.0 and not np.any(positive_mask):
+        return MassLineFit(species, target_mass, None, None, None, 0.0, False)
+
+    peak_idx = int(np.argmax(intensity_window))
+    mu_guess = float(mass_window[peak_idx])
+    sigma_guess = 0.25
+    tau_guess = 0.2
+
+    area_upper = max(
+        area_guess * 10.0,
+        float(np.abs(intensity_window).max() * (mass_window[-1] - mass_window[0]) * 5.0),
+        1.0,
+    )
+
+    if not _HAVE_CURVE_FIT:
+        return MassLineFit(species, target_mass, None, None, None, 0.0, False)
+
+    try:
+        popt, _ = _curve_fit(
+            lambda m, mu, sigma, tau, area: _emg_profile(
+                m, mu, sigma, tau, area=area
+            ),
+            mass_window,
+            intensity_window,
+            p0=[mu_guess, sigma_guess, tau_guess, max(area_guess, 1.0e-6)],
+            bounds=(
+                [target_mass - MASS_FIT_WINDOW, 0.05, 0.01, 0.0],
+                [target_mass + MASS_FIT_WINDOW, 1.5, 10.0, area_upper],
+            ),
+            maxfev=10000,
+        )
+    except Exception:
+        return MassLineFit(species, target_mass, None, None, None, 0.0, False)
+
+    fit_mass, sigma, tau, area = map(float, popt)
+    area = max(area, 0.0)
+    return MassLineFit(species, target_mass, fit_mass, sigma, tau, area, True)
+
+
+def _analyse_mass_spectrum(event_id: str, event_group: h5py.Group) -> MassAnalysisResult | None:
+    waveform = event_group.get("TOF H")
+    time_dataset = event_group.get("Time (high sampling)")
+    if waveform is None or time_dataset is None:
+        return None
+
+    tof = np.asarray(waveform[()], dtype=float).ravel()
+    time = np.asarray(time_dataset[()], dtype=float).ravel()
+    n = min(tof.size, time.size)
+    if n < 10:
+        return None
+    tof = tof[:n]
+    time = time[:n]
+
+    try:
+        stretch_us, shift_us, mass_axis = optimise_time2mass(tof, time)
+    except Exception:
+        return None
+
+    baseline_region = max(10, n // 20)
+    baseline = float(np.nanmedian(tof[:baseline_region])) if baseline_region else float(np.nanmedian(tof))
+    signal = np.asarray(tof - baseline, dtype=float)
+
+    fits: list[MassLineFit] = []
+    raw_areas: dict[str, float] = {}
+    for species, target_mass in EXPECTED_MASS_LINES:
+        fit = _fit_mass_line(mass_axis, signal, species, target_mass)
+        fits.append(fit)
+        raw_areas[species] = float(fit.area if fit.success else 0.0)
+
+    total_area = float(sum(raw_areas.values()))
+    if total_area > 0.0:
+        relative = {species: area / total_area for species, area in raw_areas.items()}
+    else:
+        relative = {species: 0.0 for species in raw_areas.keys()}
+
+    return MassAnalysisResult(
+        event_id=event_id,
+        baseline=baseline,
+        stretch_us=stretch_us,
+        shift_us=shift_us,
+        fits=fits,
+        relative_abundances=relative,
+        raw_areas=raw_areas,
+    )
+
+
+def _relative_stats(results: Sequence[MassAnalysisResult]) -> dict[str, dict[str, float]]:
+    stats: dict[str, dict[str, float]] = {}
+    for species, _ in EXPECTED_MASS_LINES:
+        values = [r.relative_abundances.get(species, 0.0) for r in results if r.total_area > 0.0]
+        arr = _finite_values(values)
+        if arr.size:
+            stats[species] = {
+                "count": int(arr.size),
+                "median": float(np.median(arr)),
+                "mean": float(np.mean(arr)),
+                "std": float(np.std(arr, ddof=0)),
+            }
+        else:
+            stats[species] = {
+                "count": 0,
+                "median": 0.0,
+                "mean": 0.0,
+                "std": 0.0,
+            }
+    return stats
+
+
+def _aggregate_elemental_fractions(
+    results: Sequence[MassAnalysisResult],
+) -> tuple[float, float, float] | None:
+    mg_values = [
+        sum(r.relative_abundances.get(species, 0.0) for species in MG_ISOTOPES)
+        for r in results
+        if r.total_area > 0.0
+    ]
+    si_values = [
+        sum(r.relative_abundances.get(species, 0.0) for species in SI_ISOTOPES)
+        for r in results
+        if r.total_area > 0.0
+    ]
+    fe_values = [
+        sum(r.relative_abundances.get(species, 0.0) for species in FE_ISOTOPES)
+        for r in results
+        if r.total_area > 0.0
+    ]
+
+    mg_arr = _finite_values(mg_values)
+    si_arr = _finite_values(si_values)
+    fe_arr = _finite_values(fe_values)
+    if not (mg_arr.size and si_arr.size and fe_arr.size):
+        return None
+
+    return (
+        float(np.median(mg_arr) * 100.0),
+        float(np.median(si_arr) * 100.0),
+        float(np.median(fe_arr) * 100.0),
+    )
+
+
+@dataclass
 class MetricCollector:
     snr: MutableMapping[str, list[float]] = field(
         default_factory=lambda: defaultdict(list)
@@ -214,6 +578,8 @@ class MetricCollector:
     target_usage: Counter[str] = field(default_factory=Counter)
     files_processed: int = 0
     events_processed: int = 0
+    mass_results: list[MassAnalysisResult] = field(default_factory=list)
+    _ternary_points: list[tuple[float, float, float]] = field(default_factory=list)
 
     def consume_file(self, path: Path) -> None:
         with h5py.File(path, "r") as handle:
@@ -268,6 +634,13 @@ class MetricCollector:
                             count = int(np.count_nonzero(values))
                             if count:
                                 self.saturation_counts[channel] += count
+
+                mass_result = _analyse_mass_spectrum(event_id, event_group)
+                if mass_result is not None:
+                    self.mass_results.append(mass_result)
+                    ternary = mass_result.ternary_point()
+                    if ternary is not None:
+                        self._ternary_points.append(ternary)
 
                 trigger_times: dict[str, float] = {}
                 if analysis_group is not None:
@@ -328,6 +701,33 @@ class MetricCollector:
         lines.append(
             "All histograms include the instrument requirements from the signal handbook when thresholds are defined."
         )
+
+        if self.mass_results:
+            elemental = _aggregate_elemental_fractions(self.mass_results)
+            if elemental is not None:
+                mg_percent, si_percent, fe_percent = elemental
+                lines.append(
+                    "Median elemental fractions — "
+                    + ", ".join(
+                        [
+                            f"Mg: {mg_percent:.1f}%",
+                            f"Si: {si_percent:.1f}%",
+                            f"Fe: {fe_percent:.1f}%",
+                        ]
+                    )
+                )
+
+            species_stats = _relative_stats(self.mass_results)
+            if species_stats:
+                formatted = ", ".join(
+                    f"{species}: {values['median'] * 100.0:.1f}%"
+                    for species, values in species_stats.items()
+                )
+                lines.append("Median per-line abundances — " + formatted)
+        else:
+            lines.append(
+                "No mass spectral waveforms were available for the olivine abundance analysis."
+            )
         return lines
 
     def write_report(self, pdf_path: Path) -> None:
@@ -408,6 +808,14 @@ class MetricCollector:
                 pdf.savefig(fig)
                 plt.close(fig)
 
+            mass_fig = _mass_abundance_figure(self.mass_results)
+            pdf.savefig(mass_fig)
+            plt.close(mass_fig)
+
+            ternary_fig = _ternary_figure(self._ternary_points)
+            pdf.savefig(ternary_fig)
+            plt.close(ternary_fig)
+
     def write_summary_json(self, path: Path) -> None:
         def stats(values: Iterable[float]) -> Mapping[str, float | int]:
             arr = _finite_values(values)
@@ -437,6 +845,31 @@ class MetricCollector:
             },
             "saturation_counts": dict(self.saturation_counts),
             "target_usage": dict(self.target_usage),
+            "mass_analysis": {
+                "events": [result.to_dict() for result in self.mass_results],
+                "relative_abundance_stats": {
+                    species: {
+                        "count": stat_values["count"],
+                        "median": stat_values["median"],
+                        "mean": stat_values["mean"],
+                        "std": stat_values["std"],
+                    }
+                    for species, stat_values in _relative_stats(self.mass_results).items()
+                },
+                "ternary_points": [
+                    {"Mg": float(mg), "Si": float(si), "Fe": float(fe)}
+                    for mg, si, fe in self._ternary_points
+                ],
+                "median_elemental_percent": (
+                    {
+                        "Mg": elemental[0],
+                        "Si": elemental[1],
+                        "Fe": elemental[2],
+                    }
+                    if (elemental := _aggregate_elemental_fractions(self.mass_results)) is not None
+                    else None
+                ),
+            },
         }
 
         path.write_text(json.dumps(summary, indent=2))

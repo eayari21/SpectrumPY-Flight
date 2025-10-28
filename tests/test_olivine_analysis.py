@@ -1,9 +1,10 @@
 import pytest
+import json
 
 np = pytest.importorskip("numpy")
 h5py = pytest.importorskip("h5py")
 
-from olivine_metrics import generate_olivine_metrics
+from olivine_metrics import EXPECTED_MASS_LINES, generate_olivine_metrics
 
 
 def _h5_has_path(handle: h5py.File, path: str) -> bool:
@@ -102,3 +103,18 @@ def test_olivine_analysis_generates_mass_lines_and_flags(tmp_path):
     summary_path = report["summary"]
     assert pdf_path.exists(), "Expected PDF metrics report was not created."
     assert summary_path.exists(), "Expected metrics JSON summary was not created."
+
+    summary_data = json.loads(summary_path.read_text())
+    assert "mass_analysis" in summary_data, "Mass analysis results missing from summary JSON."
+    mass_analysis = summary_data["mass_analysis"]
+    assert isinstance(mass_analysis.get("events"), list), "Mass analysis events should be a list."
+    species_names = {name for name, _ in EXPECTED_MASS_LINES}
+    if mass_analysis["events"]:
+        first_event = mass_analysis["events"][0]
+        assert "relative_abundances" in first_event, "Relative abundances missing from mass analysis event."
+        assert species_names.issubset(set(first_event["relative_abundances"].keys()))
+    stats = mass_analysis.get("relative_abundance_stats")
+    assert isinstance(stats, dict), "Relative abundance statistics missing from mass analysis."
+    assert species_names.issubset(set(stats.keys())), "Not all expected species present in abundance statistics."
+    ternary_points = mass_analysis.get("ternary_points")
+    assert isinstance(ternary_points, list), "Ternary composition points should be recorded as a list."
