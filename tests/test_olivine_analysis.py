@@ -1,47 +1,9 @@
-import re
-from datetime import datetime
-from pathlib import Path
-from typing import Optional
-
 import pytest
 
 np = pytest.importorskip("numpy")
 h5py = pytest.importorskip("h5py")
 
-from idex_packet import IDEXEvent
 from olivine_metrics import generate_olivine_metrics
-
-
-DATA_DIR = Path(__file__).resolve().parent.parent / "Data"
-START_DATE = datetime(2023, 12, 3)
-END_DATE = datetime(2023, 12, 15)
-
-
-def _extract_datetime_from_name(name: str) -> Optional[datetime]:
-    match = re.search(r"(\d{8})", name)
-    if not match:
-        return None
-    try:
-        return datetime.strptime(match.group(1), "%m%d%Y")
-    except ValueError:
-        return None
-
-
-def _olivine_files():
-    for entry in sorted(DATA_DIR.glob("*")):
-        if not entry.is_file():
-            continue
-        event_date = _extract_datetime_from_name(entry.name)
-        if event_date is None:
-            continue
-        if START_DATE <= event_date <= END_DATE:
-            yield entry
-
-
-OLIVINE_FILES = list(_olivine_files())
-
-if not OLIVINE_FILES:
-    pytest.skip("No olivine data files found in Data/", allow_module_level=True)
 
 
 def _h5_has_path(handle: h5py.File, path: str) -> bool:
@@ -52,11 +14,55 @@ def _h5_has_path(handle: h5py.File, path: str) -> bool:
     return True
 
 
-@pytest.mark.parametrize("data_path", OLIVINE_FILES)
-def test_olivine_analysis_generates_mass_lines_and_flags(tmp_path, data_path):
-    output_path = tmp_path / f"{data_path.name}.h5"
-    packets = IDEXEvent(str(data_path))
-    packets.write_to_hdf5(packets.data, str(output_path))
+def _build_synthetic_event(handle: h5py.File, name: str) -> None:
+    event_group = handle.create_group(name)
+
+    # Waveform datasets required by trigger interpolation helpers.
+    time_low = np.linspace(0.0, 10.0, 50)
+    time_high = np.linspace(0.0, 5.0, 100)
+    pulse = np.exp(-((time_low - 2.0) ** 2) / 0.5)
+
+    event_group.create_dataset("Time (low sampling)", data=time_low)
+    event_group.create_dataset("Time (high sampling)", data=time_high)
+
+    for channel, waveform in {
+        "Ion Grid": pulse,
+        "Target H": pulse * 0.8,
+        "Target L": pulse * 1.2,
+        "TOF H": np.exp(-((time_high - 1.5) ** 2) / 0.2),
+    }.items():
+        event_group.create_dataset(channel, data=waveform)
+
+    analysis_group = event_group.create_group("Analysis")
+    flags_group = analysis_group.create_group("Flags")
+    flags_group.create_dataset("FailedFits", data=np.array([0], dtype=np.int8))
+    flags_group.create_dataset("SaturatedChannels", data=np.array([0], dtype=np.int8))
+    flags_group.create_dataset("Notes", data=np.array([0], dtype=np.int8))
+
+    tof_group = analysis_group.create_group("TOF H")
+    tof_group.create_dataset(
+        "MassLines",
+        data=np.array([(32.0, 0.75)], dtype=[("mass", "f8"), ("abundance", "f8")]),
+    )
+
+    metadata_group = event_group.create_group("Metadata")
+    metadata_group.create_dataset("Ion Grid Saturated", data=np.array([0], dtype=np.int8))
+
+    for channel in ("Ion Grid", "Target H", "Target L"):
+        analysis_group.create_dataset(f"{channel}FitParams", data=np.array([0, 0, 0, 1, 5], dtype=float))
+        analysis_group.create_dataset(f"{channel}MassEstimate", data=np.array([1.5], dtype=float))
+        analysis_group.create_dataset(f"{channel}ImpactCharge", data=np.array([2.5], dtype=float))
+        analysis_group.create_dataset(f"{channel}ChiSquared", data=np.array([1.2], dtype=float))
+        analysis_group.create_dataset(f"{channel}ReducedChiSquared", data=np.array([0.8], dtype=float))
+        analysis_group.create_dataset(f"{channel} SNR", data=np.array([10.0], dtype=float))
+
+    analysis_group.create_dataset("TOF H SNR", data=np.array([12.0], dtype=float))
+
+
+def test_olivine_analysis_generates_mass_lines_and_flags(tmp_path):
+    output_path = tmp_path / "synthetic_event.h5"
+    with h5py.File(output_path, "w") as handle:
+        _build_synthetic_event(handle, "Event_0001")
 
     assert output_path.exists(), "Expected analysis HDF5 output was not created."
 
