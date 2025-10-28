@@ -105,9 +105,11 @@ selected channel:
 
 Summary tiles underneath the plots report the Gaussian mean, σ, fitted peak
 amplitude, Poisson noise estimate, and RMS noise, while the status bar confirms
-sample counts and the inferred Δt. The analysis gracefully handles empty or
-missing channels by clearing the plots and status text until a populated
-waveform is selected.【F:noise_analysis.py†L304-L324】【F:noise_analysis.py†L402-L451】
+sample counts and the inferred Δt. Channel units, event lists, and cached
+datasets travel with the window, so switching channels or stepping through
+events refreshes the plots without reloading from disk.【F:noise_analysis.py†L55-L221】【F:noise_analysis.py†L402-L451】 The
+analysis gracefully handles empty or missing channels by clearing the plots and
+status text until a populated waveform is selected.【F:noise_analysis.py†L304-L324】
 
 ## 7. Dust composition & mass line shapes
 
@@ -128,9 +130,12 @@ The dialog plots the candidate waveform, overlays the fitted curve, and updates
 relative abundance estimates based on the analytic area under each line window.
 Abundances are normalised against the integrated, baseline-subtracted TOF trace
 so you can compare species contributions across events.【F:dust_composition.py†L3208-L3295】【F:dust_composition.py†L3336-L3361】
-Exported tables persist the fitted parameters, analytic areas, and abundance
-fractions alongside any manually assigned species labels for downstream mass
-budgeting.【F:dust_composition.py†L3438-L3484】
+Enable **Relative Sensitivity Factors…** to renormalise selected lines, review
+auto-ranked material matches, and project compositions on the ternary explorer
+without leaving the workspace.【F:dust_composition.py†L3008-L3525】【F:dust_composition.py†L3526-L4023】 Exported tables persist the
+fitted parameters, analytic areas, RSF selections, and abundance fractions
+alongside any manually assigned species labels for downstream mass
+budgeting.【F:dust_composition.py†L3438-L3484】【F:dust_composition.py†L3828-L4023】
 
 ## 8. Built-in help & documentation search
 

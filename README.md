@@ -22,8 +22,10 @@ The Spectrum Launcher opens immediately and hands off to the Quicklook viewer so
 
 * **Packet decommutation** – Decode binary telemetry with the XTCE mission definition and publish structured HDF5/CDF products for analysis.【F:idex_packet.py†L203-L440】【F:science_tool.py†L60-L377】
 * **Batch processing** – Automate pipeline runs for new downlinks or oscilloscope campaigns with the provided shell helpers.【F:process_packets.sh†L1-L27】【F:process_EM_Data.sh†L1-L37】
-* **Fit adjustment** – Refine lmfit overlays inside the GUI, reset overrides, and compare solutions in real time.【F:IDEX-quicklook.py†L1056-L1349】
-* **TOF mass spectrometry** – Quantify dust populations with the dedicated composition workspace and EMG mass-line inspector.【F:dust_composition.py†L1129-L1335】
+* **Fit adjustment** – Refine lmfit overlays inside the GUI, reset overrides, persist overrides to disk, and compare solutions in real time.【F:IDEX-quicklook.py†L1056-L1349】【F:IDEX-quicklook.py†L3520-L3722】
+* **Noise diagnostics** – Launch the dedicated analysis window for Gaussian histograms, FFT spectra, and autocorrelation studies per channel.【F:IDEX-quicklook.py†L2027-L2188】【F:noise_analysis.py†L260-L429】
+* **Parallel decoding** – Scale packet processing across CPU cores with automatic worker discovery, per-job memory limits, and live progress reporting.【F:tools/process_packets_parallel.py†L1-L120】【F:tools/resource_utils.py†L1-L75】
+* **TOF mass spectrometry** – Quantify dust populations with the composition workspace, apply relative sensitivity factors, match library samples, and inspect EMG mass lines in detail.【F:dust_composition.py†L3008-L3484】【F:dust_composition.py†L3526-L4023】
 
 ---
 
@@ -34,14 +36,15 @@ The Spectrum Launcher opens immediately and hands off to the Quicklook viewer so
 * **Data Browser** – Press `Ctrl+B` or choose **View → Open Data Browser** to launch the structure tree for the active event. The viewer exposes every dataset, attribute, and preview panel inside the HDF5/CDF product.【F:IDEX-quicklook.py†L1888-L1964】【F:HDF_View.py†L60-L398】
 * **Variable Definitions** – Use **View → Variable Definitions…** to open the spreadsheet companion that maps engineering units, calibration spans, and coefficients straight from the official Excel reference.【F:IDEX-quicklook.py†L1888-L1964】【F:IDEX_Definitions_View.py†L1-L199】
 * **Dust Composition** – Click the **Dust Composition** toolbar button or press `Ctrl+D` to launch the EMG fitting studio for the current event.【F:IDEX-quicklook.py†L2036-L2083】【F:dust_composition.py†L1-L215】
+* **Noise Analysis** – Use the toolbar button or `Ctrl+N` to open the diagnostics workspace with histogram, FFT, and autocorrelation summaries for the active channel.【F:IDEX-quicklook.py†L2027-L2188】【F:noise_analysis.py†L260-L429】
 * **Documentation Center** – Hit `F1` (or the `?` button) to browse the bundled Markdown library without leaving the viewer; `Ctrl+F1` jumps directly to the global search panel.【F:IDEX-quicklook.py†L1888-L1964】
 
 ### Inspect individual mass lines
 
 1. Open the Dust Composition window (`Ctrl+D`) from the main toolbar.【F:IDEX-quicklook.py†L2036-L2083】
 2. Combine the TOF traces if needed, select a region on the stacked plot, and click **Add Mass Line** to fit a new EMG peak; manual entry is also available through **Add Manual Line**.【F:dust_composition.py†L1129-L1244】
-3. Highlight a row in the **Mass Line Fits** table and press **Inspect Selected** to open the zoomed EMG editor with amplitude, μ, σ, λ, and window controls.【F:dust_composition.py†L1188-L1340】
-4. Adjust the parameters, confirm the dialog, and the main table plus composition summary update immediately with the refined solution.【F:dust_composition.py†L1245-L1335】
+3. Highlight a row in the **Mass Line Fits** table and press **Inspect Selected** to open the zoomed EMG editor with amplitude, μ, σ, λ, and window controls, plus optional HyperEMG/Voigt tails.【F:dust_composition.py†L1188-L1478】
+4. Apply relative sensitivity factors (RSFs) or sample library templates to renormalise abundances, adjust parameters, and confirm—tables and ternary summaries refresh immediately.【F:dust_composition.py†L3008-L3484】【F:dust_composition.py†L3526-L4023】
 
 ---
 
