@@ -15,7 +15,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import importlib.util
 
@@ -132,13 +132,50 @@ class EventRecord:
     epoch: Optional[float]
 
 
+ArrayPayload = Union[np.ndarray, "LazyDataset"]
+
+
+@dataclass
+class LazyDataset:
+    """Represents a dataset that can be loaded on-demand from disk."""
+
+    file_path: Path
+    dataset_path: str
+    shape: Tuple[int, ...]
+    dtype: np.dtype
+    _cache: Optional[np.ndarray] = field(default=None, init=False, repr=False)
+
+    @property
+    def size(self) -> int:
+        if not self.shape:
+            return 1
+        return int(np.prod(self.shape))
+
+    @property
+    def ndim(self) -> int:
+        return len(self.shape)
+
+    def load(self) -> np.ndarray:
+        if self._cache is None:
+            with h5py.File(str(self.file_path), "r") as handle:
+                dataset = handle[self.dataset_path]
+                self._cache = np.array(dataset[()])
+        return self._cache
+
+    def __array__(self, dtype: Optional[np.dtype] = None) -> np.ndarray:  # pragma: no cover - numpy protocol
+        array = self.load()
+        if dtype is not None:
+            return np.asarray(array, dtype=dtype)
+        return array
+
+
 @dataclass
 class DataStore:
     """In-memory representation of the extracted HDF5 analysis content."""
 
     events: List[EventRecord] = field(default_factory=list)
     scalars: Dict[str, List[float]] = field(default_factory=dict)
-    arrays: Dict[str, List[Optional[np.ndarray]]] = field(default_factory=dict)
+    arrays: Dict[str, List[Optional[ArrayPayload]]] = field(default_factory=dict)
     array_time_keys: Dict[str, Optional[str]] = field(default_factory=dict)
     dataset_paths: Dict[str, str] = field(default_factory=dict)
     units: Dict[str, str] = field(default_factory=dict)
@@ -599,6 +636,31 @@ class HDFDataExplorer(QWidget):
         self._build_ui()
 
     # ------------------------------------------------------------------
+    @staticmethod
+    def _payload_size(array: Optional[ArrayPayload]) -> int:
+        if array is None:
+            return 0
+        if isinstance(array, LazyDataset):
+            return array.size
+        return int(getattr(array, "size", 0))
+
+    @staticmethod
+    def _payload_ndim(array: Optional[ArrayPayload]) -> int:
+        if array is None:
+            return 0
+        if isinstance(array, LazyDataset):
+            return array.ndim
+        return int(getattr(array, "ndim", 0))
+
+    @staticmethod
+    def _materialize_payload(array: Optional[ArrayPayload]) -> Optional[np.ndarray]:
+        if array is None:
+            return None
+        if isinstance(array, LazyDataset):
+            return array.load()
+        return np.asanyarray(array)
+
+    # ------------------------------------------------------------------
     def _load_variable_catalog(self) -> Optional[VariableDefinitionsCatalog]:
         try:
             return load_variable_definitions()
@@ -812,7 +874,7 @@ class HDFDataExplorer(QWidget):
 
                         analysis = group.get("Analysis")
                         if isinstance(analysis, h5py.Group):
-                            datasets = self._collect_group_datasets(analysis)
+                            datasets = self._collect_group_datasets(analysis, file_path)
                             if datasets:
                                 self._process_event_datasets(
                                     store,
@@ -823,7 +885,7 @@ class HDFDataExplorer(QWidget):
 
                         metadata = group.get("Metadata")
                         if isinstance(metadata, h5py.Group):
-                            meta_datasets = self._collect_group_datasets(metadata)
+                            meta_datasets = self._collect_group_datasets(metadata, file_path)
                             if meta_datasets:
                                 self._process_event_datasets(
                                     store,
@@ -870,16 +932,34 @@ class HDFDataExplorer(QWidget):
         return store
 
     # ------------------------------------------------------------------
-    def _collect_group_datasets(self, group: h5py.Group) -> Dict[str, np.ndarray]:
-        datasets: Dict[str, np.ndarray] = {}
+    def _collect_group_datasets(self, group: h5py.Group, file_path: Path) -> Dict[str, ArrayPayload]:
+        datasets: Dict[str, ArrayPayload] = {}
         for name, dataset in group.items():
             if not isinstance(dataset, h5py.Dataset):
                 continue
             try:
-                data = np.array(dataset[()])
+                size = int(dataset.size)
             except Exception:
+                size = 0
+            if size == 0:
                 continue
-            datasets[name] = data
+            if size <= 2048:
+                try:
+                    data = np.array(dataset[()])
+                except Exception:
+                    continue
+                datasets[name] = data
+                continue
+            try:
+                dtype = np.dtype(dataset.dtype)
+            except (TypeError, ValueError):
+                dtype = np.dtype("float64")
+            datasets[name] = LazyDataset(
+                file_path=file_path,
+                dataset_path=dataset.name,
+                shape=dataset.shape or (),
+                dtype=dtype,
+            )
         return datasets
 
     # ------------------------------------------------------------------
@@ -899,12 +979,14 @@ class HDFDataExplorer(QWidget):
                         return value
         metadata = group.get("Metadata")
         if isinstance(metadata, h5py.Group):
-            meta_datasets = self._collect_group_datasets(metadata)
+            file_handle = getattr(group, "file", None)
+            file_path = Path(file_handle.filename) if file_handle is not None else Path(self.hdf5_folder)
+            meta_datasets = self._collect_group_datasets(metadata, file_path)
             return self._metadata_epoch_from(meta_datasets)
         return None
 
     # ------------------------------------------------------------------
-    def _metadata_epoch_from(self, datasets: Dict[str, np.ndarray]) -> Optional[float]:
+    def _metadata_epoch_from(self, datasets: Dict[str, ArrayPayload]) -> Optional[float]:
         for key in ("EPOCH", "Epoch", "epoch", "EventEpoch"):
             if key in datasets:
                 return self._first_finite_value(datasets[key])
@@ -946,27 +1028,29 @@ class HDFDataExplorer(QWidget):
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _scalar_from_array(array: np.ndarray) -> Optional[float]:
-        if array.size == 0:
+    def _scalar_from_array(array: ArrayPayload) -> Optional[float]:
+        data = HDFDataExplorer._materialize_payload(array)
+        if data is None or data.size == 0:
             return None
-        if np.ma.isMaskedArray(array):
-            compressed = array.compressed()
+        if np.ma.isMaskedArray(data):
+            compressed = data.compressed()
             if compressed.size == 0:
                 return None
             raw_value = compressed[0]
         else:
-            raw_value = np.ravel(array)[0]
+            raw_value = np.ravel(data)[0]
         return HDFDataExplorer._coerce_scalar(raw_value)
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _first_finite_value(array: np.ndarray) -> Optional[float]:
-        if array.size == 0:
+    def _first_finite_value(array: ArrayPayload) -> Optional[float]:
+        data = HDFDataExplorer._materialize_payload(array)
+        if data is None or data.size == 0:
             return None
-        if np.ma.isMaskedArray(array):
-            iterable = array.compressed()
+        if np.ma.isMaskedArray(data):
+            iterable = data.compressed()
         else:
-            iterable = np.ravel(array)
+            iterable = np.ravel(data)
         for value in iterable:
             numeric = HDFDataExplorer._coerce_scalar(value)
             if numeric is None:
@@ -1004,12 +1088,12 @@ class HDFDataExplorer(QWidget):
         event_index: int,
         *,
         group_name: str,
-        datasets: Dict[str, np.ndarray],
+        datasets: Dict[str, ArrayPayload],
         label_prefix: str = "",
         category: str = "analysis",
     ) -> None:
-        time_series: Dict[str, np.ndarray] = {}
-        value_series: Dict[str, np.ndarray] = {}
+        time_series: Dict[str, ArrayPayload] = {}
+        value_series: Dict[str, ArrayPayload] = {}
 
         for name, array in datasets.items():
             full_path = f"{group_name}/{name}"
@@ -1026,7 +1110,9 @@ class HDFDataExplorer(QWidget):
                 if unit:
                     store.units[label] = unit
 
-            if array.ndim == 0 or array.size == 1:
+            ndim = self._payload_ndim(array)
+            size = self._payload_size(array)
+            if ndim == 0 or size == 1:
                 series = store.ensure_scalar_entry(label)
                 scalar_value = self._scalar_from_array(array)
                 if scalar_value is not None:
@@ -1035,26 +1121,33 @@ class HDFDataExplorer(QWidget):
 
             lowered = name.lower()
             if any(suffix in lowered for suffix in FIT_PARAM_SUFFIXES):
-                self._ingest_fit_parameters(store, event_index, label, full_path, array)
+                materialized = self._materialize_payload(array)
+                if materialized is not None:
+                    self._ingest_fit_parameters(store, event_index, label, full_path, materialized)
                 continue
 
             if _is_time_dataset(name):
-                flattened = np.ravel(array)
-                time_series[label] = flattened
+                time_series[label] = array
                 if category == "metadata" and store.metadata_epoch_key is None and "epoch" in lowered:
                     store.metadata_epoch_key = label
             else:
-                value_series[label] = np.array(array)
+                value_series[label] = array
 
         for name, arr in value_series.items():
             series = store.ensure_array_entry(name)
-            series[event_index] = np.array(arr, copy=True)
+            if isinstance(arr, LazyDataset):
+                series[event_index] = arr
+            else:
+                series[event_index] = np.array(arr, copy=True)
             if name not in store.array_time_keys:
                 store.array_time_keys[name] = self._guess_time_key(name, time_series)
 
         for name, arr in time_series.items():
             series = store.ensure_array_entry(name)
-            series[event_index] = np.array(arr, copy=True)
+            if isinstance(arr, LazyDataset):
+                series[event_index] = arr
+            else:
+                series[event_index] = np.array(arr, copy=True)
             store.array_time_keys.setdefault(name, None)
 
     # ------------------------------------------------------------------
@@ -1279,14 +1372,20 @@ class HDFDataExplorer(QWidget):
             )
 
             if times_series:
-                for idx, value in enumerate(values_series):
-                    if value is None or value.size == 0:
+                for idx, value_entry in enumerate(values_series):
+                    if self._payload_size(value_entry) == 0:
                         continue
-                    times = times_series[idx] if idx < len(times_series) else None
-                    if times is None or times.size != value.size:
+                    times_entry = times_series[idx] if idx < len(times_series) else None
+                    if times_entry is None:
                         continue
-                    times_flat = np.asarray(times, dtype=float).ravel()
-                    value_flat = np.asarray(value, dtype=float).ravel()
+                    if self._payload_size(times_entry) != self._payload_size(value_entry):
+                        continue
+                    times_array = self._materialize_payload(times_entry)
+                    values_array = self._materialize_payload(value_entry)
+                    if times_array is None or values_array is None:
+                        continue
+                    times_flat = np.asarray(times_array, dtype=float).ravel()
+                    value_flat = np.asarray(values_array, dtype=float).ravel()
                     mask = np.isfinite(times_flat) & np.isfinite(value_flat)
                     if np.count_nonzero(mask) == 0:
                         continue
@@ -1329,14 +1428,18 @@ class HDFDataExplorer(QWidget):
                     plotted = True
 
             if not plotted and metadata_epoch_series:
-                for idx, value in enumerate(values_series):
-                    if value is None or value.size == 0 or idx >= len(metadata_epoch_series):
+                for idx, value_entry in enumerate(values_series):
+                    if self._payload_size(value_entry) == 0 or idx >= len(metadata_epoch_series):
                         continue
-                    epochs_arr = metadata_epoch_series[idx]
-                    if epochs_arr is None or np.size(epochs_arr) == 0:
+                    epochs_entry = metadata_epoch_series[idx]
+                    if self._payload_size(epochs_entry) == 0:
                         continue
-                    epochs_flat = np.asarray(epochs_arr, dtype=float).ravel()
-                    values_flat = np.asarray(value, dtype=float).ravel()
+                    epochs_array = self._materialize_payload(epochs_entry)
+                    values_array = self._materialize_payload(value_entry)
+                    if epochs_array is None or values_array is None:
+                        continue
+                    epochs_flat = np.asarray(epochs_array, dtype=float).ravel()
+                    values_flat = np.asarray(values_array, dtype=float).ravel()
                     if epochs_flat.size != values_flat.size:
                         continue
                     mask = np.isfinite(epochs_flat) & np.isfinite(values_flat)
@@ -1373,13 +1476,16 @@ class HDFDataExplorer(QWidget):
                 epoch_values: List[float] = []
                 epoch_times: List[float] = []
 
-                for idx, value in enumerate(values_series):
-                    if value is None or value.size == 0 or idx >= epochs.size:
+                for idx, value_entry in enumerate(values_series):
+                    if self._payload_size(value_entry) == 0 or idx >= epochs.size:
                         continue
                     epoch = epochs[idx]
                     if not math.isfinite(epoch):
                         continue
-                    flattened = np.asarray(value, dtype=float).ravel()
+                    values_array = self._materialize_payload(value_entry)
+                    if values_array is None:
+                        continue
+                    flattened = np.asarray(values_array, dtype=float).ravel()
                     finite = flattened[np.isfinite(flattened)]
                     if finite.size == 0:
                         continue
