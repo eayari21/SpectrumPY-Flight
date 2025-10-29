@@ -1,10 +1,16 @@
-import pytest
 import json
+import os
+from pathlib import Path
+
+import pytest
 
 np = pytest.importorskip("numpy")
 h5py = pytest.importorskip("h5py")
 
 from olivine_metrics import EXPECTED_MASS_LINES, generate_olivine_metrics
+
+
+_OLIVINE_ENV_VAR = "OLIVINE_TEST_DATA_ROOT"
 
 
 def _h5_has_path(handle: h5py.File, path: str) -> bool:
@@ -15,65 +21,62 @@ def _h5_has_path(handle: h5py.File, path: str) -> bool:
     return True
 
 
-def _build_synthetic_event(handle: h5py.File, name: str) -> None:
-    event_group = handle.create_group(name)
+def _collect_olivine_inputs() -> list[Path]:
+    """Locate decoded olivine HDF5 files for the regression test."""
 
-    # Waveform datasets required by trigger interpolation helpers.
-    time_low = np.linspace(0.0, 10.0, 50)
-    time_high = np.linspace(0.0, 5.0, 100)
-    pulse = np.exp(-((time_low - 2.0) ** 2) / 0.5)
+    candidates: list[Path] = []
+    env_value = os.environ.get(_OLIVINE_ENV_VAR)
+    if env_value:
+        candidates.append(Path(env_value))
 
-    event_group.create_dataset("Time (low sampling)", data=time_low)
-    event_group.create_dataset("Time (high sampling)", data=time_high)
+    for default in (Path("HDF5"), Path("Data")):
+        candidates.append(default)
 
-    for channel, waveform in {
-        "Ion Grid": pulse,
-        "Target H": pulse * 0.8,
-        "Target L": pulse * 1.2,
-        "TOF H": np.exp(-((time_high - 1.5) ** 2) / 0.2),
-    }.items():
-        event_group.create_dataset(channel, data=waveform)
+    discovered: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        if candidate.is_file():
+            if candidate.suffix.lower() == ".h5" and candidate.name.startswith("ois_output_"):
+                resolved = candidate.resolve()
+                if resolved not in seen:
+                    seen.add(resolved)
+                    discovered.append(candidate)
+            continue
 
-    analysis_group = event_group.create_group("Analysis")
-    flags_group = analysis_group.create_group("Flags")
-    flags_group.create_dataset("FailedFits", data=np.array([0], dtype=np.int8))
-    flags_group.create_dataset("SaturatedChannels", data=np.array([0], dtype=np.int8))
-    flags_group.create_dataset("Notes", data=np.array([0], dtype=np.int8))
+        for path in sorted(candidate.rglob("*.h5")):
+            if not path.name.startswith("ois_output_"):
+                continue
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            discovered.append(path)
 
-    tof_group = analysis_group.create_group("TOF H")
-    tof_group.create_dataset(
-        "MassLines",
-        data=np.array([(32.0, 0.75)], dtype=[("mass", "f8"), ("abundance", "f8")]),
-    )
+    if not discovered:
+        pytest.skip(
+            "No decoded olivine HDF5 files were found. "
+            "Populate the HDF5 directory or set the OLIVINE_TEST_DATA_ROOT environment variable."
+        )
 
-    metadata_group = event_group.create_group("Metadata")
-    metadata_group.create_dataset("Ion Grid Saturated", data=np.array([0], dtype=np.int8))
-
-    for channel in ("Ion Grid", "Target H", "Target L"):
-        analysis_group.create_dataset(f"{channel}FitParams", data=np.array([0, 0, 0, 1, 5], dtype=float))
-        analysis_group.create_dataset(f"{channel}MassEstimate", data=np.array([1.5], dtype=float))
-        analysis_group.create_dataset(f"{channel}ImpactCharge", data=np.array([2.5], dtype=float))
-        analysis_group.create_dataset(f"{channel}ChiSquared", data=np.array([1.2], dtype=float))
-        analysis_group.create_dataset(f"{channel}ReducedChiSquared", data=np.array([0.8], dtype=float))
-        analysis_group.create_dataset(f"{channel} SNR", data=np.array([10.0], dtype=float))
-
-    analysis_group.create_dataset("TOF H SNR", data=np.array([12.0], dtype=float))
+    return discovered
 
 
 def test_olivine_analysis_generates_mass_lines_and_flags(tmp_path):
-    output_path = tmp_path / "synthetic_event.h5"
-    with h5py.File(output_path, "w") as handle:
-        _build_synthetic_event(handle, "Event_0001")
+    input_paths = _collect_olivine_inputs()
 
-    assert output_path.exists(), "Expected analysis HDF5 output was not created."
+    events_seen = 0
+    for input_path in input_paths:
+        with h5py.File(input_path, "r") as handle:
+            assert handle.keys(), f"Decoded file {input_path} contained no events."
+            for event_id in handle.keys():
+                events_seen += 1
+                analysis_base = f"{event_id}/Analysis"
+                assert _h5_has_path(handle, analysis_base), "Analysis group missing from event."
 
-    with h5py.File(output_path, "r") as handle:
-        for event_id in handle.keys():
-            analysis_base = f"{event_id}/Analysis"
-            assert _h5_has_path(handle, analysis_base), "Analysis group missing from event."
-
-            flag_base = f"{analysis_base}/Flags"
-            assert _h5_has_path(handle, f"{flag_base}/FailedFits"), "Failed fit flags missing."
+                flag_base = f"{analysis_base}/Flags"
+                assert _h5_has_path(handle, f"{flag_base}/FailedFits"), "Failed fit flags missing."
             assert _h5_has_path(handle, f"{flag_base}/SaturatedChannels"), "Saturation flags missing."
             assert _h5_has_path(handle, f"{flag_base}/Notes"), "Notes flags missing."
 
@@ -97,14 +100,18 @@ def test_olivine_analysis_generates_mass_lines_and_flags(tmp_path):
                     assert _h5_has_path(handle, mass_estimate_path), f"Missing mass estimate for {channel}."
                     assert _h5_has_path(handle, charge_path), f"Missing impact charge for {channel}."
 
+    assert events_seen > 0, "No events were processed from the decoded olivine inputs."
+
     report_dir = tmp_path / "metrics"
-    report = generate_olivine_metrics([output_path], report_dir)
+    report = generate_olivine_metrics(input_paths, report_dir)
     pdf_path = report["pdf"]
     summary_path = report["summary"]
     assert pdf_path.exists(), "Expected PDF metrics report was not created."
     assert summary_path.exists(), "Expected metrics JSON summary was not created."
 
     summary_data = json.loads(summary_path.read_text())
+    assert summary_data["files_processed"] == len(input_paths), "Unexpected file count in summary JSON."
+    assert summary_data["events_processed"] == report["events"], "Event count mismatch in summary JSON."
     assert "mass_analysis" in summary_data, "Mass analysis results missing from summary JSON."
     mass_analysis = summary_data["mass_analysis"]
     assert isinstance(mass_analysis.get("events"), list), "Mass analysis events should be a list."
