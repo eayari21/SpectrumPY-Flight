@@ -633,10 +633,19 @@ def detect_saturation(values: np.ndarray, times: np.ndarray) -> np.ndarray:
     derivative_threshold = 0.0025 * magnitude
     plateau = grad < derivative_threshold
 
+    repeated = np.zeros_like(arr, dtype=bool)
+    if arr.size >= 2:
+        diffs = np.abs(np.diff(arr))
+        repeat_tol = max(1.0e-9, 1.0e-4 * magnitude)
+        repeats = diffs <= repeat_tol
+        if repeats.any():
+            repeated[1:] |= repeats
+            repeated[:-1] |= repeats
+
     amplitude_threshold = np.nanpercentile(np.abs(arr), 99.7)
     high_amp = np.abs(arr) >= amplitude_threshold
 
-    plateau_mask = plateau & high_amp
+    plateau_mask = (plateau | repeated) & high_amp
 
     if plateau_mask.size < 2:
         return plateau_mask
@@ -4696,24 +4705,31 @@ class DustCompositionWindow(QMainWindow):
             return None
         combined = np.zeros(length, dtype=float)
         if high is not None and high.size:
-            combined[:] = high[:length]
-            saturated_high = detect_saturation(high[:length], self._time_axis[:length])
+            high_slice = high[:length]
+            combined[:] = high_slice
+            saturated_high = detect_saturation(high_slice, self._time_axis[:length])
         else:
             saturated_high = np.ones(length, dtype=bool)
         high_gain = GAIN_MAP.get("TOF H", 1.0)
         medium_gain = GAIN_MAP.get("TOF M", 1.0)
         low_gain = GAIN_MAP.get("TOF L", 1.0)
+        medium_saturated = np.ones(length, dtype=bool)
         if medium is not None and medium.size:
-            medium_scaled = medium[:length] * (high_gain / medium_gain)
-            medium_mask = detect_saturation(medium[:length], self._time_axis[:length])
-            replace_mask = saturated_high & np.isfinite(medium_scaled)
+            medium_slice = medium[:length]
+            medium_scaled = medium_slice * (high_gain / medium_gain)
+            medium_saturated = detect_saturation(medium_slice, self._time_axis[:length])
+            replace_mask = saturated_high & ~medium_saturated & np.isfinite(medium_scaled)
             combined[replace_mask] = medium_scaled[replace_mask]
-        else:
-            medium_mask = np.ones(length, dtype=bool)
         if low is not None and low.size:
-            low_scaled = low[:length] * (high_gain / low_gain)
-            low_mask = detect_saturation(low[:length], self._time_axis[:length])
-            replace_mask = saturated_high & medium_mask & np.isfinite(low_scaled)
+            low_slice = low[:length]
+            low_scaled = low_slice * (high_gain / low_gain)
+            low_saturated = detect_saturation(low_slice, self._time_axis[:length])
+            replace_mask = (
+                saturated_high
+                & medium_saturated
+                & ~low_saturated
+                & np.isfinite(low_scaled)
+            )
             combined[replace_mask] = low_scaled[replace_mask]
         return combined
 
