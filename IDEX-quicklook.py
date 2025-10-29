@@ -59,6 +59,7 @@ def _erfc(values: np.ndarray) -> np.ndarray:
 
 from HDF_View import launch_hdf_viewer
 from dust_composition import launch_dust_composition_window
+from dust_estimator_gui import launch_dust_estimator_window
 from noise_analysis import ChannelMeta, launch_noise_analysis_window
 from plot_style import apply_plot_style
 try:  # pragma: no cover - optional dependency, loaded lazily
@@ -2038,6 +2039,13 @@ class MainWindow(QMainWindow):
         self.reset_fit_action = QAction("Reset Fit Overrides", self)
         self.reset_fit_action.triggered.connect(self.reset_all_overrides)
 
+        self.open_dust_estimator_action = QAction("Dust Estimator…", self)
+        self.open_dust_estimator_action.setShortcut("Ctrl+Shift+D")
+        self.open_dust_estimator_action.setStatusTip(
+            "Open the dust velocity and mass estimator tool",
+        )
+        self.open_dust_estimator_action.triggered.connect(self.action_open_dust_estimator)
+
         self.open_noise_analysis_action = QAction("Noise Analysis…", self)
         self.open_noise_analysis_action.setShortcut("Ctrl+N")
         self.open_noise_analysis_action.setStatusTip("Inspect noise characteristics for the current event")
@@ -2090,6 +2098,7 @@ class MainWindow(QMainWindow):
         view_menu = menubar.addMenu("&View")
         view_menu.addAction(self.view_structure_action)
         view_menu.addAction(self.open_variable_definitions_action)
+        view_menu.addAction(self.open_dust_estimator_action)
         view_menu.addAction(self.open_noise_analysis_action)
 
         help_menu = menubar.addMenu("&Help")
@@ -2182,6 +2191,36 @@ class MainWindow(QMainWindow):
         )
         self.dust_button.clicked.connect(act_dust.trigger)
         tb.addWidget(self.dust_button)
+
+        act_dust_estimator = self.open_dust_estimator_action
+        self.addAction(act_dust_estimator)
+
+        self.dust_estimator_button = QPushButton("Dust Estimator", self)
+        self.dust_estimator_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.dust_estimator_button.setMinimumHeight(46)
+        self.dust_estimator_button.setStyleSheet(
+            """
+            QPushButton {
+                font-size: 16px;
+                font-weight: 700;
+                padding: 10px 22px;
+                border-radius: 14px;
+                background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                                 stop:0 #0ca678, stop:1 #099268);
+                color: #ffffff;
+                border: 1px solid #087f5b;
+            }
+            QPushButton:hover {
+                background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                                 stop:0 #099268, stop:1 #087f5b);
+            }
+            QPushButton:pressed {
+                background-color: #066649;
+            }
+            """
+        )
+        self.dust_estimator_button.clicked.connect(act_dust_estimator.trigger)
+        tb.addWidget(self.dust_estimator_button)
 
         act_noise = self.open_noise_analysis_action
         self.addAction(act_noise)
@@ -2574,6 +2613,28 @@ class MainWindow(QMainWindow):
                 self,
                 "Dust Composition Error",
                 f"Unable to launch the dust composition window:\n{exc}",
+            )
+            return
+
+        window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        window.show()
+
+        self._child_windows.append(window)
+
+        def _cleanup(*_args):
+            if window in self._child_windows:
+                self._child_windows.remove(window)
+
+        window.destroyed.connect(_cleanup)
+
+    def action_open_dust_estimator(self):
+        try:
+            window = launch_dust_estimator_window(parent=self)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Dust Estimator Error",
+                f"Unable to launch the dust estimator window:\n{exc}",
             )
             return
 
