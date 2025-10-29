@@ -679,6 +679,130 @@ def detect_saturation(values: np.ndarray, times: np.ndarray) -> np.ndarray:
     return _contiguous_mask(plateau_mask, min_samples)
 
 
+def _estimate_waveform_baseline(values: Optional[np.ndarray]) -> float:
+    """Return a robust baseline estimate for *values*."""
+
+    if values is None:
+        return 0.0
+    arr = np.asarray(values, dtype=float)
+    finite = arr[np.isfinite(arr)]
+    if finite.size == 0:
+        return 0.0
+    if finite.size < 4:
+        return float(np.median(finite))
+    lower, upper = np.percentile(finite, [5.0, 95.0])
+    mask = (finite >= lower) & (finite <= upper)
+    trimmed = finite[mask]
+    if trimmed.size < 4:
+        trimmed = finite
+    return float(np.median(trimmed))
+
+
+def combine_waveform_channels(
+    time_axis: np.ndarray,
+    high: Optional[np.ndarray],
+    medium: Optional[np.ndarray],
+    low: Optional[np.ndarray],
+    gain_map: Optional[Dict[str, float]] = None,
+) -> Optional[np.ndarray]:
+    """Combine TOF waveforms from multiple gain channels."""
+
+    if time_axis is None:
+        return None
+    times = np.asarray(time_axis, dtype=float)
+    if times.size == 0:
+        return None
+
+    gain_map = gain_map or GAIN_MAP
+    high_gain = float(gain_map.get("TOF H", 1.0))
+    medium_gain = float(gain_map.get("TOF M", 1.0))
+    low_gain = float(gain_map.get("TOF L", 1.0))
+
+    arrays = [
+        arr
+        for arr in (high, medium, low)
+        if arr is not None and getattr(arr, "size", 0)
+    ]
+    if not arrays:
+        return None
+
+    lengths = [times.size]
+    lengths.extend(arr.size for arr in arrays)
+    length = min(lengths)
+    if length <= 0:
+        return None
+
+    times = times[:length]
+
+    high_slice = np.asarray(high[:length], dtype=float) if high is not None and getattr(high, "size", 0) else None
+    medium_slice = np.asarray(medium[:length], dtype=float) if medium is not None and getattr(medium, "size", 0) else None
+    low_slice = np.asarray(low[:length], dtype=float) if low is not None and getattr(low, "size", 0) else None
+
+    high_baseline = _estimate_waveform_baseline(high_slice)
+    medium_baseline = _estimate_waveform_baseline(medium_slice)
+    low_baseline = _estimate_waveform_baseline(low_slice)
+
+    combined_corrected = np.zeros(length, dtype=float)
+
+    saturated_high = np.ones(length, dtype=bool)
+    if high_slice is not None and high_slice.size:
+        combined_corrected[:] = high_slice - high_baseline
+        saturated_high = detect_saturation(high_slice, times)
+
+    medium_scaled: Optional[np.ndarray] = None
+    medium_saturated = np.ones(length, dtype=bool)
+    if medium_slice is not None and medium_slice.size:
+        medium_corrected = medium_slice - medium_baseline
+        scale = high_gain / medium_gain if medium_gain else 1.0
+        medium_scaled = medium_corrected * scale
+        medium_saturated = detect_saturation(medium_slice, times)
+        if high_slice is None:
+            combined_corrected[:] = medium_scaled
+
+    low_scaled: Optional[np.ndarray] = None
+    low_saturated = np.ones(length, dtype=bool)
+    if low_slice is not None and low_slice.size:
+        low_corrected = low_slice - low_baseline
+        scale = high_gain / low_gain if low_gain else 1.0
+        low_scaled = low_corrected * scale
+        low_saturated = detect_saturation(low_slice, times)
+        if high_slice is None and medium_slice is None:
+            combined_corrected[:] = low_scaled
+
+    if medium_scaled is not None:
+        replace_mask = saturated_high & ~medium_saturated & np.isfinite(medium_scaled)
+        combined_corrected[replace_mask] = medium_scaled[replace_mask]
+
+    if low_scaled is not None:
+        if medium_scaled is not None:
+            replace_mask = (
+                saturated_high
+                & medium_saturated
+                & ~low_saturated
+                & np.isfinite(low_scaled)
+            )
+        else:
+            replace_mask = (
+                saturated_high
+                & ~low_saturated
+                & np.isfinite(low_scaled)
+            )
+        combined_corrected[replace_mask] = low_scaled[replace_mask]
+
+    final_baseline = 0.0
+    if high_slice is not None and high_slice.size:
+        final_baseline = high_baseline
+    elif medium_slice is not None and medium_slice.size:
+        scale = high_gain / medium_gain if medium_gain else 1.0
+        final_baseline = medium_baseline * scale
+    elif low_slice is not None and low_slice.size:
+        scale = high_gain / low_gain if low_gain else 1.0
+        final_baseline = low_baseline * scale
+
+    combined = combined_corrected + final_baseline
+    return combined
+
+
 def _load_mass_reference() -> List[Tuple[float, str]]:
     """Return a list of reference masses and their labels."""
 
@@ -4704,49 +4828,13 @@ class DustCompositionWindow(QMainWindow):
 
     # ---- Combination logic ---------------------------------------------
     def _combine_waveforms(self) -> Optional[np.ndarray]:
-        if self._time_axis.size == 0:
-            return None
-        high = self._waveforms.get("TOF H")
-        medium = self._waveforms.get("TOF M")
-        low = self._waveforms.get("TOF L")
-        if high is None and medium is None and low is None:
-            return None
-        lengths = [self._time_axis.size]
-        for arr in (high, medium, low):
-            if arr is not None and arr.size:
-                lengths.append(arr.size)
-        length = min(lengths) if lengths else 0
-        if length <= 0:
-            return None
-        combined = np.zeros(length, dtype=float)
-        if high is not None and high.size:
-            high_slice = high[:length]
-            combined[:] = high_slice
-            saturated_high = detect_saturation(high_slice, self._time_axis[:length])
-        else:
-            saturated_high = np.ones(length, dtype=bool)
-        high_gain = GAIN_MAP.get("TOF H", 1.0)
-        medium_gain = GAIN_MAP.get("TOF M", 1.0)
-        low_gain = GAIN_MAP.get("TOF L", 1.0)
-        medium_saturated = np.ones(length, dtype=bool)
-        if medium is not None and medium.size:
-            medium_slice = medium[:length]
-            medium_scaled = medium_slice * (high_gain / medium_gain)
-            medium_saturated = detect_saturation(medium_slice, self._time_axis[:length])
-            replace_mask = saturated_high & ~medium_saturated & np.isfinite(medium_scaled)
-            combined[replace_mask] = medium_scaled[replace_mask]
-        if low is not None and low.size:
-            low_slice = low[:length]
-            low_scaled = low_slice * (high_gain / low_gain)
-            low_saturated = detect_saturation(low_slice, self._time_axis[:length])
-            replace_mask = (
-                saturated_high
-                & medium_saturated
-                & ~low_saturated
-                & np.isfinite(low_scaled)
-            )
-            combined[replace_mask] = low_scaled[replace_mask]
-        return combined
+        return combine_waveform_channels(
+            self._time_axis,
+            self._waveforms.get("TOF H"),
+            self._waveforms.get("TOF M"),
+            self._waveforms.get("TOF L"),
+            gain_map=GAIN_MAP,
+        )
 
     # ---- Baseline + mass conversions -----------------------------------
     def _set_baseline(self, value: float, from_user: bool = False) -> None:
