@@ -29,6 +29,24 @@ The Spectrum Launcher opens immediately and hands off to the Quicklook viewer so
 
 ---
 
+## Performance and parallelization details
+
+### idex_packet.py
+
+* **GPU-assisted bit unpacking** – `_bitstring_to_ints` converts ASCII bit streams into integers with a fully vectorised NumPy path and an automatic CuPy offload whenever more than 32 000 values are present, falling back seamlessly if GPU execution is unavailable or fails mid-run.【F:idex_packet.py†L96-L125】 The helper keeps allocations contiguous (`astype(..., copy=False)`) and trims padding without extra passes so the downstream waveform parsing never re-materialises the raw bitstring.【F:idex_packet.py†L96-L125】
+* **Shared kernels for saturation and SNR detection** – Signal-quality metrics (SNR, saturation runs) operate on NumPy arrays with optional GPU execution that mirrors the CPU algorithm: `detect_saturation` lifts the differencing and run-length detection to CuPy when possible, then reuses the same boolean boundaries to avoid Python loops, while `calculate_snr` slices baseline windows in-place to minimise temporary buffers.【F:idex_packet.py†L128-L195】
+* **Rice/Golomb decompression in-stream** – RiceGolombDecompressor instances emit fully decompressed traces directly into `self.data`, eliminating intermediate files for both low- and high-speed telemetry and reusing instrument trigger block counts to size the buffers exactly.【F:idex_packet.py†L941-L979】
+* **Time-base reuse and deterministic scaling** – `_build_time_array` precomputes high-rate and low-rate time axes once per batch using cached trigger offsets, so waveform analyses (mass fitting, target modelling) only rescale existing arrays instead of rebuilding per channel.【F:idex_packet.py†L1002-L1290】
+* **Threaded waveform analysis with capped fan-out** – `write_to_hdf5` packages every `(event, channel)` pair and submits them to a `ThreadPoolExecutor` whose worker count is bounded by both the host CPU count and a hard cap of 32, preventing oversubscription when many events are present.【F:idex_packet.py†L1182-L1295】 Each worker returns a structured dictionary that the coordinator consumes sequentially to materialise datasets, guaranteeing that HDF5 writes remain serial while expensive per-channel transforms (mass scaling, EMG fitting, target curve estimation) execute in parallel.【F:idex_packet.py†L1208-L1336】
+
+### drive_idex_packet.py
+
+* **Parallel process orchestration** – The driver discovers extensionless oscilloscope captures, filters out already-converted targets, and farms the remaining workload to a thread-backed execution pool that launches separate `idex_packet.py` processes so every core handles an independent capture.【F:drive_idex_packet.py†L24-L134】 Logging is performed per job (`job_XXXX.(out|err)`), enabling high-velocity runs without interleaved stdout noise.【F:drive_idex_packet.py†L51-L71】
+* **Oversubscription controls** – Operator-provided `--max-procs` bounds the executor fan-out, while `build_env` injects BLAS/OpenMP thread caps (`OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, `NUMEXPR_NUM_THREADS`, and Accelerate’s `VECLIB_MAXIMUM_THREADS`) so the heavy SciPy/Numpy kernels inside each packet conversion cannot oversubscribe cores when dozens of jobs launch at once.【F:drive_idex_packet.py†L39-L134】 Optional niceness further de-prioritises the child processes on POSIX hosts for cooperative scheduling in shared environments.【F:drive_idex_packet.py†L60-L71】
+* **Resumable workflows** – By evaluating destination `.h5` existence up front (`needs_conversion`), the orchestrator skips already processed captures, enabling incremental reruns that immediately converge on the remaining work without repeated scans or redundant CPU time.【F:drive_idex_packet.py†L35-L110】
+
+---
+
 ## Quicklook essentials
 
 ### Primary windows
