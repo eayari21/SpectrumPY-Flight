@@ -137,7 +137,7 @@ class DustEstimatorWindow(QMainWindow):
         outer_layout.setContentsMargins(18, 18, 18, 18)
         outer_layout.setSpacing(14)
 
-        title_label = QLabel("Dust Estimator")
+        title_label = QLabel("Impact Parameters")
         title_label.setStyleSheet("font-size: 22px; font-weight: 600;")
         outer_layout.addWidget(title_label)
 
@@ -567,7 +567,7 @@ def main() -> int:
     try:
         window = launch_dust_estimator_window()
     except Exception as exc:
-        QMessageBox.critical(None, "Dust Estimator Error", f"Unable to start the dust estimator:\n{exc}")
+        QMessageBox.critical(None, "Impact Parameters Error", f"Unable to start the impact parameters tool:\n{exc}")
         return 1
     window.show()
     return app.exec()

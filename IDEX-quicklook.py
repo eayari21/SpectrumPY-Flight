@@ -2039,7 +2039,7 @@ class MainWindow(QMainWindow):
         self.reset_fit_action = QAction("Reset Fit Overrides", self)
         self.reset_fit_action.triggered.connect(self.reset_all_overrides)
 
-        self.open_dust_estimator_action = QAction("Dust Estimator…", self)
+        self.open_dust_estimator_action = QAction("Impact Parameters…", self)
         self.open_dust_estimator_action.setShortcut("Ctrl+Shift+D")
         self.open_dust_estimator_action.setStatusTip(
             "Open the dust velocity and mass estimator tool",
@@ -2195,7 +2195,7 @@ class MainWindow(QMainWindow):
         act_dust_estimator = self.open_dust_estimator_action
         self.addAction(act_dust_estimator)
 
-        self.dust_estimator_button = QPushButton("Dust Estimator", self)
+        self.dust_estimator_button = QPushButton("Impact Parameters", self)
         self.dust_estimator_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.dust_estimator_button.setMinimumHeight(46)
         self.dust_estimator_button.setStyleSheet(
@@ -2633,7 +2633,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(
                 self,
-                "Dust Estimator Error",
+                "Impact Parameters Error",
                 f"Unable to launch the dust estimator window:\n{exc}",
             )
             return
