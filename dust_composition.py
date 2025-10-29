@@ -647,6 +647,21 @@ def detect_saturation(values: np.ndarray, times: np.ndarray) -> np.ndarray:
 
     plateau_mask = (plateau | repeated) & high_amp
 
+    # When the ADC clips the waveform the samples hug the extrema rather than
+    # forming a perfect plateau.  The jitter introduced by the digitiser can be
+    # large enough that the gradient and repeated-sample heuristics above fail
+    # to trigger.  Treat any samples that sit within a small tolerance of the
+    # extrema as saturated so long as they belong to a high-amplitude region.
+    extreme_mask = np.zeros_like(arr, dtype=bool)
+    tolerance = 0.003 * magnitude + 1.0e-9
+    max_val = float(np.nanmax(arr))
+    min_val = float(np.nanmin(arr))
+    if np.isfinite(max_val) and max_val > 0.0:
+        extreme_mask |= (max_val - arr) <= tolerance
+    if np.isfinite(min_val) and min_val < 0.0:
+        extreme_mask |= (arr - min_val) <= tolerance
+    plateau_mask |= extreme_mask & high_amp
+
     if plateau_mask.size < 2:
         return plateau_mask
 
