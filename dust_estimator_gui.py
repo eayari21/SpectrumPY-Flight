@@ -6,22 +6,40 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (
-    QApplication,
-    QComboBox,
-    QDoubleSpinBox,
-    QFileDialog,
-    QGridLayout,
-    QGroupBox,
-    QLabel,
-    QMainWindow,
-    QMessageBox,
-    QPushButton,
-    QScrollArea,
-    QVBoxLayout,
-    QWidget,
-)
+try:  # pragma: no cover - prefer PySide6 when available
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import (
+        QApplication,
+        QComboBox,
+        QDoubleSpinBox,
+        QFileDialog,
+        QGridLayout,
+        QGroupBox,
+        QLabel,
+        QMainWindow,
+        QMessageBox,
+        QPushButton,
+        QScrollArea,
+        QVBoxLayout,
+        QWidget,
+    )
+except Exception:  # pragma: no cover - fallback to PyQt6
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import (
+        QApplication,
+        QComboBox,
+        QDoubleSpinBox,
+        QFileDialog,
+        QGridLayout,
+        QGroupBox,
+        QLabel,
+        QMainWindow,
+        QMessageBox,
+        QPushButton,
+        QScrollArea,
+        QVBoxLayout,
+        QWidget,
+    )
 
 from lookup.dust_estimator import (
     CoefficientTable,
@@ -107,8 +125,8 @@ class ParameterDisplay(QWidget):
 class DustEstimatorWindow(QMainWindow):
     """Main application window that combines inputs, formulas, and results."""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
         self.setWindowTitle("Dust Velocity and Mass Estimator")
         self.resize(960, 760)
 
@@ -538,9 +556,19 @@ class DustEstimatorWindow(QMainWindow):
             label.setText(f"{value:.6g} {unit}")
 
 
+def launch_dust_estimator_window(*, parent: Optional[QWidget] = None) -> DustEstimatorWindow:
+    """Create a dust estimator window for embedding in other Qt applications."""
+
+    return DustEstimatorWindow(parent=parent)
+
+
 def main() -> int:
     app = QApplication(sys.argv)
-    window = DustEstimatorWindow()
+    try:
+        window = launch_dust_estimator_window()
+    except Exception as exc:
+        QMessageBox.critical(None, "Dust Estimator Error", f"Unable to start the dust estimator:\n{exc}")
+        return 1
     window.show()
     return app.exec()
 
