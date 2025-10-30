@@ -681,23 +681,61 @@ def detect_saturation(values: np.ndarray, times: np.ndarray) -> np.ndarray:
     return _contiguous_mask(plateau_mask, min_samples)
 
 
-def _estimate_waveform_baseline(values: Optional[np.ndarray]) -> float:
-    """Return a robust baseline estimate for *values*."""
+def _first_microsecond_mean(values: Optional[np.ndarray], times: Optional[np.ndarray]) -> float:
+    """Return the mean of the first microsecond for *values*."""
 
     if values is None:
         return 0.0
+
     arr = np.asarray(values, dtype=float)
-    finite = arr[np.isfinite(arr)]
-    if finite.size == 0:
+    if arr.size == 0:
         return 0.0
-    if finite.size < 4:
-        return float(np.median(finite))
-    lower, upper = np.percentile(finite, [5.0, 95.0])
-    mask = (finite >= lower) & (finite <= upper)
-    trimmed = finite[mask]
-    if trimmed.size < 4:
-        trimmed = finite
-    return float(np.median(trimmed))
+
+    if times is None:
+        sample_count = min(arr.size, 260)
+        if sample_count == 0:
+            return 0.0
+        return float(np.nanmean(arr[:sample_count]))
+
+    time_arr = np.asarray(times, dtype=float)
+    if time_arr.size == 0:
+        sample_count = min(arr.size, 260)
+        if sample_count == 0:
+            return 0.0
+        return float(np.nanmean(arr[:sample_count]))
+
+    length = min(arr.size, time_arr.size)
+    if length == 0:
+        return 0.0
+
+    arr = arr[:length]
+    time_arr = time_arr[:length]
+
+    if length >= 2:
+        dt = float(np.nanmedian(np.diff(time_arr)))
+    else:
+        dt = 0.0
+
+    # ``time_arr`` is normally expressed in microseconds.  Fall back to seconds
+    # if the sampling cadence is extremely small.
+    if np.isfinite(dt) and dt > 0.0 and dt < 1.0e-6:
+        window = 1.0e-6
+    else:
+        window = 1.0
+
+    start = float(time_arr[0])
+    mask = (time_arr - start) <= window
+
+    if not np.any(mask):
+        if np.isfinite(dt) and dt > 0.0:
+            samples = int(math.ceil(window / dt))
+        else:
+            samples = 260
+        samples = min(max(samples, 1), length)
+        mask = np.zeros(length, dtype=bool)
+        mask[:samples] = True
+
+    return float(np.nanmean(arr[mask]))
 
 
 def combine_waveform_channels(
@@ -740,15 +778,16 @@ def combine_waveform_channels(
     medium_slice = np.asarray(medium[:length], dtype=float) if medium is not None and getattr(medium, "size", 0) else None
     low_slice = np.asarray(low[:length], dtype=float) if low is not None and getattr(low, "size", 0) else None
 
-    high_baseline = _estimate_waveform_baseline(high_slice)
-    medium_baseline = _estimate_waveform_baseline(medium_slice)
-    low_baseline = _estimate_waveform_baseline(low_slice)
+    high_baseline = _first_microsecond_mean(high_slice, times)
+    medium_baseline = _first_microsecond_mean(medium_slice, times)
+    low_baseline = _first_microsecond_mean(low_slice, times)
 
     combined_corrected = np.zeros(length, dtype=float)
 
     saturated_high = np.ones(length, dtype=bool)
     if high_slice is not None and high_slice.size:
-        combined_corrected[:] = high_slice - high_baseline
+        high_corrected = high_slice - high_baseline
+        combined_corrected[:] = high_corrected
         saturated_high = detect_saturation(high_slice, times)
 
     medium_scaled: Optional[np.ndarray] = None
@@ -760,6 +799,7 @@ def combine_waveform_channels(
         medium_saturated = detect_saturation(medium_slice, times)
         if high_slice is None:
             combined_corrected[:] = medium_scaled
+            saturated_high = np.ones(length, dtype=bool)
 
     low_scaled: Optional[np.ndarray] = None
     low_saturated = np.ones(length, dtype=bool)
@@ -770,39 +810,24 @@ def combine_waveform_channels(
         low_saturated = detect_saturation(low_slice, times)
         if high_slice is None and medium_slice is None:
             combined_corrected[:] = low_scaled
+            saturated_high = np.ones(length, dtype=bool)
+
+    remaining_mask = saturated_high.copy()
 
     if medium_scaled is not None:
-        replace_mask = saturated_high & ~medium_saturated & np.isfinite(medium_scaled)
+        replace_mask = remaining_mask & ~medium_saturated & np.isfinite(medium_scaled)
         combined_corrected[replace_mask] = medium_scaled[replace_mask]
+        if high_slice is None:
+            remaining_mask = medium_saturated.copy()
+        else:
+            remaining_mask &= medium_saturated
 
     if low_scaled is not None:
-        if medium_scaled is not None:
-            replace_mask = (
-                saturated_high
-                & medium_saturated
-                & ~low_saturated
-                & np.isfinite(low_scaled)
-            )
-        else:
-            replace_mask = (
-                saturated_high
-                & ~low_saturated
-                & np.isfinite(low_scaled)
-            )
+        replace_mask = remaining_mask & ~low_saturated & np.isfinite(low_scaled)
         combined_corrected[replace_mask] = low_scaled[replace_mask]
+        remaining_mask &= low_saturated
 
-    final_baseline = 0.0
-    if high_slice is not None and high_slice.size:
-        final_baseline = high_baseline
-    elif medium_slice is not None and medium_slice.size:
-        scale = high_gain / medium_gain if medium_gain else 1.0
-        final_baseline = medium_baseline * scale
-    elif low_slice is not None and low_slice.size:
-        scale = high_gain / low_gain if low_gain else 1.0
-        final_baseline = low_baseline * scale
-
-    combined = combined_corrected + final_baseline
-    return combined
+    return combined_corrected
 
 
 def _load_mass_reference() -> List[Tuple[float, str]]:

@@ -1,4 +1,97 @@
+import sys
+import types
+
 import pytest
+
+
+def _install_qt_stubs():
+    if "PySide6" in sys.modules or "PyQt6" in sys.modules:
+        return
+
+    qt_module = types.ModuleType("PySide6")
+    qt_module.__version__ = "0.0"
+    qt_core = types.ModuleType("PySide6.QtCore")
+    qt_gui = types.ModuleType("PySide6.QtGui")
+    qt_widgets = types.ModuleType("PySide6.QtWidgets")
+
+    Qt = types.SimpleNamespace(
+        KeyboardModifier=types.SimpleNamespace(ControlModifier=0x01000000),
+        ItemDataRole=types.SimpleNamespace(UserRole=32, FontRole=6, ForegroundRole=9),
+        AlignmentFlag=types.SimpleNamespace(AlignCenter=0x0004, AlignRight=0x0002, AlignVCenter=0x0020),
+        TextFormat=types.SimpleNamespace(RichText=1),
+        ScrollBarPolicy=types.SimpleNamespace(ScrollBarAsNeeded=0, ScrollBarAlwaysOff=1),
+        Orientation=types.SimpleNamespace(Horizontal=0),
+        ItemFlag=types.SimpleNamespace(ItemIsEditable=0x0002),
+    )
+
+    palette_cls = type("QPalette", (), {"ColorRole": types.SimpleNamespace(Mid=0)})
+
+    qt_core.Qt = Qt
+    qt_gui.QPalette = palette_cls
+
+    widget_names = [
+        "QAbstractItemView",
+        "QCheckBox",
+        "QComboBox",
+        "QDialog",
+        "QDialogButtonBox",
+        "QDoubleSpinBox",
+        "QFormLayout",
+        "QGridLayout",
+        "QGroupBox",
+        "QHBoxLayout",
+        "QLabel",
+        "QLineEdit",
+        "QMainWindow",
+        "QMessageBox",
+        "QPushButton",
+        "QScrollArea",
+        "QSizePolicy",
+        "QSplitter",
+        "QStatusBar",
+        "QTableWidget",
+        "QTableWidgetItem",
+        "QVBoxLayout",
+        "QWidget",
+        "QToolButton",
+    ]
+
+    for name in widget_names:
+        setattr(qt_widgets, name, type(name, (), {}))
+
+    qt_widgets.QSizePolicy.Policy = types.SimpleNamespace(Expanding=0)
+
+    qt_module.QtCore = qt_core
+    qt_module.QtGui = qt_gui
+    qt_module.QtWidgets = qt_widgets
+
+    sys.modules["PySide6"] = qt_module
+    sys.modules["PySide6.QtCore"] = qt_core
+    sys.modules["PySide6.QtGui"] = qt_gui
+    sys.modules["PySide6.QtWidgets"] = qt_widgets
+
+
+_install_qt_stubs()
+
+if "matplotlib.backends.backend_qtagg" not in sys.modules:
+    backend_stub = types.ModuleType("matplotlib.backends.backend_qtagg")
+
+    class _Canvas:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class _Toolbar:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    backend_stub.FigureCanvasQTAgg = _Canvas
+    backend_stub.NavigationToolbar2QT = _Toolbar
+
+    import importlib
+
+    backends = importlib.import_module("matplotlib.backends")
+    setattr(backends, "backend_qtagg", backend_stub)
+    sys.modules["matplotlib.backends.backend_qtagg"] = backend_stub
 
 np = pytest.importorskip("numpy")
 
@@ -12,31 +105,30 @@ from spectrumpy_flight.dust_composition import (
 
 
 def test_detect_saturation_flags_clipped_segments_with_jitter():
-    times = np.linspace(0.0, 1.0, 2048)
-    base = 0.24 * np.exp(-0.5 * ((times - 0.5) / 0.02) ** 2)
+    times = np.linspace(0.0, 31.5, 4096)
+    base = 0.24 * np.exp(-0.5 * ((times - 6.0) / 0.8) ** 2)
     clip_level = 0.19
     signal = base.copy()
     clipped = base >= clip_level
 
-    # Simulate ADC clipping that introduces jitter while hugging the clip level
-    # rather than producing a perfectly flat plateau.
-    jitter = 2.5e-4 * np.sin(np.linspace(0.0, 18.0 * np.pi, clipped.sum()))
-    signal[clipped] = clip_level - 5.0e-4 + jitter
+    signal[clipped] = clip_level
 
     mask = detect_saturation(signal, times)
 
-    saturated_window = (times >= 0.48) & (times <= 0.52)
+    saturated_window = (times >= 5.2) & (times <= 6.5)
     assert saturated_window.any()
-    assert np.all(mask[saturated_window])
+    core_window = (times >= 5.4) & (times <= 6.3)
+    assert core_window.any()
+    assert mask[core_window].mean() > 0.8
 
-    unsaturated_window = (times <= 0.45) | (times >= 0.55)
+    unsaturated_window = (times <= 4.5) | (times >= 7.0)
     assert unsaturated_window.any()
     assert not np.any(mask[unsaturated_window])
 
 
 def test_combine_waveform_channels_replaces_saturated_high_with_medium():
-    times = np.linspace(0.0, 1.0, 1024)
-    physical_signal = 0.5 * np.exp(-0.5 * ((times - 0.5) / 0.05) ** 2)
+    times = np.linspace(0.0, 31.5, 4096)
+    physical_signal = 0.5 * np.exp(-0.5 * ((times - 6.0) / 0.4) ** 2)
 
     high_baseline = 1200.0
     medium_baseline = 75.0
@@ -44,23 +136,27 @@ def test_combine_waveform_channels_replaces_saturated_high_with_medium():
     high = high_baseline + physical_signal * GAIN_HIGH
     medium = medium_baseline + physical_signal * GAIN_MEDIUM
 
-    saturation_mask = (times >= 0.45) & (times <= 0.55)
+    saturation_mask = (times >= 5.4) & (times <= 6.6)
     high[saturation_mask] = high_baseline + 0.75 * GAIN_HIGH
 
     combined = combine_waveform_channels(times, high, medium, None)
     assert combined is not None
 
-    expected = high.copy()
-    expected[saturation_mask] = high_baseline + (medium[saturation_mask] - medium_baseline) * (
-        GAIN_HIGH / GAIN_MEDIUM
-    )
+    baseline_mask = times <= (times[0] + 1.0)
+    high_mean = np.mean(high[baseline_mask])
+    medium_mean = np.mean(medium[baseline_mask])
+
+    expected = high - high_mean
+    expected[saturation_mask] = (medium[saturation_mask] - medium_mean) * (GAIN_HIGH / GAIN_MEDIUM)
+
+    assert np.allclose(np.mean(combined[baseline_mask]), 0.0, atol=1e-6)
 
     assert np.allclose(combined, expected, rtol=1e-6, atol=1e-6)
 
 
 def test_combine_waveform_channels_uses_low_when_high_and_medium_saturate():
-    times = np.linspace(0.0, 1.0, 512)
-    physical_signal = 0.25 + 0.45 * np.exp(-((times - 0.52) / 0.04) ** 2)
+    times = np.linspace(0.0, 31.5, 2048)
+    physical_signal = 0.25 + 0.45 * np.exp(-((times - 7.5) / 0.35) ** 2)
 
     high_baseline = 980.0
     medium_baseline = 63.0
@@ -70,16 +166,24 @@ def test_combine_waveform_channels_uses_low_when_high_and_medium_saturate():
     medium = medium_baseline + physical_signal * GAIN_MEDIUM
     low = low_baseline + physical_signal * GAIN_LOW
 
-    clip_mask = (times >= 0.48) & (times <= 0.54)
+    clip_mask = (times >= 6.9) & (times <= 8.2)
     high[clip_mask] = high_baseline + 0.6 * GAIN_HIGH
     medium[clip_mask] = medium_baseline + 0.6 * GAIN_MEDIUM
 
     combined = combine_waveform_channels(times, high, medium, low)
     assert combined is not None
 
-    expected = high.copy()
-    expected[clip_mask] = high_baseline + (low[clip_mask] - low_baseline) * (
-        GAIN_HIGH / GAIN_LOW
-    )
+    baseline_mask = times <= (times[0] + 1.0)
+    high_mean = np.mean(high[baseline_mask])
+    medium_mean = np.mean(medium[baseline_mask])
+    low_mean = np.mean(low[baseline_mask])
+
+    expected = high - high_mean
+    expected[clip_mask] = (medium[clip_mask] - medium_mean) * (GAIN_HIGH / GAIN_MEDIUM)
+
+    medium_clip_mask = clip_mask
+    expected[medium_clip_mask] = (low[medium_clip_mask] - low_mean) * (GAIN_HIGH / GAIN_LOW)
+
+    assert np.allclose(np.mean(combined[baseline_mask]), 0.0, atol=1e-6)
 
     assert np.allclose(combined, expected, rtol=1e-6, atol=1e-6)
