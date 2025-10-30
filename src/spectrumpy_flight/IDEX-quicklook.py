@@ -21,6 +21,20 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Set
 
+# ---------------------------------------------------------------------------
+# Support execution both as part of the ``spectrumpy_flight`` package and when
+# dynamically loaded from disk (e.g. via :func:`importlib.util.spec_from_file`).
+# ``HDF_Explorer`` uses the latter approach which means ``__package__`` is empty
+# unless we normalise it here.  Ensuring ``__package__`` points at the parent
+# package keeps intra-package imports working without polluting ``sys.path``.
+# ---------------------------------------------------------------------------
+if not __package__:
+    package_root = Path(__file__).resolve().parent
+    parent_dir = str(package_root.parent)
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+    __package__ = "spectrumpy_flight"
+
 import html
 import textwrap
 
