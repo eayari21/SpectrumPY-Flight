@@ -100,7 +100,10 @@ def locate_idex_entrypoint(explicit: str | None) -> tuple[str, str | Path]:
         raise FileNotFoundError(f"Cannot locate idex script at '{explicit}'")
 
     # Prefer the installed module when available; works for pip installs.
-    spec = importlib.util.find_spec("spectrumpy_flight.idex_packet")
+    try:
+        spec = importlib.util.find_spec("spectrumpy_flight.idex_packet")
+    except ModuleNotFoundError:
+        spec = None
     if spec is not None:
         return ("module", "spectrumpy_flight.idex_packet")
 
