@@ -41,7 +41,7 @@ except Exception:  # pragma: no cover - fallback binding
     )
     QT_API = "PyQt6"
 
-from idex_variable_definitions import (
+from .idex_variable_definitions import (
     VariableDefinition,
     load_variable_definitions,
 )

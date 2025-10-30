@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spectrumpy-flight"
+version = "1.0.0"
+description = "Ground-system decoding, fitting, and visualization tools for the LASP/IMPACT IDEX campaign."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Ethan Ayari" },
+]
+dependencies = [
+    "PySide6>=6.6",
+    "numpy>=1.23",
+    "scipy>=1.9",
+    "pandas>=1.4",
+    "matplotlib>=3.5",
+    "seaborn>=0.12",
+    "h5py>=3.7",
+    "lmfit>=1.1",
+    "bitstring>=4.0",
+    "cdflib>=0.4",
+    "requests>=2.28",
+    "SQLAlchemy>=1.4",
+    "PyMySQL>=1.0",
+    "psutil>=5.9",
+    "qtawesome>=1.1",
+]
+keywords = ["IDEX", "spectrometry", "science", "telemetry"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent",
+]
+
+[project.optional-dependencies]
+pyqt = ["PyQt6>=6.5"]
+gpu = ["cupy>=12.0"]
+database = ["mysql-connector-python>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/eayari21/4_Flight"
+Documentation = "https://github.com/eayari21/4_Flight/tree/main/docs"
+
+[project.scripts]
+spectrumpy-gui = "spectrumpy_flight.imfpy.gui.main:main"
+spectrumpy-start = "spectrumpy_flight.start:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["spectrumpy_flight*"]

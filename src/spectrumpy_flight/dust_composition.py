@@ -29,8 +29,6 @@ import json
 import math
 import re
 import unicodedata
-import importlib.util
-import sys
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -103,32 +101,9 @@ from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from matplotlib.widgets import SpanSelector
 
-from plot_style import apply_plot_style
+from .plot_style import apply_plot_style
 
-
-_QUICKLOOK_MODULE_NAME = "IDEX_quicklook"
-_QUICKLOOK_FILE = Path(__file__).resolve().parent / "IDEX-quicklook.py"
-
-
-def _load_quicklook_module():
-    module = sys.modules.get(_QUICKLOOK_MODULE_NAME)
-    if module is not None:
-        return module
-    if not _QUICKLOOK_FILE.exists():
-        return None
-    spec = importlib.util.spec_from_file_location(_QUICKLOOK_MODULE_NAME, str(_QUICKLOOK_FILE))
-    if spec is None or spec.loader is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[_QUICKLOOK_MODULE_NAME] = module
-    try:
-        spec.loader.exec_module(module)  # type: ignore[attr-defined]
-    except Exception:
-        sys.modules.pop(_QUICKLOOK_MODULE_NAME, None)
-        return None
-    return module
-
-from line_shapes import (
+from .line_shapes import (
     double_emg as _line_double_emg,
     emg as _line_emg,
     generalized_normal as _line_generalized_normal,
@@ -2463,7 +2438,6 @@ class TernaryCompositionDialog(QDialog):
 
         self._handle = handle
         self._repository = self._collect_repository(handle)
-        self._quicklook_window = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -2888,51 +2862,6 @@ class TernaryCompositionDialog(QDialog):
             self.result_table.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
 
     # ------------------------------------------------------------------
-    def _launch_quicklook(self, event_name: str) -> None:
-        handle = self._handle
-        if handle is None:
-            return
-        file_path = getattr(handle, "filename", None)
-        if not file_path:
-            return
-        if isinstance(file_path, (bytes, bytearray)):
-            try:
-                file_path = file_path.decode("utf-8", errors="ignore")
-            except Exception:
-                file_path = str(file_path)
-        path_str = str(Path(file_path))
-        module = _load_quicklook_module()
-        if module is None:
-            return
-        QuicklookWindow = getattr(module, "MainWindow", None)
-        if QuicklookWindow is None:
-            return
-        window = self._quicklook_window
-        if window is not None:
-            try:
-                if window.isVisible():  # type: ignore[attr-defined]
-                    window.raise_()
-                    window.activateWindow()
-                    window.open_file(path_str, preferred_event=event_name)
-                    return
-            except Exception:
-                self._quicklook_window = None
-                window = None
-        try:
-            window = QuicklookWindow(filename=path_str)
-        except Exception:
-            return
-        try:
-            window.show()
-        except Exception:
-            pass
-        try:
-            window.open_file(path_str, preferred_event=event_name)
-        except Exception:
-            pass
-        self._quicklook_window = window
-
-    # ------------------------------------------------------------------
     def _on_point_picked(self, event) -> None:
         if self._scatter_artist is None or not isinstance(event.artist, PathCollection):
             return
@@ -2971,7 +2900,6 @@ class TernaryCompositionDialog(QDialog):
                 parent.activateWindow()
             except Exception:
                 pass
-        self._launch_quicklook(event_name)
 
     # ------------------------------------------------------------------
     @staticmethod

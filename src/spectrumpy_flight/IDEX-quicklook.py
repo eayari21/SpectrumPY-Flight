@@ -33,7 +33,7 @@ except Exception:  # pragma: no cover - optional dependency for environments wit
 from typing import Union
 import numpy as np
 
-from idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
+from .idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
 
 try:
     # Preferred on modern stacks
@@ -57,23 +57,23 @@ def _erfc(values: np.ndarray) -> np.ndarray:
 
     return _compat_erfc(values)
 
-from HDF_View import launch_hdf_viewer
-from dust_composition import launch_dust_composition_window
-from dust_estimator_gui import launch_dust_estimator_window
-from noise_analysis import ChannelMeta, launch_noise_analysis_window
-from plot_style import apply_plot_style
+from .HDF_View import launch_hdf_viewer
+from .dust_composition import launch_dust_composition_window
+from .dust_estimator_gui import launch_dust_estimator_window
+from .noise_analysis import ChannelMeta, launch_noise_analysis_window
+from .plot_style import apply_plot_style
 try:  # pragma: no cover - optional dependency, loaded lazily
-    from HDF_View import launch_hdf_viewer
+    from .HDF_View import launch_hdf_viewer
 except Exception:  # pragma: no cover
     launch_hdf_viewer = None
 
 try:  # pragma: no cover - optional dependency, loaded lazily
-    from CDF_View import launch_cdf_viewer
+    from .CDF_View import launch_cdf_viewer
 except Exception:  # pragma: no cover
     launch_cdf_viewer = None
 
 try:  # pragma: no cover - optional dependency
-    from IDEX_Definitions_View import launch_variable_definitions_viewer
+    from .IDEX_Definitions_View import launch_variable_definitions_viewer
 except Exception:  # pragma: no cover
     launch_variable_definitions_viewer = None
 
