@@ -12,6 +12,7 @@ Works with Python 3.8.10
 # || Python libraries
 import argparse
 import json
+import math
 import os
 import socket
 import bitstring
@@ -20,6 +21,7 @@ import shutil
 import struct
 import matplotlib.pyplot as plt
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 from .plot_style import apply_plot_style
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
@@ -28,6 +30,10 @@ import numpy as np
 
 MASS_STRETCH_MIN = 1.3
 MASS_STRETCH_MAX = 1.6
+
+COMBINED_SIGNAL_DATASET = "CombinedSignal"
+COMBINED_TIME_DATASET = "CombinedTime"
+DUST_ANALYSIS_GROUP = "Analysis/DustComposition"
 
 from .idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
 
@@ -51,6 +57,7 @@ from lasp_packets import xtcedef  # Gavin Medley's xtce UML implementation
 from lasp_packets import parser  # Gavin Medley's constant bitstream implementation
 from .rice_decode import idex_rice_Decode
 from .time2mass import time2mass, get_last_mass_line_assignments
+from .lookup.dust_estimator import estimate_particle, load_default_tables
 import cdflib.cdfwrite as cdfwrite
 import cdflib.cdfread as cdfread
 
@@ -84,14 +91,475 @@ def apply_polynomial(coeffs, X):
     return sum(coeffs[i] * (X ** i) for i in range(len(coeffs)))
 
 # Helper function to create dataset if it doesn't exist
-def create_dataset_if_not_exists(hdf5_file, dataset_path, data):
+def create_dataset_if_not_exists(hdf5_file, dataset_path, data, *, dtype=None):
     if dataset_path in hdf5_file:
         print(f"Dataset '{dataset_path}' already exists. Skipping creation.")
+        return hdf5_file[dataset_path]
+    group_path = os.path.dirname(dataset_path)
+    if group_path and group_path != '/':
+        hdf5_file.require_group(group_path)
+    if dtype is not None:
+        return hdf5_file.create_dataset(dataset_path, data=data, dtype=dtype)
+    return hdf5_file.create_dataset(dataset_path, data=data)
+
+
+def _contiguous_mask(condition: np.ndarray, min_samples: int) -> np.ndarray:
+    condition = np.asarray(condition, dtype=bool)
+    if condition.size == 0:
+        return np.zeros(0, dtype=bool)
+
+    padded = np.concatenate(([False], condition, [False])).astype(int)
+    diff = np.diff(padded)
+    starts = np.where(diff == 1)[0]
+    ends = np.where(diff == -1)[0]
+
+    mask = np.zeros_like(condition, dtype=bool)
+    for start, end in zip(starts, ends):
+        if end - start >= max(1, min_samples):
+            mask[start:end] = True
+    return mask
+
+
+def _detect_saturation_segments(values: np.ndarray, times: np.ndarray) -> np.ndarray:
+    arr = np.asarray(values, dtype=float)
+    if arr.size == 0:
+        return np.zeros(0, dtype=bool)
+
+    magnitude = np.nanmax(np.abs(arr))
+    if not np.isfinite(magnitude) or magnitude == 0.0:
+        return np.zeros_like(arr, dtype=bool)
+
+    grad = np.abs(np.gradient(arr))
+    derivative_threshold = 0.0025 * magnitude
+    plateau = grad < derivative_threshold
+
+    repeated = np.zeros_like(arr, dtype=bool)
+    if arr.size >= 2:
+        diffs = np.abs(np.diff(arr))
+        repeat_tol = max(1.0e-9, 1.0e-4 * magnitude)
+        repeats = diffs <= repeat_tol
+        if repeats.any():
+            repeated[1:] |= repeats
+            repeated[:-1] |= repeats
+
+    amplitude_threshold = np.nanpercentile(np.abs(arr), 99.7)
+    high_amp = np.abs(arr) >= amplitude_threshold
+
+    plateau_mask = (plateau | repeated) & high_amp
+
+    extreme_mask = np.zeros_like(arr, dtype=bool)
+    tolerance = 0.003 * magnitude + 1.0e-9
+    max_val = float(np.nanmax(arr))
+    min_val = float(np.nanmin(arr))
+    if np.isfinite(max_val) and max_val > 0.0:
+        extreme_mask |= (max_val - arr) <= tolerance
+    if np.isfinite(min_val) and min_val < 0.0:
+        extreme_mask |= (arr - min_val) <= tolerance
+    plateau_mask |= extreme_mask & high_amp
+
+    if plateau_mask.size < 2:
+        return plateau_mask
+
+    times = np.asarray(times, dtype=float)
+    if times.size >= 2:
+        dt = float(np.nanmedian(np.diff(times)))
     else:
-        group_path = os.path.dirname(dataset_path)
-        if group_path and group_path != '/':
-            hdf5_file.require_group(group_path)
-        hdf5_file.create_dataset(dataset_path, data=data)
+        dt = 0.0
+
+    if not np.isfinite(dt) or dt <= 0.0:
+        min_samples = 12
+    else:
+        min_samples = max(8, int(math.ceil(1.0 / max(dt, 1.0e-6))))
+
+    return _contiguous_mask(plateau_mask, min_samples)
+
+
+def _first_microsecond_mean(values: Optional[np.ndarray], times: Optional[np.ndarray]) -> float:
+    if values is None:
+        return 0.0
+
+    arr = np.asarray(values, dtype=float)
+    if arr.size == 0:
+        return 0.0
+
+    if times is None:
+        sample_count = min(arr.size, 260)
+        if sample_count == 0:
+            return 0.0
+        return float(np.nanmean(arr[:sample_count]))
+
+    time_arr = np.asarray(times, dtype=float)
+    if time_arr.size == 0:
+        sample_count = min(arr.size, 260)
+        if sample_count == 0:
+            return 0.0
+        return float(np.nanmean(arr[:sample_count]))
+
+    length = min(arr.size, time_arr.size)
+    if length == 0:
+        return 0.0
+
+    arr = arr[:length]
+    time_arr = time_arr[:length]
+
+    if length >= 2:
+        dt = float(np.nanmedian(np.diff(time_arr)))
+    else:
+        dt = 0.0
+
+    if np.isfinite(dt) and dt > 0.0 and dt < 1.0e-6:
+        window = 1.0e-6
+    else:
+        window = 1.0
+
+    start = float(time_arr[0])
+    mask = (time_arr - start) <= window
+
+    if not np.any(mask):
+        if np.isfinite(dt) and dt > 0.0:
+            samples = int(math.ceil(window / dt))
+        else:
+            samples = 260
+        samples = min(max(samples, 1), length)
+        mask = np.zeros(length, dtype=bool)
+        mask[:samples] = True
+
+    return float(np.nanmean(arr[mask]))
+
+
+def _combine_waveform_channels(
+    time_axis: np.ndarray,
+    high: Optional[np.ndarray],
+    medium: Optional[np.ndarray],
+    low: Optional[np.ndarray],
+    gain_map: Optional[Dict[str, float]] = None,
+) -> Optional[np.ndarray]:
+    if time_axis is None:
+        return None
+
+    times = np.asarray(time_axis, dtype=float)
+    if times.size == 0:
+        return None
+
+    gain_map = gain_map or {
+        "TOF H": 1600.0,
+        "TOF M": 40.0,
+        "TOF L": 1.0,
+    }
+
+    high_gain = float(gain_map.get("TOF H", 1.0))
+    medium_gain = float(gain_map.get("TOF M", 1.0))
+    low_gain = float(gain_map.get("TOF L", 1.0))
+
+    arrays = [
+        arr
+        for arr in (high, medium, low)
+        if arr is not None and getattr(arr, "size", 0)
+    ]
+    if not arrays:
+        return None
+
+    lengths = [times.size]
+    lengths.extend(int(arr.size) for arr in arrays)
+    length = min(lengths)
+    if length <= 0:
+        return None
+
+    times = times[:length]
+
+    high_slice = np.asarray(high[:length], dtype=float) if high is not None and getattr(high, "size", 0) else None
+    medium_slice = np.asarray(medium[:length], dtype=float) if medium is not None and getattr(medium, "size", 0) else None
+    low_slice = np.asarray(low[:length], dtype=float) if low is not None and getattr(low, "size", 0) else None
+
+    high_baseline = _first_microsecond_mean(high_slice, times)
+    medium_baseline = _first_microsecond_mean(medium_slice, times)
+    low_baseline = _first_microsecond_mean(low_slice, times)
+
+    combined_corrected = np.zeros(length, dtype=float)
+
+    saturated_high = np.ones(length, dtype=bool)
+    high_corrected: Optional[np.ndarray] = None
+    if high_slice is not None and high_slice.size:
+        high_corrected = high_slice - high_baseline
+        combined_corrected[:] = high_corrected
+        saturated_high = _detect_saturation_segments(high_slice, times)
+
+    medium_scaled: Optional[np.ndarray] = None
+    medium_saturated = np.ones(length, dtype=bool)
+    medium_outperform_mask: Optional[np.ndarray] = None
+    if medium_slice is not None and medium_slice.size:
+        medium_corrected = medium_slice - medium_baseline
+        scale = high_gain / medium_gain if medium_gain else 1.0
+        medium_scaled = medium_corrected * scale
+        medium_saturated = _detect_saturation_segments(medium_slice, times)
+        if high_corrected is not None:
+            high_scale = float(np.nanmax(np.abs(high_corrected))) if high_corrected.size else 0.0
+            medium_scale = float(np.nanmax(np.abs(medium_scaled))) if medium_scaled.size else 0.0
+            scale_reference = max(high_scale, medium_scale)
+            if not np.isfinite(scale_reference) or scale_reference <= 0.0:
+                tolerance = 0.0
+            else:
+                tolerance = 0.015 * scale_reference + 1.0e-9
+            with np.errstate(invalid="ignore"):
+                medium_outperform_mask = np.abs(medium_scaled) > np.abs(high_corrected) + tolerance
+        if high_slice is None:
+            combined_corrected[:] = medium_scaled
+            saturated_high = np.ones(length, dtype=bool)
+
+    low_scaled: Optional[np.ndarray] = None
+    low_saturated = np.ones(length, dtype=bool)
+    low_outperform_mask: Optional[np.ndarray] = None
+    if low_slice is not None and low_slice.size:
+        low_corrected = low_slice - low_baseline
+        scale = high_gain / low_gain if low_gain else 1.0
+        low_scaled = low_corrected * scale
+        low_saturated = _detect_saturation_segments(low_slice, times)
+        if high_corrected is not None:
+            high_scale = float(np.nanmax(np.abs(high_corrected))) if high_corrected.size else 0.0
+            low_scale = float(np.nanmax(np.abs(low_scaled))) if low_scaled.size else 0.0
+            scale_reference = max(high_scale, low_scale)
+            if not np.isfinite(scale_reference) or scale_reference <= 0.0:
+                tolerance = 0.0
+            else:
+                tolerance = 0.02 * scale_reference + 1.0e-9
+            with np.errstate(invalid="ignore"):
+                low_outperform_mask = np.abs(low_scaled) > np.abs(high_corrected) + tolerance
+        if high_slice is None and medium_slice is None:
+            combined_corrected[:] = low_scaled
+            saturated_high = np.ones(length, dtype=bool)
+
+    remaining_mask = saturated_high.copy()
+
+    if medium_scaled is not None:
+        finite_medium = np.isfinite(medium_scaled)
+        replace_mask = remaining_mask & ~medium_saturated & finite_medium
+        if medium_outperform_mask is not None:
+            replace_mask |= medium_outperform_mask & ~medium_saturated & finite_medium
+        combined_corrected[replace_mask] = medium_scaled[replace_mask]
+        if high_slice is None:
+            remaining_mask = medium_saturated.copy()
+        else:
+            remaining_mask &= medium_saturated
+        remaining_mask &= ~replace_mask
+
+    if low_scaled is not None:
+        finite_low = np.isfinite(low_scaled)
+        replace_mask = remaining_mask & ~low_saturated & finite_low
+        if low_outperform_mask is not None:
+            replace_mask |= low_outperform_mask & ~low_saturated & finite_low
+        combined_corrected[replace_mask] = low_scaled[replace_mask]
+        remaining_mask &= low_saturated
+        remaining_mask &= ~replace_mask
+
+    return combined_corrected
+
+
+def _estimate_baseline(time_array: np.ndarray, signal: np.ndarray) -> float:
+    values = np.asarray(signal, dtype=float)
+    if values.size == 0:
+        return 0.0
+
+    times = np.asarray(time_array, dtype=float)
+    if times.size == values.size:
+        mask = (times >= -7.0) & (times <= -5.0)
+        if np.any(mask):
+            return float(np.nanmedian(values[mask]))
+
+    sample_count = min(values.size, 64)
+    if sample_count == 0:
+        return 0.0
+    return float(np.nanmedian(values[:sample_count]))
+
+
+def _serialise_mass_lines(group: h5py.Group, mass_lines: List[Dict[str, object]]) -> None:
+    str_dtype = h5py.string_dtype(encoding='utf-8', length=120)
+    extras_dtype = h5py.string_dtype(encoding='utf-8', length=2048)
+    table = np.zeros(len(mass_lines), dtype=[
+        ('id', 'i4'),
+        ('label', str_dtype),
+        ('assigned_species', str_dtype),
+        ('mu', 'f8'),
+        ('sigma', 'f8'),
+        ('lam', 'f8'),
+        ('amplitude', 'f8'),
+        ('time_start', 'f8'),
+        ('time_end', 'f8'),
+        ('mass', 'f8'),
+        ('assigned_mass', 'f8'),
+        ('area', 'f8'),
+        ('abundance', 'f8'),
+        ('shape', str_dtype),
+        ('extras', extras_dtype),
+    ])
+    for idx, record in enumerate(mass_lines):
+        extras_serialized = "{}"
+        try:
+            extras_serialized = json.dumps(record.get('extras', {}))
+        except Exception:
+            extras_serialized = "{}"
+        assigned_species = record.get('species', '') or ''
+        assigned_mass = float(record.get('assigned_mass', np.nan))
+        table[idx] = (
+            int(record.get('line_id', idx + 1)),
+            str(record.get('label', f"Line{idx + 1}")),
+            str(assigned_species),
+            float(record.get('mu', np.nan)),
+            float(record.get('sigma', np.nan)),
+            float(record.get('lam', np.nan)),
+            float(record.get('amplitude', 0.0)),
+            float(record.get('time_start', np.nan)),
+            float(record.get('time_end', np.nan)),
+            float(record.get('mass_guess', np.nan)),
+            assigned_mass,
+            float(record.get('area', 0.0)),
+            float(record.get('abundance', 0.0)),
+            str(record.get('shape', 'emg')),
+            extras_serialized,
+        )
+    if 'MassLines' in group:
+        del group['MassLines']
+    group.create_dataset('MassLines', data=table)
+
+    fits_group = group.require_group('Fits')
+    for key in list(fits_group.keys()):
+        del fits_group[key]
+    for record in mass_lines:
+        line_group = fits_group.require_group(f"line_{int(record.get('line_id', 0))}")
+        for key in list(line_group.keys()):
+            del line_group[key]
+        line_group.create_dataset('time', data=np.asarray(record.get('fit_time', []), dtype=float))
+        line_group.create_dataset('values', data=np.asarray(record.get('fit_curve', []), dtype=float))
+
+
+def _analyse_mass_lines(signal: np.ndarray, time_axis: np.ndarray) -> Optional[Dict[str, object]]:
+    signal = np.asarray(signal, dtype=float)
+    time_axis = np.asarray(time_axis, dtype=float)
+    if signal.size == 0 or signal.size != time_axis.size:
+        return None
+
+    stretch, shift, mass_scale = time2mass(signal, time_axis)
+    stretch = float(np.clip(stretch, MASS_STRETCH_MIN, MASS_STRETCH_MAX))
+    assignments = get_last_mass_line_assignments() or {}
+    peaks = np.asarray(assignments.get('peaks', np.array([], dtype=int)), dtype=int)
+
+    mass_line_records: List[Dict[str, object]] = []
+    total_area = 0.0
+    for line_info in assignments.get('mass_lines', []):
+        peak_index = int(line_info.get('peak_index', 0))
+        window = line_info.get('window', (peak_index - 10, peak_index + 10))
+        start = max(0, int(window[0]))
+        end = min(signal.size, int(window[1]))
+        if end - start < 4:
+            continue
+        x_slice = np.asarray(time_axis[start:end], dtype=float)
+        y_slice = np.asarray(signal[start:end], dtype=float)
+        if x_slice.size == 0 or y_slice.size != x_slice.size:
+            continue
+        param, _param_cov, sig_amp, fitted_curve = FitEMG(x_slice, y_slice)
+        if param is None:
+            continue
+        area = calculate_area_under_emg(x_slice, param)
+        chi_sq, red_chi = calculate_chi_squared(y_slice, fitted_curve, len(param))
+        mass_value = float(line_info.get('mass_reference', line_info.get('mass_scale_value', np.nan)))
+        record = {
+            'line_id': int(line_info.get('line_id', len(mass_line_records) + 1)),
+            'label': str(line_info.get('label', f"Line{line_info.get('line_id', len(mass_line_records) + 1)}")),
+            'species': str(line_info.get('species', '')),
+            'mu': float(param[0]),
+            'sigma': float(param[1]),
+            'lam': float(param[2]),
+            'amplitude': float(max(area, 0.0)),
+            'time_start': float(x_slice[0]),
+            'time_end': float(x_slice[-1]),
+            'mass_guess': mass_value,
+            'assigned_mass': mass_value,
+            'area': float(max(area, 0.0)),
+            'abundance': 0.0,
+            'shape': 'emg',
+            'extras': {},
+            'fit_time': np.asarray(x_slice, dtype=float),
+            'fit_curve': np.asarray(fitted_curve, dtype=float),
+            'chi_sq': float(chi_sq),
+            'red_chi': float(red_chi),
+            'sig_amp': float(sig_amp),
+            'peak_index': peak_index,
+            'mass_scale_value': float(line_info.get('mass_scale_value', np.nan)),
+        }
+        total_area += record['area']
+        mass_line_records.append(record)
+
+    if total_area > 0.0:
+        for record in mass_line_records:
+            record['abundance'] = float(max(record['area'], 0.0) / total_area)
+    else:
+        for record in mass_line_records:
+            record['abundance'] = 0.0
+
+    valid_peaks = peaks[(peaks >= 0) & (peaks < len(mass_scale))]
+    if valid_peaks.size:
+        kappa = float(np.mean(mass_scale[valid_peaks] - np.round(mass_scale[valid_peaks])))
+    else:
+        kappa = np.nan
+
+    return {
+        'mass_scale': np.array(mass_scale, dtype=float),
+        'peaks': valid_peaks,
+        'kappa': float(kappa) if np.isfinite(kappa) else np.nan,
+        'stretch': stretch,
+        'shift': float(shift),
+        'mass_lines': mass_line_records,
+        'assignments': assignments,
+        'total_area': float(total_area),
+    }
+
+
+def _compute_particle_estimate(
+    charge_c: Optional[float],
+    rise_time_us: Optional[float],
+    ratio: Optional[float],
+    *,
+    rise_params,
+    ratio_params,
+    yield_params,
+) -> Optional[object]:
+    if charge_c is None or not np.isfinite(charge_c) or charge_c <= 0.0:
+        return None
+    if rise_params is None or yield_params is None:
+        return None
+    try:
+        return estimate_particle(
+            charge_c=charge_c,
+            rise_time=rise_time_us,
+            ion_to_target_ratio=ratio,
+            rise_params=rise_params,
+            ratio_params=ratio_params,
+            yield_params=yield_params,
+        )
+    except Exception:
+        return None
+
+
+def _replace_data_dir(path: Path) -> Path:
+    parts = list(path.parts)
+    for idx, part in enumerate(parts):
+        if part.lower() == 'data':
+            parts[idx] = 'HDF5'
+            base = Path(parts[0]) if parts else Path('HDF5')
+            for segment in parts[1:]:
+                base /= segment
+            return base
+    return path
+
+
+def _resolve_output_path(filename: str) -> Path:
+    input_path = Path(filename).expanduser()
+    stem = input_path.stem if input_path.suffix else input_path.name
+    parent = input_path.parent
+    target_parent = _replace_data_dir(parent)
+    if target_parent == parent and not target_parent.is_absolute():
+        target_parent = Path(__file__).resolve().parent / "HDF5"
+    target_parent.mkdir(parents=True, exist_ok=True)
+    return target_parent / f"{stem}.h5"
 
 
 def _bitstring_to_ints(waveform_raw: str, pad_bits: int, value_bits: int,
@@ -1123,51 +1591,30 @@ class IDEXEvent:
     # || Write the waveform data 
     # || to an HDF5 file
     def write_to_hdf5(self, waveforms: dict, filename: str):
-        output_path = Path(filename)
-        if not output_path.is_absolute():
-            script_hdf5_dir = Path(__file__).resolve().parent / "HDF5"
-            script_hdf5_dir.mkdir(parents=True, exist_ok=True)
-            output_path = script_hdf5_dir / output_path.name
-        else:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-
+        output_path = _resolve_output_path(filename)
         if output_path.exists():
             output_path.unlink()
-        h = h5py.File(output_path, 'w')
 
-        for (evtnum, key), value in self.header.items():
-            # Skip fields starting with "IDX__" for waveforms
-            if "IDX__" in key:
-                print(f"Skipping header field {key}")
-                continue
-            # Create the dataset for each item in self.header
-            dataset_path = f"/{evtnum}/Metadata/{key}"
-            
-            # Check if the dataset exists before creating it
-            if dataset_path not in h:
-                # Check if the value is a string and handle accordingly
-                if isinstance(value, str):
-                    # Use string_dtype to handle string data
-                    dtype = h5py.string_dtype(encoding='utf-8')
-                    h.create_dataset(dataset_path, data=value, dtype=dtype)
-                else:
-                    # Convert value to numpy array and write normally for non-strings
-                    h.create_dataset(dataset_path, data=np.array(value))
-                
-                print(f"Created dataset: {dataset_path} with value: {value}")
+        try:
+            rise_table, ratio_table, yield_table = load_default_tables()
+            rise_params = rise_table.get('combined')
+            ratio_params = ratio_table.get('combined') if ratio_table else None
+            yield_params = yield_table.get('combined')
+        except Exception as exc:
+            print(f"Warning: unable to load dust estimator tables: {exc}")
+            rise_params = None
+            ratio_params = None
+            yield_params = None
 
-        # Conversion factors based on channel type
         conversion_factors = {
             'TOF H': 2.89e-4,
             'TOF M': 1.13e-2,
             'TOF L': 5.14e-4,
             'Ion Grid': 7.46e-4,
             'Target H': 1.63e-1,
-            'Target L': 1.58e1
+            'Target L': 1.58e1,
         }
-
-        event_saturation_flags = {}
-        flags_by_event = {}
+        target_channels = {'Target L', 'Target H', 'Ion Grid'}
 
         waveform_items = list(waveforms.items())
 
@@ -1182,12 +1629,16 @@ class IDEXEvent:
 
         self.hstime = self._build_time_array(high_sample_count, high_rate=True)
         self.lstime = self._build_time_array(low_sample_count, high_rate=False)
-        target_channels = {'Target L', 'Target H', 'Ion Grid'}
+
+        event_saturation_flags: Dict[str, bool] = {}
+        flags_by_event: Dict[str, Dict[str, List[str]]] = {}
+        event_results: Dict[str, Dict[str, object]] = {}
 
         def _prepare_waveform(item):
             (event_id, channel), data = item
+            event_key = str(event_id)
             analysis = {
-                'key': (event_id, channel),
+                'key': (event_key, channel),
                 'data': np.asarray(data),
                 'transformed': None,
                 'channel_saturated': False,
@@ -1198,6 +1649,9 @@ class IDEXEvent:
                 'time_array': np.array([], dtype=float),
                 'fit_failures': [],
                 'notes': [],
+                'baseline': 0.0,
+                'charge_c': None,
+                'rise_time': None,
             }
 
             if channel in conversion_factors:
@@ -1207,16 +1661,22 @@ class IDEXEvent:
 
                 if channel in {'TOF H', 'TOF M', 'TOF L'}:
                     time_array = self._build_time_array(len(transformed_data), high_rate=True)
-                elif channel in target_channels or channel == 'Ion Grid':
+                elif channel in target_channels:
                     time_array = self._build_time_array(len(transformed_data), high_rate=False)
                 else:
                     time_array = np.arange(len(transformed_data), dtype=float)
-                analysis['time_array'] = time_array
+                analysis['time_array'] = np.asarray(time_array, dtype=float)
 
-                if time_array.size:
-                    min_len = min(len(time_array), len(transformed_data))
+                baseline_value = _estimate_baseline(analysis['time_array'], transformed_data)
+                analysis['baseline'] = baseline_value
+
+                if analysis['time_array'].size:
+                    min_len = min(len(analysis['time_array']), len(transformed_data))
                     if min_len > 0:
-                        snr_value = calculate_snr(transformed_data[:min_len], time_array[:min_len])
+                        snr_value = calculate_snr(
+                            transformed_data[:min_len],
+                            analysis['time_array'][:min_len],
+                        )
                     else:
                         snr_value = calculate_snr(transformed_data)
                 else:
@@ -1224,101 +1684,42 @@ class IDEXEvent:
                 analysis['snr'] = snr_value
 
                 if channel == 'TOF H':
-                    stretch, shift, mass_scale = time2mass(transformed_data, analysis['time_array'])
-                    stretch = float(np.clip(stretch, MASS_STRETCH_MIN, MASS_STRETCH_MAX))
-                    assignments = get_last_mass_line_assignments()
-                    peaks = np.asarray(assignments.get('peaks', np.array([], dtype=int)), dtype=int)
-                    analysis['logs'].append(
-                        f"Auto-assigned {len(assignments.get('mass_lines', []))} mass line(s) with {peaks.size} detected peaks"
-                    )
-                    mass_line_records = []
-                    total_area = 0.0
-                    for line_info in assignments.get('mass_lines', []):
-                        peak_index = int(line_info.get('peak_index', 0))
-                        window = line_info.get('window', (peak_index - 10, peak_index + 10))
-                        start = max(0, int(window[0]))
-                        end = min(len(transformed_data), int(window[1]))
-                        if end - start < 4:
-                            continue
-                        x_slice = np.asarray(analysis['time_array'][start:end], dtype=float)
-                        y_slice = np.asarray(transformed_data[start:end], dtype=float)
-                        if x_slice.size == 0 or y_slice.size != x_slice.size:
-                            continue
-                        param, _param_cov, sig_amp, fitted_curve = FitEMG(x_slice, y_slice)
-                        if param is None:
-                            label = line_info.get('label', f"Line{line_info.get('line_id', peak_index)}")
-                            analysis['fit_failures'].append(f"{channel}{label}")
-                            analysis['notes'].append(f"EMG fit failed for mass line {label}")
-                            continue
-                        area = calculate_area_under_emg(x_slice, param)
-                        chi_sq, red_chi = calculate_chi_squared(y_slice, fitted_curve, len(param))
-                        mass_value = float(line_info.get('mass_reference', line_info.get('mass_scale_value', np.nan)))
-                        record = {
-                            'line_id': int(line_info.get('line_id', len(mass_line_records) + 1)),
-                            'label': str(line_info.get('label', f"Line{line_info.get('line_id', len(mass_line_records) + 1)}")),
-                            'species': str(line_info.get('species', '')),
-                            'mu': float(param[0]),
-                            'sigma': float(param[1]),
-                            'lam': float(param[2]),
-                            'amplitude': float(max(area, 0.0)),
-                            'time_start': float(x_slice[0]),
-                            'time_end': float(x_slice[-1]),
-                            'mass_guess': mass_value,
-                            'assigned_mass': mass_value,
-                            'area': float(max(area, 0.0)),
-                            'abundance': 0.0,
-                            'shape': 'emg',
-                            'extras': {},
-                            'fit_time': np.asarray(x_slice, dtype=float),
-                            'fit_curve': np.asarray(fitted_curve, dtype=float),
-                            'chi_sq': float(chi_sq),
-                            'red_chi': float(red_chi),
-                            'sig_amp': float(sig_amp),
-                            'peak_index': peak_index,
-                            'mass_scale_value': float(line_info.get('mass_scale_value', np.nan)),
-                        }
-                        total_area += record['area']
-                        mass_line_records.append(record)
+                    baseline_corrected = transformed_data - baseline_value
+                    mass_data = _analyse_mass_lines(baseline_corrected, analysis['time_array'])
+                    if mass_data is not None:
+                        assignments = mass_data.get('assignments', {})
+                        peaks = np.asarray(assignments.get('peaks', np.array([], dtype=int)), dtype=int)
                         analysis['logs'].append(
-                            f"Mass line {record['label']}: m={record['mass_guess']:.3f} amu μ={record['mu']:.6f}, σ={record['sigma']:.6f}"
+                            f"Auto-assigned {len(assignments.get('mass_lines', []))} mass line(s) with {peaks.size} detected peaks"
                         )
-
-                    if total_area > 0.0:
-                        for record in mass_line_records:
-                            record['abundance'] = float(max(record['area'], 0.0) / total_area)
-                    else:
-                        for record in mass_line_records:
-                            record['abundance'] = 0.0
-
-                    valid_peaks = peaks[(peaks >= 0) & (peaks < len(mass_scale))]
-                    if valid_peaks.size:
-                        kappa = float(np.mean(mass_scale[valid_peaks] - np.round(mass_scale[valid_peaks])))
-                    else:
-                        kappa = np.nan
-                    analysis['logs'].append(f"Kappa = {kappa}")
-                    analysis['mass'] = {
-                        'mass_scale': np.array(mass_scale, dtype=float),
-                        'peaks': valid_peaks,
-                        'kappa': float(kappa) if np.isfinite(kappa) else np.nan,
-                        'stretch': stretch,
-                        'shift': shift,
-                        'mass_lines': mass_line_records,
-                        'assignments': assignments,
-                        'total_area': float(total_area),
-                    }
+                    analysis['mass'] = mass_data
+                else:
+                    analysis['mass'] = None
+            else:
+                analysis['baseline'] = 0.0
+                analysis['snr'] = calculate_snr(analysis['data'])
 
             if channel in target_channels:
-                if analysis['time_array'].size == len(analysis['data']):
+                signal_for_fit = analysis['transformed'] if analysis['transformed'] is not None else analysis['data']
+                if analysis['time_array'].size == signal_for_fit.size:
                     target_time = analysis['time_array']
                 else:
-                    target_time = self._build_time_array(len(analysis['data']), high_rate=False)
-                target_fit = FitTargetSignal(target_time, analysis['data'])
+                    target_time = self._build_time_array(signal_for_fit.size, high_rate=False)
+                target_time = np.asarray(target_time, dtype=float)
+                target_fit = FitTargetSignal(target_time, signal_for_fit)
                 analysis['target_fit'] = target_fit
                 params = np.asarray(target_fit.get('params', np.array([])), dtype=float)
                 if params.size == 0 or not np.all(np.isfinite(params)):
                     analysis['fit_failures'].append(f"{channel}Fit")
                     analysis['notes'].append(f"Target fit for {channel} returned invalid parameters")
                 analysis['time_array'] = target_time
+                sig_amp = target_fit.get('signal_amplitude', np.nan)
+                charge_c = float(sig_amp) * 1e-12 if np.isfinite(sig_amp) else None
+                analysis['charge_c'] = charge_c
+                rise_metrics = target_fit.get('rise_metrics', {})
+                analysis['rise_time'] = rise_metrics.get('rise')
+            else:
+                analysis['target_fit'] = None
 
             return analysis
 
@@ -1326,170 +1727,134 @@ class IDEXEvent:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             analyses = list(executor.map(_prepare_waveform, waveform_items))
 
-        for analysis in analyses:
-            (event_id, channel) = analysis['key']
-            data = analysis['data']
+        with h5py.File(output_path, 'w') as h:
+            for (evtnum, key), value in self.header.items():
+                if "IDX__" in key:
+                    print(f"Skipping header field {key}")
+                    continue
+                dataset_path = f"/{evtnum}/Metadata/{key}"
+                if isinstance(value, str):
+                    dtype = h5py.string_dtype(encoding='utf-8')
+                    create_dataset_if_not_exists(h, dataset_path, data=value, dtype=dtype)
+                else:
+                    create_dataset_if_not_exists(h, dataset_path, data=np.array(value))
+                print(f"Created dataset: {dataset_path} with value: {value}")
 
-            for log in analysis['logs']:
-                print(log)
+            for analysis in analyses:
+                event_key, channel = analysis['key']
+                data = analysis['data']
 
-            event_saturation_flags.setdefault(event_id, False)
-            event_flags = flags_by_event.setdefault(
-                event_id,
-                {
-                    'failed_fits': [],
-                    'saturated_channels': [],
-                    'notes': [],
-                },
-            )
+                for log in analysis['logs']:
+                    print(log)
 
-            ra_values = np.deg2rad(np.random.uniform(0, 15, size=1))
-            dec_values = np.deg2rad(np.random.uniform(-5, 5, size=1))
-            roll_values = np.deg2rad(np.random.uniform(-0.5, 0.5, size=1))
-            pitch_values = np.deg2rad(np.random.uniform(-0.5, 0.5, size=1))
-            yaw_values = np.deg2rad(np.random.uniform(-0.5, 0.5, size=1))
-            position_x = np.random.uniform(1.5e6, 1.52e6, size=1)
-            position_y = np.random.uniform(-2000, 2000, size=1)
-            position_z = np.random.uniform(-2000, 2000, size=1)
-            velocity_x = np.random.uniform(-1.0, 1.0, size=1)
-            velocity_y = np.random.uniform(-1.0, 1.0, size=1)
-            velocity_z = np.random.uniform(-0.5, 0.5, size=1)
-
-            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/RightAscension", ra_values)
-            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Declination", dec_values)
-            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Attitude/Roll", roll_values)
-            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Attitude/Pitch", pitch_values)
-            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Attitude/Yaw", yaw_values)
-            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Ephemeris/PositionX", position_x)
-            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Ephemeris/PositionY", position_y)
-            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Ephemeris/PositionZ", position_z)
-            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Ephemeris/VelocityX", velocity_x)
-            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Ephemeris/VelocityY", velocity_y)
-            create_dataset_if_not_exists(h, f"/{event_id}/SpiceData/Ephemeris/VelocityZ", velocity_z)
-
-            if(f"/{event_id}/Metadata/Epoch" not in h):
-                h.create_dataset(f"/{event_id}/Metadata/Epoch", data=self.header[(int(event_id), 'Timestamp')])
-
-            transformed = analysis['transformed']
-            if transformed is not None:
-                h.create_dataset(f"/{event_id}/{channel}", data=transformed)
-                channel_saturated = analysis['channel_saturated']
-                create_dataset_if_not_exists(
-                    h,
-                    f"/{event_id}/Metadata/{channel} Saturated",
-                    data=np.array([int(channel_saturated)], dtype=np.int8),
+                event_saturation_flags.setdefault(event_key, False)
+                event_flags = flags_by_event.setdefault(
+                    event_key,
+                    {
+                        'failed_fits': [],
+                        'saturated_channels': [],
+                        'notes': [],
+                    },
                 )
-                if channel_saturated:
-                    event_saturation_flags[event_id] = True
-                    event_flags['saturated_channels'].append(channel)
-                    event_flags['notes'].append(f"{channel} channel saturation detected")
 
-                if analysis['fit_failures']:
-                    event_flags['failed_fits'].extend(analysis['fit_failures'])
+                event_info = event_results.setdefault(event_key, {'channels': {}, 'spice_written': False})
+                event_info['channels'][channel] = analysis
 
-                if analysis['notes']:
-                    event_flags['notes'].extend(analysis['notes'])
+                ra_values = np.deg2rad(np.random.uniform(0, 15, size=1))
+                dec_values = np.deg2rad(np.random.uniform(-5, 5, size=1))
+                roll_values = np.deg2rad(np.random.uniform(-0.5, 0.5, size=1))
+                pitch_values = np.deg2rad(np.random.uniform(-0.5, 0.5, size=1))
+                yaw_values = np.deg2rad(np.random.uniform(-0.5, 0.5, size=1))
+                position_x = np.random.uniform(1.5e6, 1.52e6, size=1)
+                position_y = np.random.uniform(-2000, 2000, size=1)
+                position_z = np.random.uniform(-2000, 2000, size=1)
+                velocity_x = np.random.uniform(-1.0, 1.0, size=1)
+                velocity_y = np.random.uniform(-1.0, 1.0, size=1)
+                velocity_z = np.random.uniform(-0.5, 0.5, size=1)
 
-                if analysis['snr'] is not None:
+                if not event_info['spice_written']:
+                    create_dataset_if_not_exists(h, f"/{event_key}/SpiceData/RightAscension", ra_values)
+                    create_dataset_if_not_exists(h, f"/{event_key}/SpiceData/Declination", dec_values)
+                    create_dataset_if_not_exists(h, f"/{event_key}/SpiceData/Attitude/Roll", roll_values)
+                    create_dataset_if_not_exists(h, f"/{event_key}/SpiceData/Attitude/Pitch", pitch_values)
+                    create_dataset_if_not_exists(h, f"/{event_key}/SpiceData/Attitude/Yaw", yaw_values)
+                    create_dataset_if_not_exists(h, f"/{event_key}/SpiceData/Ephemeris/PositionX", position_x)
+                    create_dataset_if_not_exists(h, f"/{event_key}/SpiceData/Ephemeris/PositionY", position_y)
+                    create_dataset_if_not_exists(h, f"/{event_key}/SpiceData/Ephemeris/PositionZ", position_z)
+                    create_dataset_if_not_exists(h, f"/{event_key}/SpiceData/Ephemeris/VelocityX", velocity_x)
+                    create_dataset_if_not_exists(h, f"/{event_key}/SpiceData/Ephemeris/VelocityY", velocity_y)
+                    create_dataset_if_not_exists(h, f"/{event_key}/SpiceData/Ephemeris/VelocityZ", velocity_z)
+                    event_info['spice_written'] = True
+
+                metadata_path = f"/{event_key}/Metadata/Epoch"
+                if metadata_path not in h:
+                    timestamp = self.header.get((int(event_key), 'Timestamp'), 0)
+                    create_dataset_if_not_exists(h, metadata_path, data=np.array(timestamp))
+
+                transformed = analysis['transformed']
+                if transformed is not None:
+                    dataset_path = f"/{event_key}/{channel}"
+                    if dataset_path in h:
+                        del h[dataset_path]
+                    h.create_dataset(dataset_path, data=transformed)
+                    channel_saturated = analysis['channel_saturated']
                     create_dataset_if_not_exists(
                         h,
-                        f"/{event_id}/Analysis/{channel}SNR",
-                        data=np.array([analysis['snr']], dtype=float),
+                        f"/{event_key}/Metadata/{channel} Saturated",
+                        data=np.array([int(channel_saturated)], dtype=np.int8),
                     )
+                    if channel_saturated:
+                        event_saturation_flags[event_key] = True
+                        event_flags['saturated_channels'].append(channel)
+                        event_flags['notes'].append(f"{channel} channel saturation detected")
 
-                if analysis['mass'] is not None:
-                    mass_data = analysis['mass']
-                    create_dataset_if_not_exists(h, f"/{event_id}/Mass", data=mass_data['mass_scale'])
+                    if analysis['fit_failures']:
+                        event_flags['failed_fits'].extend(analysis['fit_failures'])
 
-                    peaks = mass_data['peaks']
-                    time_for_mass = analysis.get('time_array', np.array([], dtype=float))
-                    if time_for_mass.size != transformed.size:
-                        time_for_mass = self._build_time_array(len(transformed), high_rate=True)
-                    self.hstime = time_for_mass
+                    if analysis['notes']:
+                        event_flags['notes'].extend(analysis['notes'])
 
-                    plt.figure(figsize=(10, 6))
-                    plt.plot(time_for_mass, transformed, label="Transformed Data", color="blue")
-                    if peaks.size:
-                        valid_indices = peaks[peaks < len(time_for_mass)]
-                        plt.scatter(time_for_mass[valid_indices], transformed[valid_indices], color="red", label="Peaks", marker="x", s=100)
-                    plt.xlabel("Time (hstime)")
-                    plt.ylabel("Transformed Data")
-                    plt.title("Transformed Data with Detected Peaks")
-                    plt.legend()
-                    plt.grid(True)
+                    if analysis['snr'] is not None:
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{event_key}/Analysis/{channel} SNR",
+                            data=np.array([analysis['snr']], dtype=float),
+                        )
 
-                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/kappa", data=np.array([mass_data['kappa']]))
+                    if channel == 'TOF L':
+                        time_data = analysis.get('time_array', self._build_time_array(len(data), high_rate=True))
+                        h.create_dataset(f"/{event_key}/Time (high sampling)", data=time_data)
+                    if channel == 'Ion Grid':
+                        time_data = analysis.get('time_array', self._build_time_array(len(data), high_rate=False))
+                        h.create_dataset(f"/{event_key}/Time (low sampling)", data=time_data)
 
-                    analysis_group = h.require_group(f"/{event_id}/Analysis/{channel}")
-                    analysis_group.attrs['MassStretch'] = float(mass_data.get('stretch', np.nan))
-                    analysis_group.attrs['MassShift'] = float(mass_data.get('shift', np.nan))
-
-                    mass_lines = mass_data.get('mass_lines', [])
-                    if mass_lines:
-                        str_dtype = h5py.string_dtype(encoding='utf-8', length=120)
-                        extras_dtype = h5py.string_dtype(encoding='utf-8', length=2048)
-                        table = np.zeros(len(mass_lines), dtype=[
-                            ('id', 'i4'),
-                            ('label', str_dtype),
-                            ('assigned_species', str_dtype),
-                            ('mu', 'f8'),
-                            ('sigma', 'f8'),
-                            ('lam', 'f8'),
-                            ('amplitude', 'f8'),
-                            ('time_start', 'f8'),
-                            ('time_end', 'f8'),
-                            ('mass', 'f8'),
-                            ('assigned_mass', 'f8'),
-                            ('area', 'f8'),
-                            ('abundance', 'f8'),
-                            ('shape', str_dtype),
-                            ('extras', extras_dtype),
-                        ])
-                        for idx, record in enumerate(mass_lines):
-                            extras_serialized = "{}"
-                            try:
-                                extras_serialized = json.dumps(record.get('extras', {}))
-                            except Exception:
-                                extras_serialized = "{}"
-                            assigned_species = record.get('species', '') or ''
-                            assigned_mass = float(record.get('assigned_mass', np.nan))
-                            table[idx] = (
-                                int(record.get('line_id', idx + 1)),
-                                str(record.get('label', f"Line{idx + 1}")),
-                                str(assigned_species),
-                                float(record.get('mu', np.nan)),
-                                float(record.get('sigma', np.nan)),
-                                float(record.get('lam', np.nan)),
-                                float(record.get('amplitude', 0.0)),
-                                float(record.get('time_start', np.nan)),
-                                float(record.get('time_end', np.nan)),
-                                float(record.get('mass_guess', np.nan)),
-                                assigned_mass,
-                                float(record.get('area', 0.0)),
-                                float(record.get('abundance', 0.0)),
-                                str(record.get('shape', 'emg')),
-                                extras_serialized,
-                            )
-                        if 'MassLines' in analysis_group:
-                            del analysis_group['MassLines']
-                        analysis_group.create_dataset('MassLines', data=table)
-
-                        fits_group = analysis_group.require_group('Fits')
-                        for key in list(fits_group.keys()):
-                            del fits_group[key]
-                        for record in mass_lines:
-                            line_group = fits_group.require_group(f"line_{int(record.get('line_id', 0))}")
-                            for key in list(line_group.keys()):
-                                del line_group[key]
-                            line_group.create_dataset('time', data=np.asarray(record.get('fit_time', []), dtype=float))
-                            line_group.create_dataset('values', data=np.asarray(record.get('fit_curve', []), dtype=float))
-                    else:
-                        if 'MassLines' in analysis_group:
-                            del analysis_group['MassLines']
-                        if 'Fits' in analysis_group:
-                            del analysis_group['Fits']
-
-                    plt.close()
+                    if channel == 'TOF H' and analysis['mass'] is not None:
+                        mass_data = analysis['mass']
+                        event_group = h.require_group(event_key)
+                        if 'Mass' in event_group:
+                            del event_group['Mass']
+                        event_group.create_dataset('Mass', data=mass_data['mass_scale'])
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{event_key}/Analysis/TOF H Peak Kappa",
+                            data=np.array([mass_data.get('kappa', np.nan)], dtype=float),
+                        )
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{event_key}/Analysis/TOF H Peak Area",
+                            data=np.array([mass_data.get('total_area', np.nan)], dtype=float),
+                        )
+                        analysis_group = h.require_group(f"/{event_key}/Analysis/{channel}")
+                        analysis_group.attrs['MassStretch'] = float(mass_data.get('stretch', np.nan))
+                        analysis_group.attrs['MassShift'] = float(mass_data.get('shift', np.nan))
+                        mass_lines = mass_data.get('mass_lines', [])
+                        if mass_lines:
+                            _serialise_mass_lines(analysis_group, mass_lines)
+                        else:
+                            if 'MassLines' in analysis_group:
+                                del analysis_group['MassLines']
+                            if 'Fits' in analysis_group:
+                                del analysis_group['Fits']
 
                 target_fit = analysis['target_fit']
                 if target_fit is not None:
@@ -1501,67 +1866,190 @@ class IDEXEvent:
                     chi_sq = target_fit.get('chi_sq', np.nan)
                     red_chi = target_fit.get('red_chi', np.nan)
 
-                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}FitParams", data=np.array(param, dtype=float))
-                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel} Fit Time", data=np.asarray(fit_time, dtype=float))
-                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel} Fit Result", data=np.asarray(fit_curve, dtype=float))
-                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel} Filtered Signal", data=np.asarray(filtered_signal, dtype=float))
-                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}MassEstimate", data=np.array([sig_amp], dtype=float))
-                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}ImpactCharge", data=np.array([sig_amp], dtype=float))
-                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}ChiSquared", data=np.array([chi_sq], dtype=float))
-                    create_dataset_if_not_exists(h, f"/{event_id}/Analysis/{channel}ReducedChiSquared", data=np.array([red_chi], dtype=float))
+                    create_dataset_if_not_exists(h, f"/{event_key}/Analysis/{channel} Fit Parameters", data=np.asarray(param, dtype=float))
+                    create_dataset_if_not_exists(h, f"/{event_key}/Analysis/{channel} Fit Time", data=np.asarray(fit_time, dtype=float))
+                    create_dataset_if_not_exists(h, f"/{event_key}/Analysis/{channel} Fit Result", data=np.asarray(fit_curve, dtype=float))
+                    create_dataset_if_not_exists(h, f"/{event_key}/Analysis/{channel} Filtered Signal", data=np.asarray(filtered_signal, dtype=float))
+                    create_dataset_if_not_exists(h, f"/{event_key}/Analysis/{channel} Chi Squared", data=np.array([chi_sq], dtype=float))
+                    create_dataset_if_not_exists(h, f"/{event_key}/Analysis/{channel} Reduced Chi Squared", data=np.array([red_chi], dtype=float))
 
                     rise_metrics = target_fit.get('rise_metrics', {})
                     for key, suffix in RISE_METRIC_SUFFIXES.items():
                         value = rise_metrics.get(key)
                         if value is None or not np.isfinite(value):
                             continue
-                        dataset_path = f"/{event_id}/Analysis/{channel} {suffix}"
+                        dataset_path = f"/{event_key}/Analysis/{channel} {suffix}"
                         create_dataset_if_not_exists(h, dataset_path, data=np.array([value], dtype=float))
-            else:
-                h.create_dataset(f"/{event_id}/{channel}", data=data)
 
-            if channel == 'TOF L':
-                time_data = analysis.get('time_array', self._build_time_array(len(data), high_rate=True))
-                self.hstime = time_data
-                h.create_dataset(f"/{event_id}/Time (high sampling)", data=time_data)
-            if channel == 'Ion Grid':
-                time_data = analysis.get('time_array', self._build_time_array(len(data), high_rate=False))
-                self.lstime = time_data
-                h.create_dataset(f"/{event_id}/Time (low sampling)", data=time_data)
-        for evt, saturated in event_saturation_flags.items():
-            create_dataset_if_not_exists(
-                h,
-                f"/{evt}/Metadata/AnyChannelSaturated",
-                data=np.array([int(saturated)], dtype=np.int8),
-            )
+            for event_key, saturated in event_saturation_flags.items():
+                create_dataset_if_not_exists(
+                    h,
+                    f"/{event_key}/Metadata/AnyChannelSaturated",
+                    data=np.array([int(saturated)], dtype=np.int8),
+                )
 
-        string_dtype = h5py.string_dtype(encoding='utf-8')
-        for evt, flag_values in flags_by_event.items():
-            flag_base = f"/{evt}/Analysis/Flags"
-            flag_group = h.require_group(flag_base)
+            string_dtype = h5py.string_dtype(encoding='utf-8')
+            for event_key, flag_values in flags_by_event.items():
+                flag_base = f"/{event_key}/Analysis/Flags"
+                flag_group = h.require_group(flag_base)
 
-            failed = sorted(set(flag_values['failed_fits']))
-            saturated = sorted(set(flag_values['saturated_channels']))
-            notes = sorted(set(flag_values['notes']))
+                failed = sorted(set(flag_values['failed_fits']))
+                saturated = sorted(set(flag_values['saturated_channels']))
+                notes = sorted(set(flag_values['notes']))
 
-            datasets = {
-                'FailedFits': failed,
-                'SaturatedChannels': saturated,
-                'Notes': notes,
-            }
+                datasets = {
+                    'FailedFits': failed,
+                    'SaturatedChannels': saturated,
+                    'Notes': notes,
+                }
 
-            for name, entries in datasets.items():
-                dataset_path = f"{flag_base}/{name}"
-                if dataset_path in h:
-                    continue
-                if entries:
-                    data = np.array(entries, dtype=object)
-                    flag_group.create_dataset(name, data=data, dtype=string_dtype)
-                else:
-                    flag_group.create_dataset(name, shape=(0,), dtype=string_dtype)
+                for name, entries in datasets.items():
+                    dataset_path = f"{flag_base}/{name}"
+                    if dataset_path in h:
+                        del h[dataset_path]
+                    if entries:
+                        data = np.array(entries, dtype=object)
+                        flag_group.create_dataset(name, data=data, dtype=string_dtype)
+                    else:
+                        flag_group.create_dataset(name, shape=(0,), dtype=string_dtype)
 
-        h.close()
-        # h.create_dataset("Time since ")
+            for event_key, info in event_results.items():
+                channels = info.get('channels', {})
+                high_analysis = channels.get('TOF H')
+                medium_analysis = channels.get('TOF M')
+                low_analysis = channels.get('TOF L')
+
+                time_axis = None
+                if high_analysis and high_analysis['time_array'].size:
+                    time_axis = np.asarray(high_analysis['time_array'], dtype=float)
+                elif medium_analysis and medium_analysis['time_array'].size:
+                    time_axis = np.asarray(medium_analysis['time_array'], dtype=float)
+                elif low_analysis and low_analysis['time_array'].size:
+                    time_axis = np.asarray(low_analysis['time_array'], dtype=float)
+
+                combined = _combine_waveform_channels(
+                    time_axis,
+                    high_analysis['transformed'] if high_analysis else None,
+                    medium_analysis['transformed'] if medium_analysis else None,
+                    low_analysis['transformed'] if low_analysis else None,
+                )
+
+                if combined is not None and time_axis is not None and time_axis.size:
+                    combined = np.asarray(combined, dtype=float)
+                    length = min(combined.size, time_axis.size)
+                    if length == 0:
+                        continue
+                    combined = combined[:length]
+                    combined_time = np.asarray(time_axis[:length], dtype=float)
+
+                    dust_group = h.require_group(f"/{event_key}/{DUST_ANALYSIS_GROUP}")
+                    if COMBINED_SIGNAL_DATASET in dust_group:
+                        del dust_group[COMBINED_SIGNAL_DATASET]
+                    dust_group.create_dataset(COMBINED_SIGNAL_DATASET, data=combined)
+                    if COMBINED_TIME_DATASET in dust_group:
+                        del dust_group[COMBINED_TIME_DATASET]
+                    dust_group.create_dataset(COMBINED_TIME_DATASET, data=combined_time)
+
+                    baseline_candidate = None
+                    for candidate_channel in ('TOF H', 'TOF M', 'TOF L'):
+                        candidate = channels.get(candidate_channel)
+                        if candidate is None:
+                            continue
+                        baseline_value = candidate.get('baseline')
+                        if baseline_value is not None and np.isfinite(baseline_value):
+                            baseline_candidate = float(baseline_value)
+                            break
+                    if baseline_candidate is None or not np.isfinite(baseline_candidate):
+                        baseline_candidate = 0.0
+                    dust_group.attrs['Baseline'] = baseline_candidate
+
+                    mass_data = _analyse_mass_lines(combined, combined_time)
+                    if mass_data is not None:
+                        dust_group.attrs['MassStretch'] = float(mass_data.get('stretch', np.nan))
+                        dust_group.attrs['MassShift'] = float(mass_data.get('shift', np.nan))
+                        mass_lines = mass_data.get('mass_lines', [])
+                        if mass_lines:
+                            _serialise_mass_lines(dust_group, mass_lines)
+                        else:
+                            if 'MassLines' in dust_group:
+                                del dust_group['MassLines']
+                            if 'Fits' in dust_group:
+                                del dust_group['Fits']
+                        event_group = h.require_group(event_key)
+                        if 'Mass' in event_group:
+                            del event_group['Mass']
+                        event_group.create_dataset('Mass', data=mass_data['mass_scale'])
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{event_key}/Analysis/TOF H Peak Kappa",
+                            data=np.array([mass_data.get('kappa', np.nan)], dtype=float),
+                        )
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{event_key}/Analysis/TOF H Peak Area",
+                            data=np.array([mass_data.get('total_area', np.nan)], dtype=float),
+                        )
+                    else:
+                        dust_group.attrs['MassStretch'] = float('nan')
+                        dust_group.attrs['MassShift'] = float('nan')
+
+                ion_charge = None
+                ion_analysis = channels.get('Ion Grid')
+                if ion_analysis is not None:
+                    ion_charge = ion_analysis.get('charge_c')
+
+                for channel_name in ('Ion Grid', 'Target L', 'Target H'):
+                    channel_analysis = channels.get(channel_name)
+                    if channel_analysis is None:
+                        continue
+                    charge_c = channel_analysis.get('charge_c')
+                    impact_value = float(charge_c) if charge_c is not None and np.isfinite(charge_c) else np.nan
+                    create_dataset_if_not_exists(
+                        h,
+                        f"/{event_key}/Analysis/{channel_name} Impact Charge",
+                        data=np.array([impact_value], dtype=float),
+                    )
+
+                    if channel_name in {'Target L', 'Target H'}:
+                        rise_time = channel_analysis.get('rise_time')
+                        ratio = None
+                        if ion_charge is not None and charge_c is not None and charge_c > 0.0:
+                            ratio = ion_charge / charge_c if charge_c else None
+                        estimate = _compute_particle_estimate(
+                            impact_value if np.isfinite(impact_value) and impact_value > 0.0 else None,
+                            rise_time,
+                            ratio,
+                            rise_params=rise_params,
+                            ratio_params=ratio_params,
+                            yield_params=yield_params,
+                        )
+                        if estimate is not None:
+                            mass_value = float(getattr(estimate, 'mass_kg', np.nan))
+                            velocity_value = float(getattr(estimate, 'velocity_kms', np.nan))
+                        else:
+                            mass_value = np.nan
+                            velocity_value = np.nan
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{event_key}/Analysis/{channel_name} Dust Mass Estimate",
+                            data=np.array([mass_value], dtype=float),
+                        )
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{event_key}/Analysis/{channel_name} Velocity Estimate",
+                            data=np.array([velocity_value], dtype=float),
+                        )
+                    else:
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{event_key}/Analysis/{channel_name} Dust Mass Estimate",
+                            data=np.array([np.nan], dtype=float),
+                        )
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{event_key}/Analysis/{channel_name} Velocity Estimate",
+                            data=np.array([np.nan], dtype=float),
+                        )
 
 # ||
 # ||
@@ -1707,5 +2195,5 @@ if __name__ == "__main__":
         packets.plot_all_data(packets.data, args.file)
     except Exception as e:
         print(e)
-    packets.write_to_hdf5(packets.data, args.file+'.h5')
+    packets.write_to_hdf5(packets.data, args.file)
     # write_to_cdf(packets)
