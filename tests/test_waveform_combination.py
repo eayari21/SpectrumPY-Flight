@@ -187,3 +187,45 @@ def test_combine_waveform_channels_uses_low_when_high_and_medium_saturate():
     assert np.allclose(np.mean(combined[baseline_mask]), 0.0, atol=1e-6)
 
     assert np.allclose(combined, expected, rtol=1e-6, atol=1e-6)
+
+
+def test_combine_waveform_channels_prefers_high_when_unsaturated():
+    times = np.linspace(0.0, 31.5, 4096)
+    physical_signal = 0.42 * np.exp(-0.5 * ((times - 6.0) / 0.55) ** 2)
+
+    high_baseline = 1120.0
+    medium_baseline = 74.0
+
+    high = high_baseline + physical_signal * GAIN_HIGH
+    medium = medium_baseline + 1.12 * physical_signal * GAIN_MEDIUM
+
+    combined = combine_waveform_channels(times, high, medium, None)
+    assert combined is not None
+
+    baseline_mask = times <= (times[0] + 1.0)
+    expected = high - np.mean(high[baseline_mask])
+
+    assert np.allclose(combined, expected, rtol=1e-6, atol=1e-6)
+
+
+def test_combine_waveform_channels_respects_manual_selection():
+    times = np.linspace(0.0, 31.5, 1024)
+    physical_signal = 0.38 * np.exp(-0.5 * ((times - 5.2) / 0.6) ** 2)
+
+    medium_baseline = 66.0
+    medium = medium_baseline + physical_signal * GAIN_MEDIUM
+
+    combined = combine_waveform_channels(
+        times,
+        None,
+        medium,
+        None,
+        enabled_channels=("TOF M",),
+    )
+
+    assert combined is not None
+
+    baseline_mask = times <= (times[0] + 1.0)
+    expected = medium - np.mean(medium[baseline_mask])
+
+    assert np.allclose(combined, expected, rtol=1e-6, atol=1e-6)

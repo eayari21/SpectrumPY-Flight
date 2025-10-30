@@ -32,7 +32,7 @@ import unicodedata
 from collections import defaultdict, OrderedDict
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import h5py
 import numpy as np
@@ -744,6 +744,7 @@ def combine_waveform_channels(
     medium: Optional[np.ndarray],
     low: Optional[np.ndarray],
     gain_map: Optional[Dict[str, float]] = None,
+    enabled_channels: Optional[Iterable[str]] = None,
 ) -> Optional[np.ndarray]:
     """Combine TOF waveforms from multiple gain channels."""
 
@@ -754,14 +755,27 @@ def combine_waveform_channels(
         return None
 
     gain_map = gain_map or GAIN_MAP
-    high_gain = float(gain_map.get("TOF H", 1.0))
-    medium_gain = float(gain_map.get("TOF M", 1.0))
-    low_gain = float(gain_map.get("TOF L", 1.0))
+
+    valid_order = ("TOF H", "TOF M", "TOF L")
+    selected: Optional[List[str]] = None
+    if enabled_channels is not None:
+        selected_set = {str(name) for name in enabled_channels}
+        selected_list = [name for name in valid_order if name in selected_set]
+        if selected_list:
+            selected = selected_list
+
+    channel_map: Dict[str, Optional[np.ndarray]] = {
+        "TOF H": high,
+        "TOF M": medium,
+        "TOF L": low,
+    }
 
     arrays = [
-        arr
-        for arr in (high, medium, low)
-        if arr is not None and getattr(arr, "size", 0)
+        channel_map[name]
+        for name in valid_order
+        if (selected is None or name in selected)
+        and channel_map[name] is not None
+        and getattr(channel_map[name], "size", 0)
     ]
     if not arrays:
         return None
@@ -773,89 +787,82 @@ def combine_waveform_channels(
         return None
 
     times = times[:length]
+    channel_entries: List[Tuple[str, np.ndarray]] = []
+    for name in valid_order:
+        if selected is not None and name not in selected:
+            continue
+        arr = channel_map[name]
+        if arr is None or not getattr(arr, "size", 0):
+            continue
+        channel_entries.append((name, np.asarray(arr[:length], dtype=float)))
 
-    high_slice = np.asarray(high[:length], dtype=float) if high is not None and getattr(high, "size", 0) else None
-    medium_slice = np.asarray(medium[:length], dtype=float) if medium is not None and getattr(medium, "size", 0) else None
-    low_slice = np.asarray(low[:length], dtype=float) if low is not None and getattr(low, "size", 0) else None
+    if not channel_entries:
+        return None
 
-    high_baseline = _first_microsecond_mean(high_slice, times)
-    medium_baseline = _first_microsecond_mean(medium_slice, times)
-    low_baseline = _first_microsecond_mean(low_slice, times)
+    target_name = channel_entries[0][0]
+    target_gain = float(gain_map.get(target_name, 1.0))
 
-    combined_corrected = np.zeros(length, dtype=float)
+    corrected_channels: List[Dict[str, Any]] = []
+    for name, arr in channel_entries:
+        baseline = _first_microsecond_mean(arr, times)
+        corrected = arr - baseline
+        gain = float(gain_map.get(name, 1.0))
+        scale = target_gain / gain if gain else 1.0
+        scaled = corrected * scale
+        saturation = detect_saturation(arr, times)
+        corrected_channels.append(
+            {
+                "name": name,
+                "scaled": scaled,
+                "saturation": saturation,
+            }
+        )
 
-    saturated_high = np.ones(length, dtype=bool)
-    high_corrected: Optional[np.ndarray] = None
-    if high_slice is not None and high_slice.size:
-        high_corrected = high_slice - high_baseline
-        combined_corrected[:] = high_corrected
-        saturated_high = detect_saturation(high_slice, times)
+    primary = corrected_channels[0]
+    primary_scaled = np.asarray(primary["scaled"], dtype=float)
+    combined_corrected = primary_scaled.copy()
+    primary_saturation = np.asarray(primary["saturation"], dtype=bool)
+    remaining_mask = primary_saturation.copy()
+    if combined_corrected.size:
+        with np.errstate(invalid="ignore"):
+            remaining_mask |= ~np.isfinite(combined_corrected)
 
-    medium_scaled: Optional[np.ndarray] = None
-    medium_saturated = np.ones(length, dtype=bool)
-    medium_outperform_mask: Optional[np.ndarray] = None
-    if medium_slice is not None and medium_slice.size:
-        medium_corrected = medium_slice - medium_baseline
-        scale = high_gain / medium_gain if medium_gain else 1.0
-        medium_scaled = medium_corrected * scale
-        medium_saturated = detect_saturation(medium_slice, times)
-        if high_corrected is not None:
-            high_scale = float(np.nanmax(np.abs(high_corrected))) if high_corrected.size else 0.0
-            medium_scale = float(np.nanmax(np.abs(medium_scaled))) if medium_scaled.size else 0.0
-            scale_reference = max(high_scale, medium_scale)
+    primary_reference = primary_scaled.copy()
+    primary_saturated_any = bool(np.any(primary_saturation))
+    manual_override = enabled_channels is not None
+
+    tolerance_lookup = {
+        "TOF M": 0.015,
+        "TOF L": 0.02,
+    }
+
+    for entry in corrected_channels[1:]:
+        candidate = np.asarray(entry["scaled"], dtype=float)
+        candidate_saturation = np.asarray(entry["saturation"], dtype=bool)
+        finite_candidate = np.isfinite(candidate)
+
+        replace_mask = remaining_mask & ~candidate_saturation & finite_candidate
+
+        if combined_corrected.size:
+            with np.errstate(invalid="ignore"):
+                replace_mask |= (~np.isfinite(combined_corrected)) & ~candidate_saturation & finite_candidate
+
+        allow_outperform = manual_override or primary_saturated_any or target_name != "TOF H"
+        if allow_outperform:
+            reference_scale = float(np.nanmax(np.abs(primary_reference))) if primary_reference.size else 0.0
+            candidate_scale = float(np.nanmax(np.abs(candidate))) if candidate.size else 0.0
+            scale_reference = max(reference_scale, candidate_scale)
             if not np.isfinite(scale_reference) or scale_reference <= 0.0:
                 tolerance = 0.0
             else:
-                tolerance = 0.015 * scale_reference + 1.0e-9
+                tolerance_ratio = tolerance_lookup.get(entry["name"], 0.015)
+                tolerance = tolerance_ratio * scale_reference + 1.0e-9
             with np.errstate(invalid="ignore"):
-                medium_outperform_mask = np.abs(medium_scaled) > np.abs(high_corrected) + tolerance
-        if high_slice is None:
-            combined_corrected[:] = medium_scaled
-            saturated_high = np.ones(length, dtype=bool)
+                outperform_mask = np.abs(candidate) > np.abs(primary_reference) + tolerance
+            replace_mask |= outperform_mask & ~candidate_saturation & finite_candidate
 
-    low_scaled: Optional[np.ndarray] = None
-    low_saturated = np.ones(length, dtype=bool)
-    low_outperform_mask: Optional[np.ndarray] = None
-    if low_slice is not None and low_slice.size:
-        low_corrected = low_slice - low_baseline
-        scale = high_gain / low_gain if low_gain else 1.0
-        low_scaled = low_corrected * scale
-        low_saturated = detect_saturation(low_slice, times)
-        if high_corrected is not None:
-            high_scale = float(np.nanmax(np.abs(high_corrected))) if high_corrected.size else 0.0
-            low_scale = float(np.nanmax(np.abs(low_scaled))) if low_scaled.size else 0.0
-            scale_reference = max(high_scale, low_scale)
-            if not np.isfinite(scale_reference) or scale_reference <= 0.0:
-                tolerance = 0.0
-            else:
-                tolerance = 0.02 * scale_reference + 1.0e-9
-            with np.errstate(invalid="ignore"):
-                low_outperform_mask = np.abs(low_scaled) > np.abs(high_corrected) + tolerance
-        if high_slice is None and medium_slice is None:
-            combined_corrected[:] = low_scaled
-            saturated_high = np.ones(length, dtype=bool)
-
-    remaining_mask = saturated_high.copy()
-
-    if medium_scaled is not None:
-        finite_medium = np.isfinite(medium_scaled)
-        replace_mask = remaining_mask & ~medium_saturated & finite_medium
-        if medium_outperform_mask is not None:
-            replace_mask |= medium_outperform_mask & ~medium_saturated & finite_medium
-        combined_corrected[replace_mask] = medium_scaled[replace_mask]
-        if high_slice is None:
-            remaining_mask = medium_saturated.copy()
-        else:
-            remaining_mask &= medium_saturated
-        remaining_mask &= ~replace_mask
-
-    if low_scaled is not None:
-        finite_low = np.isfinite(low_scaled)
-        replace_mask = remaining_mask & ~low_saturated & finite_low
-        if low_outperform_mask is not None:
-            replace_mask |= low_outperform_mask & ~low_saturated & finite_low
-        combined_corrected[replace_mask] = low_scaled[replace_mask]
-        remaining_mask &= low_saturated
+        combined_corrected[replace_mask] = candidate[replace_mask]
+        remaining_mask &= candidate_saturation
         remaining_mask &= ~replace_mask
 
     return combined_corrected
@@ -3495,6 +3502,7 @@ class DustCompositionWindow(QMainWindow):
         self._waveforms: Dict[str, np.ndarray] = {}
         self._combined: Optional[np.ndarray] = None
         self._combined_cached_mass: Optional[np.ndarray] = None
+        self._combination_channels: Optional[Tuple[str, ...]] = None
         self._baseline = 0.0
         self._mass_params = {"stretch": DEFAULT_MASS_STRETCH, "shift": DEFAULT_MASS_SHIFT}
         self._mass_params_loaded = False
@@ -4232,6 +4240,24 @@ class DustCompositionWindow(QMainWindow):
         box = QGroupBox("Waveform Modes", self.control_panel)
         layout = QVBoxLayout(box)
         layout.setSpacing(8)
+        self.combination_mode_combo = QComboBox(box)
+        self.combination_mode_combo.setToolTip(
+            "Select which gain channels contribute to the combined waveform."
+        )
+        self.combination_mode_combo.addItem("Automatic (TOF H/M/L)", None)
+        self.combination_mode_combo.addItem("TOF H only", ("TOF H",))
+        self.combination_mode_combo.addItem("TOF M only", ("TOF M",))
+        self.combination_mode_combo.addItem("TOF L only", ("TOF L",))
+        self.combination_mode_combo.addItem("TOF H + TOF M", ("TOF H", "TOF M"))
+        self.combination_mode_combo.addItem("TOF H + TOF L", ("TOF H", "TOF L"))
+        self.combination_mode_combo.addItem("TOF M + TOF L", ("TOF M", "TOF L"))
+        self.combination_mode_combo.addItem(
+            "TOF H + TOF M + TOF L", ("TOF H", "TOF M", "TOF L")
+        )
+        self.combination_mode_combo.currentIndexChanged.connect(
+            self._on_combination_mode_changed
+        )
+        layout.addWidget(self.combination_mode_combo)
         self.combine_button = QPushButton("Combine TOF", box)
         self.combine_button.setCheckable(True)
         self.combine_button.setToolTip(
@@ -4443,6 +4469,34 @@ class DustCompositionWindow(QMainWindow):
             self._refresh_plot()
         else:
             self._refresh_plot(show_combined=False)
+
+    def _on_combination_mode_changed(self, index: int) -> None:
+        if not hasattr(self, "combination_mode_combo"):
+            return
+        combo = self.combination_mode_combo
+        try:
+            data = combo.itemData(index)
+        except Exception:
+            data = None
+
+        channels: Optional[Tuple[str, ...]] = None
+        if data:
+            try:
+                channels = tuple(str(name) for name in data)
+            except Exception:
+                channels = None
+        if channels is not None and len(channels) == 0:
+            channels = None
+
+        if channels == self._combination_channels:
+            return
+
+        self._combination_channels = channels
+        self._combined = None
+        self._combined_cached_mass = None
+        if self.combine_button.isChecked():
+            self._combined = self._combine_waveforms()
+            self._refresh_plot()
 
     def _reset_view(self) -> None:
         self.combine_button.setChecked(False)
@@ -5100,6 +5154,7 @@ class DustCompositionWindow(QMainWindow):
             self._waveforms.get("TOF M"),
             self._waveforms.get("TOF L"),
             gain_map=GAIN_MAP,
+            enabled_channels=self._combination_channels,
         )
 
     # ---- Baseline + mass conversions -----------------------------------
