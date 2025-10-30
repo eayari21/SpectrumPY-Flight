@@ -3724,50 +3724,66 @@ class DustCompositionWindow(QMainWindow):
     def _load_saved_state(self) -> None:
         if not self._group:
             return
+
+        self._load_mass_axis_dataset()
+
         try:
             analysis = self._group.require_group(ANALYSIS_GROUP)
         except Exception:
             return
+
         dust_group = analysis.get(DUST_GROUP)
-        if not isinstance(dust_group, h5py.Group):
+        if isinstance(dust_group, h5py.Group):
+            self._load_state_from_mass_group(dust_group, analysis=analysis)
             return
+
+        self._load_idex_packet_state(analysis)
+
+    def _load_state_from_mass_group(
+        self, group: h5py.Group, *, analysis: Optional[h5py.Group] = None
+    ) -> None:
         try:
-            if COMBINED_TIME_DATASET in dust_group:
-                stored_time = np.asarray(dust_group[COMBINED_TIME_DATASET][()], dtype=float)
+            if COMBINED_TIME_DATASET in group:
+                stored_time = np.asarray(group[COMBINED_TIME_DATASET][()], dtype=float)
                 if stored_time.size:
                     self._time_axis = stored_time.ravel()
-            if COMBINED_DATASET in dust_group:
-                combined = np.asarray(dust_group[COMBINED_DATASET][()], dtype=float)
+            if COMBINED_DATASET in group:
+                combined = np.asarray(group[COMBINED_DATASET][()], dtype=float)
                 if combined.size:
                     self._combined = combined.ravel()
         except Exception:
             pass
+
         try:
-            self._baseline = float(dust_group.attrs.get("Baseline", self._baseline))
+            self._baseline = float(group.attrs.get("Baseline", self._baseline))
         except Exception:
             self._baseline = 0.0
+
         try:
-            stored_stretch = float(dust_group.attrs.get("MassStretch", DEFAULT_MASS_STRETCH))
+            stored_stretch = float(group.attrs.get("MassStretch", DEFAULT_MASS_STRETCH))
             if math.isfinite(stored_stretch) and stored_stretch > MAX_MASS_STRETCH * 10:
                 stored_stretch /= 1000.0
             self._mass_params["stretch"] = stored_stretch
-            self._mass_params["shift"] = float(dust_group.attrs.get("MassShift", DEFAULT_MASS_SHIFT))
+            self._mass_params["shift"] = float(group.attrs.get("MassShift", DEFAULT_MASS_SHIFT))
             self._mass_params_loaded = True
+            self._combined_cached_mass = None
         except Exception:
-            self._mass_params = {"stretch": DEFAULT_MASS_STRETCH, "shift": DEFAULT_MASS_SHIFT}
-            self._mass_params_loaded = False
+            pass
+
         table = None
-        if MASS_LINES_DATASET in dust_group:
+        if MASS_LINES_DATASET in group:
             try:
-                table = dust_group[MASS_LINES_DATASET][()]
+                table = group[MASS_LINES_DATASET][()]
             except Exception:
                 table = None
         if table is not None:
             self._load_mass_line_table(table)
-        if not self._mass_lines:
+
+        if not self._mass_lines and analysis is not None:
             self._load_mass_lines_from_channels(analysis)
+
         try:
-            fits_group = dust_group.get("Fits")
+            fits_group = group.get("Fits")
         except Exception:
             fits_group = None
         if isinstance(fits_group, h5py.Group):
@@ -3795,8 +3811,71 @@ class DustCompositionWindow(QMainWindow):
                     except Exception:
                         line.time_axis = np.zeros(0)
                         line.fit_values = np.zeros(0)
+
         if self._mass_lines and self._selected_line_id is None:
             self._selected_line_id = self._mass_lines[0].line_id
+
+    def _load_idex_packet_state(self, analysis: h5py.Group) -> None:
+        if not isinstance(analysis, h5py.Group):
+            return
+
+        mass_group = None
+        for channel in ("TOF H", "TOF M", "TOF L"):
+            try:
+                candidate = analysis.get(channel)
+            except Exception:
+                candidate = None
+            if isinstance(candidate, h5py.Group) and (
+                MASS_LINES_DATASET in candidate
+                or "MassStretch" in candidate.attrs
+                or "MassShift" in candidate.attrs
+            ):
+                mass_group = candidate
+                break
+
+        if mass_group is None:
+            return
+
+        self._load_state_from_mass_group(mass_group, analysis=analysis)
+
+    def _load_mass_axis_dataset(self) -> None:
+        if not self._group:
+            return
+        try:
+            dataset = self._group.get("Mass")
+        except Exception:
+            dataset = None
+        if dataset is None:
+            return
+        try:
+            values = np.asarray(dataset[()], dtype=float).ravel()
+        except Exception:
+            return
+        if not values.size:
+            return
+        self._combined_cached_mass = values
+        if self._time_axis.size != values.size:
+            return
+        try:
+            time_axis = np.asarray(self._time_axis, dtype=float).ravel()
+            mask = np.isfinite(time_axis) & np.isfinite(values)
+            if np.count_nonzero(mask) < 2:
+                return
+            time_axis = time_axis[mask]
+            mass_axis = values[mask]
+            A = np.vstack([time_axis, np.ones_like(time_axis)]).T
+            result, *_ = np.linalg.lstsq(A, mass_axis, rcond=None)
+            stretch = float(result[0])
+            intercept = float(result[1])
+            if not math.isfinite(stretch) or abs(stretch) < 1.0e-12:
+                return
+            stretch = _clamp_mass_stretch(stretch)
+            shift = -intercept / stretch
+            self._mass_params["stretch"] = stretch
+            self._mass_params["shift"] = shift
+            self._mass_params_loaded = True
+        except Exception:
+            return
 
     def _load_mass_line_table(self, table: np.ndarray) -> bool:
         dtype = getattr(table, "dtype", None)
