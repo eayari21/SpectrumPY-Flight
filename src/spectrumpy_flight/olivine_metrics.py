@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import os
+import shutil
+import subprocess
 import textwrap
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Iterator, Mapping, MutableMapping, Sequence
+from typing import Callable, Iterable, Iterator, Mapping, MutableMapping, Sequence
 
 import h5py
 import numpy as np
@@ -16,6 +20,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from .line_shapes import emg as _emg_profile
 from .time2mass import time2mass as optimise_time2mass
+from .lookup import dust_estimator as _dust_estimator
 
 try:  # pragma: no cover - SciPy is optional in some environments
     from scipy.optimize import curve_fit as _curve_fit  # type: ignore
@@ -68,12 +73,518 @@ FE_ISOTOPES = {"54Fe", "56Fe", "57Fe", "58Fe"}
 MASS_FIT_WINDOW = 0.6
 
 
+@dataclass
+class ParticleEstimateRecord:
+    event_id: str
+    channel: str
+    charge_c: float
+    velocity_kms: float
+    mass_kg: float
+    yield_c_per_kg: float
+    rise_time_us: float | None
+    ion_to_target_ratio: float | None
+    velocity_source: str
+
+
+@dataclass
+class FigureSpec:
+    stem: str
+    caption: str
+    label: str
+    builder: Callable[[], plt.Figure]
+
+
+@dataclass
+class FigureAsset:
+    path: Path
+    caption: str
+    label: str
+
+
+def _resolve_default_coefficients():
+    try:
+        rise_table, ratio_table, yield_table = _dust_estimator.load_default_tables()
+    except Exception:
+        return None, None, None
+
+    def _choose(table, preferred="combined"):
+        if table is None:
+            return None
+        try:
+            return table.get(preferred)
+        except KeyError:
+            labels = list(table.labels())
+            if not labels:
+                raise
+            return table.get(labels[0])
+
+    try:
+        rise_params = _choose(rise_table)
+        ratio_params = _choose(ratio_table)
+        yield_params = _choose(yield_table)
+    except Exception:
+        return None, None, None
+    return rise_params, ratio_params, yield_params
+
+
+_RISE_PARAMS, _RATIO_PARAMS, _YIELD_PARAMS = _resolve_default_coefficients()
+
+
 def _finite_values(values: Iterable[float] | np.ndarray | float) -> np.ndarray:
     arr = np.asarray(values, dtype=float).ravel()
     if arr.size == 0:
         return arr
     mask = np.isfinite(arr)
     return arr[mask]
+
+
+def _approximate_mode(values: np.ndarray) -> float | None:
+    if values.size == 0:
+        return None
+    unique = np.unique(values)
+    if unique.size == 1:
+        return float(unique[0])
+    bins = int(max(10, min(50, math.sqrt(values.size))))
+    counts, edges = np.histogram(values, bins=bins)
+    if not np.any(counts):
+        return float(values[0])
+    idx = int(np.argmax(counts))
+    upper_index = min(idx + 1, edges.size - 1)
+    return float((edges[idx] + edges[upper_index]) / 2.0)
+
+
+def _descriptive_stats(values: Iterable[float]) -> dict[str, float | int | None]:
+    arr = _finite_values(values)
+    if arr.size == 0:
+        return {
+            "count": 0,
+            "min": None,
+            "max": None,
+            "mean": None,
+            "median": None,
+            "mode": None,
+            "std": None,
+        }
+
+    stats = {
+        "count": int(arr.size),
+        "min": float(np.min(arr)),
+        "max": float(np.max(arr)),
+        "mean": float(np.mean(arr)),
+        "median": float(np.median(arr)),
+        "std": float(np.std(arr, ddof=0)),
+    }
+    mode = _approximate_mode(arr)
+    stats["mode"] = None if mode is None else float(mode)
+    return stats
+
+
+def _format_value(value: float | int | None) -> str:
+    if value is None:
+        return "--"
+    try:
+        numeric = float(value)
+    except Exception:
+        return "--"
+    if not math.isfinite(numeric):
+        return "--"
+    abs_value = abs(numeric)
+    if abs_value and (abs_value >= 1_000 or abs_value < 1e-2):
+        return f"{numeric:.3e}"
+    return f"{numeric:.3f}"
+
+
+def _maybe_log_axis(ax: plt.Axes, axis: str, values: Iterable[float]) -> None:
+    arr = _finite_values(values)
+    if arr.size == 0:
+        return
+    positive = arr[arr > 0]
+    if positive.size == 0:
+        return
+    span = float(np.max(positive) / np.min(positive))
+    if span >= 100.0:
+        if axis == "x":
+            ax.set_xscale("log")
+        else:
+            ax.set_yscale("log")
+
+
+def _latex_escape(text: str) -> str:
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\textasciitilde{}",
+        "^": r"\textasciicircum{}",
+    }
+    escaped = str(text)
+    for original, replacement in replacements.items():
+        escaped = escaped.replace(original, replacement)
+    return escaped
+
+
+def _render_stats_table(
+    title: str,
+    label: str,
+    stats_map: Mapping[str, Mapping[str, float | int | None]],
+) -> str:
+    lines = [
+        r"\begin{table}[htbp]",
+        r"\centering",
+        rf"\caption{{{_latex_escape(title)}}}",
+        rf"\label{{{label}}}",
+        r"\begin{tabular}{lrrrrrrr}",
+        r"\toprule",
+        "Metric & Count & Min & Max & Mean & Median & Mode & Std. Dev. \\\\",
+        r"\midrule",
+    ]
+    if not stats_map:
+        lines.append(r"\multicolumn{8}{c}{No data available.} \\")
+    else:
+        for name in sorted(stats_map):
+            stats = stats_map[name]
+            row = " & ".join(
+                [
+                    _latex_escape(name),
+                    str(stats.get("count", 0)),
+                    _format_value(stats.get("min")),
+                    _format_value(stats.get("max")),
+                    _format_value(stats.get("mean")),
+                    _format_value(stats.get("median")),
+                    _format_value(stats.get("mode")),
+                    _format_value(stats.get("std")),
+                ]
+            )
+            lines.append(f"{row} \\")
+    lines.extend([r"\bottomrule", r"\end{tabular}", r"\end{table}"])
+    return "\n".join(lines)
+
+
+def _render_count_table(title: str, label: str, counts: Mapping[str, int]) -> str:
+    lines = [
+        r"\begin{table}[htbp]",
+        r"\centering",
+        rf"\caption{{{_latex_escape(title)}}}",
+        rf"\label{{{label}}}",
+        r"\begin{tabular}{lr}",
+        r"\toprule",
+        "Channel & Occurrences \\\\",
+        r"\midrule",
+    ]
+    if counts:
+        for name, count in sorted(counts.items()):
+            lines.append(f"{_latex_escape(name)} & {count} \\")
+    else:
+        lines.append(r"\multicolumn{2}{c}{No data available.} \\")
+    lines.extend([r"\bottomrule", r"\end{tabular}", r"\end{table}"])
+    return "\n".join(lines)
+
+
+def _render_longtable(
+    caption: str,
+    label: str,
+    column_spec: str,
+    headers: Sequence[str],
+    rows: Sequence[Sequence[str]],
+) -> str:
+    header_line = " & ".join(headers) + " \\\\"
+    lines = [
+        rf"\begin{{longtable}}{{{column_spec}}}",
+        rf"\caption{{{_latex_escape(caption)}}}\label{{{label}}}\\",
+        r"\toprule",
+        header_line.rstrip(),
+        r"\midrule",
+        r"\endfirsthead",
+        r"\toprule",
+        header_line.rstrip(),
+        r"\midrule",
+        r"\endhead",
+        r"\bottomrule",
+        r"\endfoot",
+        r"\bottomrule",
+        r"\endlastfoot",
+    ]
+    if rows:
+        for row in rows:
+            lines.append(" & ".join(row) + r" \\")
+    else:
+        lines.append(
+            rf"\multicolumn{{{len(headers)}}}{{c}}{{No data available.}} \\")
+    lines.append(r"\end{longtable}")
+    return "\n".join(lines)
+
+
+def _compile_latex(tex_path: Path) -> Path | None:
+    engines = [engine for engine in ("tectonic", "pdflatex", "xelatex", "lualatex") if shutil.which(engine)]
+    for engine in engines:
+        if engine == "tectonic":
+            command = [engine, "--outdir", str(tex_path.parent), tex_path.name]
+        else:
+            command = [engine, "-interaction=nonstopmode", "-halt-on-error", tex_path.name]
+        result = subprocess.run(
+            command,
+            cwd=tex_path.parent,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode == 0:
+            candidate = tex_path.with_suffix(".pdf")
+            if candidate.exists():
+                return candidate
+    return None
+
+
+def _mass_vs_velocity_figure(records: Sequence[ParticleEstimateRecord]) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(8, 6))
+    fig.patch.set_facecolor("white")
+    if not records:
+        ax.axis("off")
+        ax.text(0.5, 0.5, "No velocity estimates available.", ha="center", va="center")
+        return fig
+
+    speeds = np.array([rec.velocity_kms for rec in records], dtype=float)
+    masses = np.array([rec.mass_kg for rec in records], dtype=float)
+    channels = [rec.channel for rec in records]
+    color_map = {
+        "Target H": "#1f77b4",
+        "Target L": "#d62728",
+        "Ion Grid": "#2ca02c",
+    }
+    colors = [color_map.get(channel, "#555555") for channel in channels]
+
+    ax.scatter(
+        speeds,
+        masses,
+        c=colors,
+        edgecolor="white",
+        linewidth=0.7,
+        alpha=0.9,
+    )
+    handles = []
+    for channel, color in color_map.items():
+        if channel in channels:
+            handles.append(
+                ax.scatter([], [], c=color, label=channel, edgecolor="white", linewidth=0.7)
+            )
+    if handles:
+        ax.legend(handles=handles, frameon=False, loc="lower right")
+    ax.set_xlabel("Velocity (km/s)", fontsize=12)
+    ax.set_ylabel("Mass (kg)", fontsize=12)
+    ax.set_title("Mass versus velocity estimates", fontsize=14)
+    _maybe_log_axis(ax, "x", speeds)
+    _maybe_log_axis(ax, "y", masses)
+    ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.5)
+    fig.tight_layout()
+    return fig
+
+
+def _yield_vs_velocity_figure(records: Sequence[ParticleEstimateRecord]) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(8, 6))
+    fig.patch.set_facecolor("white")
+    if not records:
+        ax.axis("off")
+        ax.text(0.5, 0.5, "No velocity estimates available.", ha="center", va="center")
+        return fig
+
+    speeds = np.array([rec.velocity_kms for rec in records], dtype=float)
+    yields = np.array([rec.yield_c_per_kg for rec in records], dtype=float)
+    channels = [rec.channel for rec in records]
+    color_map = {
+        "Target H": "#1f77b4",
+        "Target L": "#d62728",
+        "Ion Grid": "#2ca02c",
+    }
+
+    for channel, color in color_map.items():
+        mask = [idx for idx, rec in enumerate(records) if rec.channel == channel]
+        if not mask:
+            continue
+        ax.scatter(
+            speeds[mask],
+            yields[mask],
+            c=color,
+            edgecolor="white",
+            linewidth=0.7,
+            alpha=0.9,
+            label=channel,
+        )
+
+    if ax.get_legend_handles_labels()[0]:
+        ax.legend(frameon=False, loc="lower right")
+    ax.set_xlabel("Velocity (km/s)", fontsize=12)
+    ax.set_ylabel("Charge yield (C/kg)", fontsize=12)
+    ax.set_title("Charge yield as a function of velocity", fontsize=14)
+    _maybe_log_axis(ax, "x", speeds)
+    _maybe_log_axis(ax, "y", yields)
+    ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.5)
+    fig.tight_layout()
+    return fig
+
+
+def _abundance_stack_figure(
+    mass_results: Sequence[MassAnalysisResult],
+    estimates: Mapping[str, ParticleEstimateRecord],
+) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(9, 6))
+    fig.patch.set_facecolor("white")
+    results_by_event = {result.event_id: result for result in mass_results}
+    paired: list[tuple[float, MassAnalysisResult]] = []
+    for event_id, estimate in estimates.items():
+        result = results_by_event.get(event_id)
+        if result is None or result.total_area <= 0.0:
+            continue
+        paired.append((estimate.velocity_kms, result))
+
+    if not paired:
+        ax.axis("off")
+        ax.text(
+            0.5,
+            0.5,
+            "No paired mass spectra and velocity estimates.",
+            ha="center",
+            va="center",
+        )
+        return fig
+
+    species_order = [name for name, _ in EXPECTED_MASS_LINES]
+    speeds = np.array([item[0] for item in paired], dtype=float)
+    bins = max(4, min(12, int(math.sqrt(len(paired)))))
+    if float(np.max(speeds)) == float(np.min(speeds)):
+        bin_edges = np.linspace(float(np.min(speeds)) * 0.9, float(np.max(speeds)) * 1.1 + 1e-6, bins + 1)
+    else:
+        bin_edges = np.linspace(float(np.min(speeds)), float(np.max(speeds)), bins + 1)
+    bin_indices = np.digitize(speeds, bin_edges, right=False) - 1
+    bin_indices = np.clip(bin_indices, 0, bins - 1)
+
+    stack_values = {species: [0.0] * bins for species in species_order}
+    counts = [0] * bins
+    for idx, (_, result) in zip(bin_indices, paired):
+        counts[idx] += 1
+        for species in species_order:
+            stack_values[species][idx] += float(result.relative_abundances.get(species, 0.0))
+
+    for idx, count in enumerate(counts):
+        if count > 0:
+            for species in species_order:
+                stack_values[species][idx] /= count
+
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    y_values = [stack_values[species] for species in species_order]
+    ax.stackplot(bin_centers, y_values, labels=species_order, alpha=0.9)
+    ax.set_ylim(0, 1)
+    ax.set_xlabel("Velocity (km/s)", fontsize=12)
+    ax.set_ylabel("Relative abundance", fontsize=12)
+    ax.set_title("Stacked olivine line abundances vs. velocity", fontsize=14)
+    _maybe_log_axis(ax, "x", bin_centers)
+    ax.legend(loc="upper right", ncol=2, fontsize=8, frameon=False)
+    ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.5)
+    fig.tight_layout()
+    return fig
+
+
+def _mass_line_probability_figure(
+    mass_results: Sequence[MassAnalysisResult],
+    estimates: Mapping[str, ParticleEstimateRecord],
+) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(9, 6))
+    fig.patch.set_facecolor("white")
+    results_by_event = {result.event_id: result for result in mass_results}
+    paired: list[tuple[float, MassAnalysisResult]] = []
+    for event_id, estimate in estimates.items():
+        result = results_by_event.get(event_id)
+        if result is None or result.total_area <= 0.0:
+            continue
+        paired.append((estimate.velocity_kms, result))
+
+    if not paired:
+        ax.axis("off")
+        ax.text(
+            0.5,
+            0.5,
+            "No paired mass spectra and velocity estimates.",
+            ha="center",
+            va="center",
+        )
+        return fig
+
+    species_order = [name for name, _ in EXPECTED_MASS_LINES]
+    speeds = np.array([item[0] for item in paired], dtype=float)
+    bins = max(4, min(12, int(math.sqrt(len(paired)))))
+    if float(np.max(speeds)) == float(np.min(speeds)):
+        bin_edges = np.linspace(float(np.min(speeds)) * 0.9, float(np.max(speeds)) * 1.1 + 1e-6, bins + 1)
+    else:
+        bin_edges = np.linspace(float(np.min(speeds)), float(np.max(speeds)), bins + 1)
+    bin_indices = np.digitize(speeds, bin_edges, right=False) - 1
+    bin_indices = np.clip(bin_indices, 0, bins - 1)
+
+    probabilities = {species: [0.0] * bins for species in species_order}
+    counts = [0] * bins
+    for idx, (_, result) in zip(bin_indices, paired):
+        counts[idx] += 1
+        for species in species_order:
+            abundance = float(result.relative_abundances.get(species, 0.0))
+            if abundance > 0.0:
+                probabilities[species][idx] += 1.0
+
+    for idx, count in enumerate(counts):
+        if count > 0:
+            for species in species_order:
+                probabilities[species][idx] /= count
+
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    for species in species_order:
+        ax.plot(
+            bin_centers,
+            probabilities[species],
+            label=species,
+            linewidth=1.6,
+        )
+
+    ax.set_ylim(0, 1)
+    ax.set_xlabel("Velocity (km/s)", fontsize=12)
+    ax.set_ylabel("Appearance probability", fontsize=12)
+    ax.set_title("Mass-line detection probability vs. velocity", fontsize=14)
+    _maybe_log_axis(ax, "x", bin_centers)
+    ax.legend(loc="upper right", ncol=2, fontsize=8, frameon=False)
+    ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.5)
+    fig.tight_layout()
+    return fig
+
+
+def _saturation_bar_figure(saturation_counts: Mapping[str, int]) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(7, 5))
+    fig.patch.set_facecolor("white")
+    if not saturation_counts:
+        ax.axis("off")
+        ax.text(0.5, 0.5, "No saturation flags were recorded.", ha="center", va="center")
+        return fig
+
+    items = sorted(saturation_counts.items())
+    channels = [item[0] for item in items]
+    counts = np.array([item[1] for item in items], dtype=float)
+    positions = np.arange(len(channels))
+    bars = ax.bar(positions, counts, color="#2a6ea6", edgecolor="white")
+    ax.set_xticks(positions, [channel.replace(" ", "\n") for channel in channels])
+    ax.set_ylabel("Occurrences", fontsize=12)
+    ax.set_title("Channel saturation events", fontsize=14)
+    for rect, count in zip(bars, counts):
+        ax.text(
+            rect.get_x() + rect.get_width() / 2.0,
+            rect.get_height() + max(counts) * 0.02,
+            f"{int(count)}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
+    ax.grid(True, axis="y", linestyle="--", linewidth=0.6, alpha=0.5)
+    fig.tight_layout()
+    return fig
 
 
 def _hist_figure(
@@ -555,25 +1066,23 @@ def _analyse_mass_spectrum(event_id: str, event_group: h5py.Group) -> MassAnalys
     )
 
 
-def _relative_stats(results: Sequence[MassAnalysisResult]) -> dict[str, dict[str, float]]:
-    stats: dict[str, dict[str, float]] = {}
+def _relative_stats(
+    results: Sequence[MassAnalysisResult],
+) -> dict[str, dict[str, float | int | None]]:
+    stats: dict[str, dict[str, float | int | None]] = {}
     for species, _ in EXPECTED_MASS_LINES:
         values = [r.relative_abundances.get(species, 0.0) for r in results if r.total_area > 0.0]
         arr = _finite_values(values)
-        if arr.size:
-            stats[species] = {
-                "count": int(arr.size),
-                "median": float(np.median(arr)),
-                "mean": float(np.mean(arr)),
-                "std": float(np.std(arr, ddof=0)),
-            }
-        else:
-            stats[species] = {
-                "count": 0,
-                "median": 0.0,
-                "mean": 0.0,
-                "std": 0.0,
-            }
+        descriptor = _descriptive_stats(arr)
+        stats[species] = {
+            "count": descriptor["count"],
+            "min": None if descriptor["min"] is None else float(descriptor["min"]),
+            "max": None if descriptor["max"] is None else float(descriptor["max"]),
+            "mean": None if descriptor["mean"] is None else float(descriptor["mean"]),
+            "median": None if descriptor["median"] is None else float(descriptor["median"]),
+            "mode": None if descriptor["mode"] is None else float(descriptor["mode"]),
+            "std": None if descriptor["std"] is None else float(descriptor["std"]),
+        }
     return stats
 
 
@@ -635,6 +1144,11 @@ class MetricCollector:
     events_processed: int = 0
     mass_results: list[MassAnalysisResult] = field(default_factory=list)
     _ternary_points: list[tuple[float, float, float]] = field(default_factory=list)
+    impact_charge: MutableMapping[str, list[float]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    particle_estimates: list[ParticleEstimateRecord] = field(default_factory=list)
+    event_estimates: dict[str, ParticleEstimateRecord] = field(default_factory=dict)
 
     def consume_file(self, path: Path) -> None:
         with h5py.File(path, "r") as handle:
@@ -644,6 +1158,11 @@ class MetricCollector:
                 self.events_processed += 1
                 analysis_group = event_group.get("Analysis")
                 metadata_group = event_group.get("Metadata")
+
+                event_rise_times: dict[str, float | None] = {
+                    channel: None for channel in TARGET_CHANNELS
+                }
+                event_impact_charges: dict[str, float] = {}
 
                 if analysis_group is not None:
                     for dataset_name, dataset in analysis_group.items():
@@ -662,6 +1181,7 @@ class MetricCollector:
                                 decay_value = float(params[4])
                                 if np.isfinite(rise_value):
                                     self.rise[channel].append(rise_value)
+                                    event_rise_times[channel] = rise_value
                                 if np.isfinite(decay_value):
                                     self.decay[channel].append(decay_value)
 
@@ -680,6 +1200,15 @@ class MetricCollector:
                                 self.reduced_chi_sq[channel].extend(
                                     red_values.tolist()
                                 )
+
+                    for channel in TARGET_CHANNELS + ("Ion Grid",):
+                        charge_dataset = analysis_group.get(f"{channel}ImpactCharge")
+                        if charge_dataset is None:
+                            continue
+                        charges = _finite_values(charge_dataset[()])
+                        if charges.size:
+                            self.impact_charge[channel].extend(charges.tolist())
+                            event_impact_charges[channel] = float(np.mean(charges))
 
                 if metadata_group is not None:
                     for dataset_name, dataset in metadata_group.items():
@@ -716,6 +1245,52 @@ class MetricCollector:
                 if target_channel is not None:
                     self.target_usage[target_channel] += 1
                     trigger_times["Target"] = trigger_times[target_channel]
+
+                if (
+                    target_channel is not None
+                    and _RISE_PARAMS is not None
+                    and _YIELD_PARAMS is not None
+                ):
+                    target_charge = event_impact_charges.get(target_channel)
+                    if target_charge is not None and target_charge > 0.0:
+                        rise_time = event_rise_times.get(target_channel)
+                        ion_charge = event_impact_charges.get("Ion Grid")
+                        ratio = None
+                        if (
+                            ion_charge is not None
+                            and ion_charge > 0.0
+                            and target_charge > 0.0
+                        ):
+                            try:
+                                ratio = ion_charge / target_charge
+                            except ZeroDivisionError:
+                                ratio = None
+                        try:
+                            estimate = _dust_estimator.estimate_particle(
+                                charge_c=target_charge,
+                                rise_time=rise_time,
+                                ion_to_target_ratio=ratio,
+                                rise_params=_RISE_PARAMS,
+                                ratio_params=_RATIO_PARAMS,
+                                yield_params=_YIELD_PARAMS,
+                                velocity_range=(1.0, 100.0),
+                            )
+                        except Exception:
+                            estimate = None
+                        if estimate is not None:
+                            record = ParticleEstimateRecord(
+                                event_id=event_id,
+                                channel=target_channel,
+                                charge_c=float(estimate.charge_c),
+                                velocity_kms=float(estimate.velocity_kms),
+                                mass_kg=float(estimate.mass_kg),
+                                yield_c_per_kg=float(estimate.yield_c_per_kg),
+                                rise_time_us=None if rise_time is None else float(rise_time),
+                                ion_to_target_ratio=None if ratio is None else float(ratio),
+                                velocity_source=estimate.velocity_details.source,
+                            )
+                            self.particle_estimates.append(record)
+                            self.event_estimates[event_id] = record
 
                 for pair_name, (channel_a, channel_b) in TRIGGER_PAIRS.items():
                     value_a = trigger_times.get(channel_a)
@@ -775,7 +1350,7 @@ class MetricCollector:
             species_stats = _relative_stats(self.mass_results)
             if species_stats:
                 formatted = ", ".join(
-                    f"{species}: {values['median'] * 100.0:.1f}%"
+                    f"{species}: {(values.get('median') or 0.0) * 100.0:.1f}%"
                     for species, values in species_stats.items()
                 )
                 lines.append("Median per-line abundances — " + formatted)
@@ -786,90 +1361,510 @@ class MetricCollector:
         return lines
 
     def write_report(self, pdf_path: Path) -> None:
-        summary_fig = _summary_figure(self._summary_lines())
+        pdf_path = Path(pdf_path)
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_lines = self._summary_lines()
 
-        with PdfPages(pdf_path) as pdf:
-            pdf.savefig(summary_fig)
-            plt.close(summary_fig)
+        figure_specs: list[FigureSpec] = []
 
-            for channel in SNR_CHANNELS:
-                requirement = []
-                if channel.startswith("TOF"):
-                    requirement.append((3.0, "SNR ≥ 3"))
-                else:
-                    requirement.append((6.0, "SNR ≥ 6"))
-                fig = _hist_figure(
-                    self.snr.get(channel, []),
-                    title=f"{channel} Signal-to-Noise Ratio",
-                    xlabel="SNR",
-                    caption=f"Histogram of {channel} SNR across all analysed olivine events.",
-                    requirement_lines=requirement,
+        figure_specs.append(
+            FigureSpec(
+                stem="summary",
+                caption="Executive summary of the analysed olivine events.",
+                label="fig:summary",
+                builder=lambda summary_lines=summary_lines: _summary_figure(summary_lines),
+            )
+        )
+
+        for channel in SNR_CHANNELS:
+            requirement: list[tuple[float | None, str]] = []
+            if channel.startswith("TOF"):
+                requirement.append((3.0, "SNR ≥ 3"))
+            else:
+                requirement.append((6.0, "SNR ≥ 6"))
+            data = list(self.snr.get(channel, []))
+            stem = f"snr_{channel.replace(' ', '_').replace('/', '_').lower()}"
+            figure_specs.append(
+                FigureSpec(
+                    stem=stem,
+                    caption=f"Distribution of signal-to-noise ratios for {channel}.",
+                    label=f"fig:{stem}",
+                    builder=lambda data=data, channel=channel, requirement=requirement: _hist_figure(
+                        data,
+                        title=f"{channel} Signal-to-Noise Ratio",
+                        xlabel="SNR",
+                        caption=f"Histogram of {channel} SNR across all analysed olivine events.",
+                        requirement_lines=requirement,
+                    ),
                 )
-                pdf.savefig(fig)
-                plt.close(fig)
+            )
 
-            for channel in TARGET_CHANNELS:
-                fig = _hist_figure(
-                    self.rise.get(channel, []),
-                    title=f"{channel} Rise Time (τ_rise)",
-                    xlabel="Rise time (µs)",
-                    caption=f"Distribution of fitted rise constants for the {channel} waveform fits.",
-                    requirement_lines=((0.1, "Spec lower"), (100.0, "Spec upper")),
+        for channel in TARGET_CHANNELS:
+            stem = f"rise_{channel.replace(' ', '_').lower()}"
+            data = list(self.rise.get(channel, []))
+            figure_specs.append(
+                FigureSpec(
+                    stem=stem,
+                    caption=f"Fitted rise-time constants for the {channel} channel.",
+                    label=f"fig:{stem}",
+                    builder=lambda data=data, channel=channel: _hist_figure(
+                        data,
+                        title=f"{channel} Rise Time (τ_rise)",
+                        xlabel="Rise time (µs)",
+                        caption=f"Distribution of fitted rise constants for the {channel} waveform fits.",
+                        requirement_lines=((0.1, "Spec lower"), (100.0, "Spec upper")),
+                    ),
                 )
-                pdf.savefig(fig)
-                plt.close(fig)
+            )
 
-            for channel in TARGET_CHANNELS:
-                fig = _hist_figure(
-                    self.decay.get(channel, []),
-                    title=f"{channel} Decay Time (τ_decay)",
-                    xlabel="Decay time (µs)",
-                    caption=f"Distribution of fitted decay constants for the {channel} waveform fits.",
-                    requirement_lines=((1e-5, "Spec lower"), (10.0, "Spec upper")),
+        for channel in TARGET_CHANNELS:
+            stem = f"decay_{channel.replace(' ', '_').lower()}"
+            data = list(self.decay.get(channel, []))
+            figure_specs.append(
+                FigureSpec(
+                    stem=stem,
+                    caption=f"Fitted decay-time constants for the {channel} channel.",
+                    label=f"fig:{stem}",
+                    builder=lambda data=data, channel=channel: _hist_figure(
+                        data,
+                        title=f"{channel} Decay Time (τ_decay)",
+                        xlabel="Decay time (µs)",
+                        caption=f"Distribution of fitted decay constants for the {channel} waveform fits.",
+                        requirement_lines=((1e-5, "Spec lower"), (10.0, "Spec upper")),
+                    ),
                 )
-                pdf.savefig(fig)
-                plt.close(fig)
+            )
 
-            for pair_name in ("Ion Grid vs TOF H", "TOF H vs Target", "Target vs Ion Grid"):
-                fig = _hist_figure(
-                    self.trigger_deltas.get(pair_name, []),
-                    title=f"Trigger Delta: {pair_name}",
-                    xlabel="|Δt| (µs)",
-                    caption="Absolute timing offset between trigger references for the channel pair.",
-                    requirement_lines=((20.0, "Spec upper"),),
+        for pair_name in ("Ion Grid vs TOF H", "TOF H vs Target", "Target vs Ion Grid"):
+            stem = f"trigger_{pair_name.replace(' ', '_').replace('/', '_').lower()}"
+            deltas = list(self.trigger_deltas.get(pair_name, []))
+            figure_specs.append(
+                FigureSpec(
+                    stem=stem,
+                    caption=f"Absolute trigger offset distribution for {pair_name} events.",
+                    label=f"fig:{stem}",
+                    builder=lambda deltas=deltas, pair_name=pair_name: _hist_figure(
+                        deltas,
+                        title=f"Trigger Delta: {pair_name}",
+                        xlabel="|Δt| (µs)",
+                        caption="Absolute timing offset between trigger references for the channel pair.",
+                        requirement_lines=((20.0, "Spec upper"),),
+                    ),
                 )
-                pdf.savefig(fig)
-                plt.close(fig)
+            )
 
-            for channel in TARGET_CHANNELS:
-                fig = _hist_figure(
-                    self.chi_sq.get(channel, []),
-                    title=f"{channel} χ²",
-                    xlabel="χ²",
-                    caption=f"Goodness-of-fit χ² statistic for the {channel} model fits.",
-                    requirement_lines=(),
+        for channel in TARGET_CHANNELS:
+            stem = f"chi_{channel.replace(' ', '_').lower()}"
+            data = list(self.chi_sq.get(channel, []))
+            figure_specs.append(
+                FigureSpec(
+                    stem=stem,
+                    caption=f"χ² goodness-of-fit statistics for the {channel} waveform model fits.",
+                    label=f"fig:{stem}",
+                    builder=lambda data=data, channel=channel: _hist_figure(
+                        data,
+                        title=f"{channel} χ²",
+                        xlabel="χ²",
+                        caption=f"Goodness-of-fit χ² statistic for the {channel} model fits.",
+                        requirement_lines=(),
+                    ),
                 )
-                pdf.savefig(fig)
-                plt.close(fig)
+            )
 
-            for channel in TARGET_CHANNELS:
-                fig = _hist_figure(
-                    self.reduced_chi_sq.get(channel, []),
-                    title=f"{channel} Reduced χ²",
-                    xlabel="Reduced χ²",
+        for channel in TARGET_CHANNELS:
+            stem = f"reduced_chi_{channel.replace(' ', '_').lower()}"
+            data = list(self.reduced_chi_sq.get(channel, []))
+            figure_specs.append(
+                FigureSpec(
+                    stem=stem,
                     caption=f"Reduced χ² values for the {channel} waveform fits.",
-                    requirement_lines=((1.0, "Ideal"),),
+                    label=f"fig:{stem}",
+                    builder=lambda data=data, channel=channel: _hist_figure(
+                        data,
+                        title=f"{channel} Reduced χ²",
+                        xlabel="Reduced χ²",
+                        caption=f"Reduced χ² values for the {channel} waveform fits.",
+                        requirement_lines=((1.0, "Ideal"),),
+                    ),
                 )
-                pdf.savefig(fig)
-                plt.close(fig)
+            )
 
-            mass_fig = _mass_abundance_figure(self.mass_results)
-            pdf.savefig(mass_fig)
-            plt.close(mass_fig)
+        for channel in TARGET_CHANNELS + ("Ion Grid",):
+            stem = f"impact_charge_{channel.replace(' ', '_').lower()}"
+            data = list(self.impact_charge.get(channel, []))
+            figure_specs.append(
+                FigureSpec(
+                    stem=stem,
+                    caption=f"Impact charge distribution derived for the {channel} channel.",
+                    label=f"fig:{stem}",
+                    builder=lambda data=data, channel=channel: _hist_figure(
+                        data,
+                        title=f"{channel} Impact Charge",
+                        xlabel="Charge (C)",
+                        caption=f"Impact charge estimates for {channel} obtained from fitted waveforms.",
+                        requirement_lines=None,
+                    ),
+                )
+            )
 
-            ternary_fig = _ternary_figure(self._ternary_points)
-            pdf.savefig(ternary_fig)
-            plt.close(ternary_fig)
+        figure_specs.append(
+            FigureSpec(
+                stem="mass_abundance",
+                caption="Median relative abundances for the expected olivine mass lines.",
+                label="fig:mass-abundance",
+                builder=lambda results=list(self.mass_results): _mass_abundance_figure(results),
+            )
+        )
+
+        figure_specs.append(
+            FigureSpec(
+                stem="ternary",
+                caption="Mg–Si–Fe ternary composition derived from mass-line fits.",
+                label="fig:ternary",
+                builder=lambda points=list(self._ternary_points): _ternary_figure(points),
+            )
+        )
+
+        figure_specs.append(
+            FigureSpec(
+                stem="mass_vs_velocity",
+                caption="Particle mass as a function of inferred impact velocity.",
+                label="fig:mass-vs-velocity",
+                builder=lambda records=list(self.particle_estimates): _mass_vs_velocity_figure(records),
+            )
+        )
+
+        figure_specs.append(
+            FigureSpec(
+                stem="yield_vs_velocity",
+                caption="Charge yield per unit mass as a function of velocity.",
+                label="fig:yield-vs-velocity",
+                builder=lambda records=list(self.particle_estimates): _yield_vs_velocity_figure(records),
+            )
+        )
+
+        figure_specs.append(
+            FigureSpec(
+                stem="abundance_stack",
+                caption="Stacked relative abundances of olivine mass lines vs. impact velocity.",
+                label="fig:abundance-stack",
+                builder=lambda results=list(self.mass_results), estimates=dict(self.event_estimates): _abundance_stack_figure(
+                    results,
+                    estimates,
+                ),
+            )
+        )
+
+        figure_specs.append(
+            FigureSpec(
+                stem="mass_line_probability",
+                caption="Detection probability for each mass line as a function of velocity.",
+                label="fig:mass-line-probability",
+                builder=lambda results=list(self.mass_results), estimates=dict(self.event_estimates): _mass_line_probability_figure(
+                    results,
+                    estimates,
+                ),
+            )
+        )
+
+        figure_specs.append(
+            FigureSpec(
+                stem="saturation_counts",
+                caption="Frequency of saturation flags by channel.",
+                label="fig:saturation",
+                builder=lambda counts=dict(self.saturation_counts): _saturation_bar_figure(counts),
+            )
+        )
+
+        figures_dir = pdf_path.parent / f"{pdf_path.stem}_figures"
+        figures_dir.mkdir(parents=True, exist_ok=True)
+
+        figure_assets: list[FigureAsset] = []
+        for spec in figure_specs:
+            fig = spec.builder()
+            asset_path = figures_dir / f"{spec.stem}.pdf"
+            fig.savefig(asset_path, format="pdf", bbox_inches="tight")
+            plt.close(fig)
+            figure_assets.append(
+                FigureAsset(path=asset_path, caption=spec.caption, label=spec.label)
+            )
+
+        def _ordered_stats(
+            source: Mapping[str, Sequence[float]],
+            preferred: Sequence[str] | None = None,
+        ) -> dict[str, Mapping[str, float | int | None]]:
+            stats_map: dict[str, Mapping[str, float | int | None]] = {}
+            seen: set[str] = set()
+            if preferred is not None:
+                for key in preferred:
+                    values = source.get(key, [])
+                    stats_map[key] = _descriptive_stats(values)
+                    seen.add(key)
+            for key in sorted(source):
+                if key in seen:
+                    continue
+                stats_map[key] = _descriptive_stats(source[key])
+            return stats_map
+
+        snr_stats = _ordered_stats(self.snr, SNR_CHANNELS)
+        rise_stats = _ordered_stats(self.rise, TARGET_CHANNELS)
+        decay_stats = _ordered_stats(self.decay, TARGET_CHANNELS)
+        chi_stats = _ordered_stats(self.chi_sq, TARGET_CHANNELS)
+        reduced_stats = _ordered_stats(self.reduced_chi_sq, TARGET_CHANNELS)
+        impact_stats = _ordered_stats(self.impact_charge, TARGET_CHANNELS + ("Ion Grid",))
+        trigger_stats = {
+            pair: _descriptive_stats(self.trigger_deltas.get(pair, []))
+            for pair in TRIGGER_PAIRS
+        }
+
+        particle_metrics: dict[str, Mapping[str, float | int | None]] = {
+            "Velocity (km/s)": _descriptive_stats(
+                [record.velocity_kms for record in self.particle_estimates]
+            ),
+            "Mass (kg)": _descriptive_stats(
+                [record.mass_kg for record in self.particle_estimates]
+            ),
+            "Charge Yield (C/kg)": _descriptive_stats(
+                [record.yield_c_per_kg for record in self.particle_estimates]
+            ),
+        }
+        rise_samples = [record.rise_time_us for record in self.particle_estimates if record.rise_time_us is not None]
+        if rise_samples:
+            particle_metrics["Rise Time (µs)"] = _descriptive_stats(rise_samples)
+        ratio_samples = [
+            record.ion_to_target_ratio
+            for record in self.particle_estimates
+            if record.ion_to_target_ratio is not None
+        ]
+        if ratio_samples:
+            particle_metrics["Ion/Target Charge Ratio"] = _descriptive_stats(ratio_samples)
+
+        mass_line_stats = _relative_stats(self.mass_results)
+
+        mass_fit_rows: list[list[str]] = []
+        for result in self.mass_results:
+            for fit in result.fits:
+                if not fit.success:
+                    continue
+                rel = result.relative_abundances.get(fit.species, 0.0)
+                rel_display = f"{rel * 100.0:.2f}\\%"
+                mass_fit_rows.append(
+                    [
+                        _latex_escape(result.event_id),
+                        _latex_escape(fit.species),
+                        _format_value(fit.target_mass),
+                        _format_value(fit.fit_mass),
+                        _format_value(fit.sigma),
+                        _format_value(fit.tau),
+                        _format_value(fit.area),
+                        rel_display,
+                    ]
+                )
+
+        particle_rows: list[list[str]] = []
+        for record in self.particle_estimates:
+            particle_rows.append(
+                [
+                    _latex_escape(record.event_id),
+                    _latex_escape(record.channel),
+                    _format_value(record.charge_c),
+                    _format_value(record.velocity_kms),
+                    _format_value(record.mass_kg),
+                    _format_value(record.yield_c_per_kg),
+                    _format_value(record.rise_time_us),
+                    _format_value(record.ion_to_target_ratio),
+                    _latex_escape(record.velocity_source),
+                ]
+            )
+
+        tex_path = pdf_path.with_suffix(".tex")
+        latex_lines: list[str] = [
+            r"\documentclass[11pt]{article}",
+            r"\usepackage[margin=1in]{geometry}",
+            r"\usepackage{graphicx}",
+            r"\usepackage{booktabs}",
+            r"\usepackage{longtable}",
+            r"\usepackage{caption}",
+            r"\usepackage{hyperref}",
+            r"\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue}",
+            r"\begin{document}",
+            r"\title{Olivine Metrics Scientific Report}",
+            r"\author{SpectrumPY Flight Toolkit}",
+            r"\date{\today}",
+            r"\maketitle",
+            r"\tableofcontents",
+            r"\clearpage",
+        ]
+
+        latex_lines.append(r"\section{Overview}")
+        latex_lines.append(r"\begin{itemize}")
+        for line in summary_lines:
+            latex_lines.append(rf"\item {_latex_escape(line)}")
+        latex_lines.append(r"\end{itemize}")
+
+        latex_lines.append(r"\section{Operational Metrics}")
+        latex_lines.append(
+            _render_count_table(
+                "Saturation flag counts",
+                "tab:saturation-counts",
+                dict(self.saturation_counts),
+            )
+        )
+        latex_lines.append(
+            _render_count_table(
+                "Preferred target channel usage",
+                "tab:target-usage",
+                dict(self.target_usage),
+            )
+        )
+
+        latex_lines.append(r"\section{Channel Statistics}")
+        latex_lines.append(
+            _render_stats_table(
+                "Signal-to-noise ratio statistics",
+                "tab:snr",
+                snr_stats,
+            )
+        )
+        latex_lines.append(
+            _render_stats_table(
+                "Rise-time fit parameters",
+                "tab:rise",
+                rise_stats,
+            )
+        )
+        latex_lines.append(
+            _render_stats_table(
+                "Decay-time fit parameters",
+                "tab:decay",
+                decay_stats,
+            )
+        )
+        latex_lines.append(
+            _render_stats_table(
+                "χ² statistics",
+                "tab:chi",
+                chi_stats,
+            )
+        )
+        latex_lines.append(
+            _render_stats_table(
+                "Reduced χ² statistics",
+                "tab:reduced-chi",
+                reduced_stats,
+            )
+        )
+        latex_lines.append(
+            _render_stats_table(
+                "Trigger delta statistics",
+                "tab:trigger-delta",
+                trigger_stats,
+            )
+        )
+
+        latex_lines.append(r"\section{Impact Charge and Particle Estimates}")
+        latex_lines.append(
+            _render_stats_table(
+                "Impact charge statistics by channel",
+                "tab:impact-charge",
+                impact_stats,
+            )
+        )
+        latex_lines.append(
+            _render_stats_table(
+                "Particle estimate summary",
+                "tab:particle-summary",
+                particle_metrics,
+            )
+        )
+        latex_lines.append(
+            _render_longtable(
+                "Per-event particle estimates",
+                "tab:particle-events",
+                "llrrrrrrl",
+                [
+                    "Event",
+                    "Channel",
+                    "Charge (C)",
+                    "Velocity (km/s)",
+                    "Mass (kg)",
+                    "Yield (C/kg)",
+                    "Rise (µs)",
+                    "Ion/Target",
+                    "Velocity Source",
+                ],
+                particle_rows,
+            )
+        )
+
+        latex_lines.append(r"\section{Mass Line Analysis}")
+        latex_lines.append(
+            _render_stats_table(
+                "Relative abundance statistics for mass lines (fractional units)",
+                "tab:mass-stats",
+                mass_line_stats,
+            )
+        )
+        latex_lines.append(
+            _render_longtable(
+                "Successful mass-line fits by event",
+                "tab:mass-fits",
+                "llrrrrrr",
+                [
+                    "Event",
+                    "Species",
+                    "Target Mass",
+                    "Fit Mass",
+                    "σ",
+                    "τ",
+                    "Area",
+                    "Rel. Abundance",
+                ],
+                mass_fit_rows,
+            )
+        )
+
+        latex_lines.append(r"\section{Figures}")
+        for asset in figure_assets:
+            rel_path = Path(os.path.relpath(asset.path, tex_path.parent)).as_posix()
+            latex_lines.extend(
+                [
+                    r"\begin{figure}[htbp]",
+                    r"\centering",
+                    rf"\includegraphics[width=0.85\linewidth]{{{rel_path}}}",
+                    rf"\caption{{{_latex_escape(asset.caption)}}}",
+                    rf"\label{{{asset.label}}}",
+                    r"\end{figure}",
+                ]
+            )
+
+        latex_lines.append(r"\end{document}")
+
+        tex_path.write_text("\n".join(latex_lines), encoding="utf-8")
+
+        compiled_pdf = _compile_latex(tex_path)
+        if compiled_pdf is not None:
+            if compiled_pdf != pdf_path:
+                shutil.move(compiled_pdf, pdf_path)
+            for extension in (".aux", ".log", ".out"):
+                aux = tex_path.with_suffix(extension)
+                if aux.exists():
+                    try:
+                        aux.unlink()
+                    except Exception:
+                        pass
+        else:
+            print(
+                "Warning: LaTeX engine not found; falling back to Matplotlib-generated PDF report.",
+            )
+            with PdfPages(pdf_path) as pdf:
+                summary_fig = _summary_figure(summary_lines)
+                pdf.savefig(summary_fig)
+                plt.close(summary_fig)
+                for spec in figure_specs:
+                    fig = spec.builder()
+                    pdf.savefig(fig)
+                    plt.close(fig)
 
     def write_summary_json(self, path: Path) -> None:
         def stats(values: Iterable[float]) -> Mapping[str, float | int]:
