@@ -16,7 +16,23 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Sequence
 
+# ``python start.py`` executes the module as a script which clears ``__package__``.
+# When that happens we manually add the parent directory of this file to
+# ``sys.path`` so absolute imports resolve the installed package just like they do
+# when launched via ``python -m`` or the console script entry point.
+if __package__ in (None, ""):
+    _this_file = Path(__file__).resolve()
+    _package_root = _this_file.parent
+    _src_root = _package_root.parent
+    if str(_src_root) not in sys.path:
+        sys.path.insert(0, str(_src_root))
+    __package__ = "spectrumpy_flight"
+
 os.environ.pop("QT_DEBUG_PLUGINS", None)
+
+from spectrumpy_flight import package_path, spectrum_launcher
+from spectrumpy_flight.readTrc import Trc
+from spectrumpy_flight.spectrum_launcher import LaunchWindow
 
 # --------- Qt binding-agnostic imports (prefer PySide6, fallback PyQt6) ---------
 _QT = None
@@ -53,12 +69,7 @@ except Exception:
     )
     _QT = "PyQt6"
 
-from .readTrc import Trc
-
-from . import spectrum_launcher
-from .spectrum_launcher import LaunchWindow
-
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = package_path()
 TRC_SUFFIX = ".trc"
 
 
@@ -214,7 +225,7 @@ class AutoProcessingLaunchWindow(LaunchWindow):
         self._progress_dialog = progress
 
         def run_impactbook() -> Path:
-            from .ImpactBook import ImpactBook
+            from spectrumpy_flight.ImpactBook import ImpactBook
 
             ImpactBook(channel_names, trcdir=str(directory), ExperimentName=experiment_name)
             return (REPO_ROOT / "HDF5" / f"{experiment_name}.h5").resolve()
