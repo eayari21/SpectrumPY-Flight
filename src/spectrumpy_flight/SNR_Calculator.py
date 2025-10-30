@@ -1,10 +1,10 @@
 import h5py
 import numpy as np
-from time2mass import time2mass
+from .time2mass import time2mass
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 
-from plot_style import apply_plot_style
+from .plot_style import apply_plot_style
 
 apply_plot_style()
 

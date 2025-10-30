@@ -19,7 +19,7 @@ import shutil
 import struct
 import matplotlib.pyplot as plt
 from pathlib import Path
-from plot_style import apply_plot_style
+from .plot_style import apply_plot_style
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 apply_plot_style()
@@ -28,7 +28,7 @@ import numpy as np
 MASS_STRETCH_MIN = 1.3
 MASS_STRETCH_MAX = 1.6
 
-from idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
+from .idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
 
 try:
     import cupy as cp  # Optional GPU acceleration
@@ -48,8 +48,8 @@ from scipy.special import erfc
 # || LASP software
 from lasp_packets import xtcedef  # Gavin Medley's xtce UML implementation
 from lasp_packets import parser  # Gavin Medley's constant bitstream implementation
-from rice_decode import idex_rice_Decode
-from time2mass import time2mass
+from .rice_decode import idex_rice_Decode
+from .time2mass import time2mass
 import cdflib.cdfwrite as cdfwrite
 import cdflib.cdfread as cdfread
 

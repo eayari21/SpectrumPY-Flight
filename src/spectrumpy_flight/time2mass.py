@@ -17,7 +17,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 # import seaborn as sns
-from plot_style import apply_plot_style
+from .plot_style import apply_plot_style
 
 from pathlib import Path
 from matplotlib import colors

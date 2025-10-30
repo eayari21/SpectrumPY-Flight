@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """
@@ -16,30 +16,24 @@ import datetime
 import time
 import h5py
 import argparse
-import lmfit
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from plot_style import apply_plot_style
+from .plot_style import apply_plot_style
 
 apply_plot_style()
 
-from readTrc import Trc
+from .readTrc import Trc
 from csv import writer
 from scipy.optimize import curve_fit
 from scipy.signal import detrend, butter, filtfilt
 from sqlalchemy import create_engine
+from lmfit import Model
+from concurrent.futures import ThreadPoolExecutor
 
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import QueuePool
 
-# Create a database connection pool
-# db_connection_str = 'mysql+pymysql://root:dustdust@localhost/impact111322'
-db_connection_str = 'mysql+pymysql://admin:1jlwbXqCVkNdt91KCijx@impactlab.cbhrpdddmhcs.us-east-1.rds.amazonaws.com/CCLDAS_PRODUCTION'
-engine = create_engine(db_connection_str, poolclass=QueuePool, pool_size=10, max_overflow=20)
-Session = sessionmaker(bind=engine)
 # %% GENERAL LINEAR FUNCTION DEFINITION
 # || Used to subtract an overall linear background of noise
 # || from the "baseline" of our signal
@@ -136,39 +130,31 @@ class ImpactBook():
         times, amps, metas = generalReadTRC(trcdir)
         self.NumEvents = len(times)
         ImpactEventList = []
-        HDFFile = h5py.File(f"{ExperimentName}.h5",'w')
-        IonFolder = os.path.join(os.getcwd(), f"{ExperimentName}_IonGridFits")
+
+        IonFolder = os.path.join(os.getcwd(), f"IonGridFits/{ExperimentName}_IonGridFits")
         os.makedirs(IonFolder)
-        TargetFolder = os.path.join(os.getcwd(), f"{ExperimentName}_TargetFits")
+        TargetFolder = os.path.join(os.getcwd(), f"TargetFits/{ExperimentName}_TargetFits")
         os.makedirs(TargetFolder)
-        QDFolder = os.path.join(os.getcwd(), f"{ExperimentName}_QDFits")
+        QDFolder = os.path.join(os.getcwd(), f"QDFits/{ExperimentName}_QDFits")
         os.makedirs(QDFolder)
 
-        for tracenum in range(self.NumEvents - 1):
-            ImpactEventList.append(ImpactEvent(tracenum, ChannelNames, times[tracenum], amps[tracenum], metas[tracenum], ExperimentName, IonFolder, TargetFolder, QDFolder, HDFFile, ChannelUnits))
+        h5file = "./HDF5/" + f"{ExperimentName}.h5"
 
-        output = pd.read_csv(f"{ExperimentName}.csv")
-        vels = output["Particle Velocity (km/s, QD Fit)"]
-        fig = plt.figure()
-        plt.hist(vels, bins=np.linspace(0,80, 41))
-        plt.xlabel(r"Velocity [$\frac{km}{s}$]", font="Times New Roman", fontsize=30, fontweight='bold')
-        plt.ylabel("Counts", font="Times New Roman", fontsize=30, fontweight='bold')
-        plt.xlim(0,70)
-        plt.show(block=False)
+        for tracenum in range(self.NumEvents - 1):
+            ImpactEventList.append(ImpactEvent(tracenum, ChannelNames, times[tracenum], amps[tracenum], metas[tracenum], ExperimentName, IonFolder, TargetFolder, QDFolder, h5file, ChannelUnits))
+
 
 # %%OBJECT TO STORE WAVEFORMS FOR A SPECIFIC TRACE
 class ImpactEvent():
-    def __init__(self, Number, ChannelNames, times, amps, metas, ExperimentName, IonFolder, TargetFolder, QDFolder, HDFFile, ChannelUnits=[]):
+    def __init__(self, Number, ChannelNames, times, amps, metas, ExperimentName, IonFolder, TargetFolder, QDFolder, h5file, ChannelUnits=[]):
         # print(f"There are {len(amps)} channels")
         # print(f"Times shape is {np.asarray(times).shape}, Metas shape is {np.asarray(metas).shape}, Amps shape is {np.asarray(amps).shape}")
-
+        self.h5file = h5file
         self.TraceNumber = Number
-        self.ChannelUnits = ChannelUnits
+        # self.ChannelUnits = ChannelUnits
         self.MetaData = metas
-        self.DataDict = dict(zip(ChannelNames, amps))
-        self.DataDict.update({'Time': times[0]})
-        # for key,value in self.DataDict.items():
-        #     print(f"{key}: {len(value)}")
+        # self.DataDict = dict(zip(ChannelNames, amps))
+        # self.DataDict.update({'Time': times[0]})
         self.IonFolder = IonFolder
         self.TargetFolder = TargetFolder
         self.QDFolder = QDFolder
@@ -176,21 +162,22 @@ class ImpactEvent():
         # for k, v in self.DataDict.items():
         #    print(k, " : ", len(v), " items")
 
-        self.Waveforms = pd.DataFrame(self.DataDict)
-        for k, v in self.DataDict.items():
-            # print(f"{Number}/{k} = ", np.array(v))
-            if(str(k)=='Time'):
-                HDFFile.create_dataset(f"{Number}/Time (QD)", data=np.array(v))
-            HDFFile.create_dataset(f"{Number}/{k}", data=np.array(v))
-        for i,k in metas[0].items():
-                HDFFile.create_dataset(f"{Number}/QDMetadata/{i}", data=k)
+        # print(f"Shape of amps = {np.array(amps[0], dtype=object).shape}. {len(times)}")
 
-        
-        
-        # self.Waveforms.to_hdf(os.path.join(os.getcwd(), HDFFile), key=f"{Number}", index=False)
+        # Convert to a DataFrame
+        self.Waveforms = pd.DataFrame(data=np.array(amps).T, dtype=float)  # Transpose the array to make rows correspond to N samples
+        self.Waveforms.columns = ChannelNames       # Set column names
+        self.Waveforms["Time"] = times[0]
+        # print(self.Waveforms)
+
+
+        with h5py.File(h5file, mode="a") as h:
+            for col in self.Waveforms.columns:
+                h.create_dataset(f"/{Number}/{col}", data=np.array(self.Waveforms[col]))
+
         """
         ||=================================================||
-                Time to gather our information:
+        Time to gather our information:
         ||=================================================||
         Remember, what's important for each IDEX
         dataset is:
@@ -214,65 +201,105 @@ class ImpactEvent():
         """
 
         try:
+            self.IonGridFit, self.IonChiSquared, self.IonRedChiSquared, self.IonGridFitResult, self.IonFitTime = self.FitIonGridSignal(self.Waveforms["Ion Grid"])
+            self.TargetFit, self.TargetChiSquared, self.TargetRedChiSquared, self.TargetFitResult, self.TargetFitTime, self.TargetFitData = self.FitTargetSignal(self.Waveforms["Target H"])
 
-            # self.IonGridFit, self.IonFitQual = self.FitIonGridSignal(self.Waveforms["Ion Grid"])
-            self.QDFit, self.QDQual = self.FitQDSignal(self.Waveforms["QD Low"])
-            # print(f"||===QD = {self.QDFit}")
-            # self.TargetFit, self.TargetFitQual = self.FitTargetSignal(self.Waveforms["Target (GSE)"])
-            print(self.QDFit[2])
-            self.SQLData = self.RetrieveSQL(self.QDFit[2])
-            print(f"||===SQL = {self.SQLData}")
-
-            # self.IonGridAmplitude = 0.519602*self.IonGridFit[2]
-            # self.IonGridRiseTime = self.IonGridFit[3]
-            # self.IonGridTrigger = self.IonGridFit[0]
-
-            # self.TargetAmplitude = 2.735834*self.TargetFit[2]
-            # self.TargetRiseTime = self.TargetFit[3]
-            # self.TargetTrigger = self.TargetFit[0]
-
+            print("Fitting accelerator data")
+            self.QDFit, self.QDChiSquared, self.QDRedChiSquared, self.QDFitResult, self.QDFitTime = self.FitQDSignal(self.Waveforms["QD High"])
             self.FittedTrigger = self.QDFit[0]
-            self.FittedCharge = -1*self.QDFit[1]
+            self.FittedCharge = self.QDFit[1]
             self.FittedVelocity = self.QDFit[2]
+            self.SQLData = self.RetrieveSQL(self.QDFit[2])
+
+            self.IonGridAmplitude = 0.519602*self.IonGridFit[2]
+            self.IonGridRiseTime = self.IonGridFit[3]
+            self.IonGridTrigger = self.IonGridFit[0]
+
+            self.TargetAmplitude = 2.735834*self.TargetFit[2]
+            self.TargetRiseTime = self.TargetFit[3]
+            self.TargetTrigger = self.TargetFit[0]
 
             self.AssignedVelocity = self.SQLData["Velocity (km/s)"].values[0]
             self.AssignedMass = self.SQLData["Mass (kg)"].values[0]
             self.AssignedCharge = self.SQLData["Charge (C)"].values[0]*1e16
             self.AssignedRadius = self.SQLData["Radius (m)"].values[0]
-        
+
+
+
+            # Labels and values
+            data_dict = {
+
+                "Trace Number": Number,
+                "Target Rise Time (s)": self.TargetRiseTime,
+                "Target Amplitude (pC)": self.TargetAmplitude,
+                "Ion Grid Rise Time (s)": self.IonGridRiseTime,
+                "Ion Grid Amplitude (pC)": self.IonGridAmplitude,
+                "Ion Grid Trigger (s)": self.IonGridTrigger,
+                "Target Trigger (s)": self.TargetTrigger,
+                "Ion Chi Squared": self.IonChiSquared,
+                "Ion Reduced Chi Squared": self.IonRedChiSquared,
+                "Ion Grid Fit Result": self.IonGridFitResult,
+                "Ion Grid Fit Time": self.IonFitTime,
+
+                "Target Chi Squared": self.TargetChiSquared,
+                "Target Reduced Chi Squared": self.TargetRedChiSquared,
+                "Target Fit Result": self.TargetFitResult,
+                "Target Fit Time": self.TargetFitTime,
+                "Target Fit Data": self.TargetFitData,
+
+                "Particle Charge (pC, Accelerator)" : self.AssignedCharge, 
+                "Particle Velocity (kmps, Accelerator)" : self.AssignedVelocity, 
+                "Particle Mass (kg, Accelerator)" :  self.AssignedMass, 
+                "Particle Radius (m, Accelerator)" : self.AssignedRadius, 
+                "Particle Charge (pC, QD Fit)" : self.FittedCharge, 
+                "Particle Velocity (kmps, QD Fit)" : self.FittedVelocity,
+                "QD Chi Squared": self.QDChiSquared,
+                "QD Reduced Chi Squared": self.QDRedChiSquared,
+                "QD Fit Result": self.QDFitResult,
+                "QD Fit Time": self.QDFitTime
+
+            }
+
+            # Write to HDF5
+            with h5py.File(self.h5file, "a") as h:  # "a" mode to append data
+                # Write each label-value pair as a separate dataset
+                for label, value in data_dict.items():
+                    # If the value is a scalar, write it directly
+                    if np.isscalar(value):
+                        print(f"Writing {label}")
+                        h.create_dataset(f"{Number}/Analysis/{label}", data=np.array(value))
+                    # If the value is an array, write it as a dataset
+                    else:
+                        print(f"Writing {label}")
+                        h.create_dataset(f"{Number}/Analysis/{label}", data=np.array(value))
 
         except Exception as e:
-            print(f"Calculations failed for shot number {Number} due to exception {e}")
+            print(f"Calculations failed for shot number {Number} due to {e}")
             pass
 
-        try:
-            labels = ["Trace Number", "Particle Charge (pC, Accelerator)", "Particle Velocity (kmps, Accelerator)", "Particle Mass (kg, Accelerator)", "Particle Radius (m, Accelerator)", "Particle Charge (pC, QD Fit)", "Particle Velocity (kmps, QD Fit)", "Trigger Time (s, QD Fit)", "QD Fit Quality"]
-            quants = [Number, self.AssignedCharge, self.AssignedVelocity, self.AssignedMass, self.AssignedRadius, self.FittedCharge, self.FittedVelocity, self.FittedTrigger, np.linalg.det(self.QDQual)]
-            for k in range(len(labels)):
-                HDFFile.create_dataset(f"{Number}/QDAnalysis/{labels[k]}", data=quants[k])
-            if (Number==0):
+        # try:
 
-                # with open(f"{ExperimentName}_data.csv",'w') as f:
+        #     if (Number==0):
 
-                with open(os.path.join(os.getcwd(), f"{ExperimentName}.csv"),'w') as f:
-                    csv_writer = writer(f)
-                    # csv_writer.writerow(["Trace Number", "Particle Charge (pC, QD Fit)", "Particle Velocity (km/s, QD Fit)", "Trigger Time (s, QD Fit)", "QD Fit Quality"])
-                    # csv_writer.writerow([Number, self.FittedCharge, self.FittedVelocity, self.FittedTrigger, np.linalg.det(self.QDQual)])
-                    csv_writer.writerow(["Trace Number", "Particle Charge (pC, Accelerator)", "Particle Velocity (km/s, Accelerator)", "Particle Mass (kg, Accelerator)", "Particle Radius (m, Accelerator)", "Particle Charge (pC, QD Fit)", "Particle Velocity (km/s, QD Fit)", "Trigger Time (s, QD Fit)", "QD Fit Quality"])
-                    csv_writer.writerow([Number, self.AssignedCharge, self.AssignedVelocity, self.AssignedMass, self.AssignedRadius, self.FittedCharge, self.FittedVelocity, self.FittedTrigger, np.linalg.det(self.QDQual)])
-            else:
-                # with open(f"{ExperimentName}_data.csv",'a') as f:
+        #         # with open(f"{ExperimentName}_data.csv",'w') as f:
 
-                with open(os.path.join(os.getcwd(), f"{ExperimentName}.csv"),'a') as f:
-                    csv_writer = writer(f)
-                    # csv_writer.writerow([Number, self.FittedCharge, self.FittedVelocity, self.FittedTrigger, np.linalg.det(self.QDQual)])
-                    # csv_writer.writerow([Number, self.AssignedCharge, self.AssignedVelocity, self.AssignedMass, self.AssignedRadius, self.FittedCharge, self.FittedVelocity, self.FittedTrigger, np.linalg.det(self.QDQual)])
-                    csv_writer.writerow([Number, self.AssignedCharge, self.AssignedVelocity, self.AssignedMass, self.AssignedRadius, self.FittedCharge, self.FittedVelocity, self.FittedTrigger, np.linalg.det(self.QDQual)])
+        #         with open(os.path.join(os.getcwd(), f"{ExperimentName}.csv"),'w') as f:
+        #             csv_writer = writer(f)
+        #             csv_writer.writerow(["Trace Number",  "Target Rise Time (s)", "Target Amplutude (pC)", "Ion Grid Rise Time (s)", "Ion Grid Amplitude (pC)", "Ion Grid Trigger (s)", "Target Trigger (s)", "Ion Fit Quality", "Target Fit Quality"])
+        #             csv_writer.writerow([Number, self.TargetRiseTime, self.TargetAmplitude, self.IonGridRiseTime, self.IonGridAmplitude, self.IonGridTrigger, self.TargetTrigger, np.linalg.det(self.IonChiSquared), np.linalg.det(self.TargetChiSquared)])
+        #             # csv_writer.writerow(["Target Rise Time (s)", "Target Amplutude (pC)", "Ion Grid Rise Time (s)", "Ion Grid Amplitude (pC)", "Ion Grid Trigger (s)", "Target Trigger (s)", "Ion Fit Quality", "Target Fit Quality"])
+        #             # csv_writer.writerow([self.TargetRiseTime, self.TargetAmplitude, self.IonGridRiseTime, self.IonGridAmplitude, self.IonGridTrigger, self.TargetTrigger, self.IonChiSquared, self.TargetChiSquared])
+        #     else:
+        #         # with open(f"{ExperimentName}_data.csv",'a') as f:
 
-        except Exception as e:
-            print(f"Csv dump failed for shot number {Number} due to {e}")
-            pass
+        #         with open(os.path.join(os.getcwd(), f"{ExperimentName}.csv"),'a') as f:
+        #             csv_writer = writer(f)
+        #             csv_writer.writerow([Number, self.AssignedCharge, self.AssignedVelocity, self.AssignedMass, self.AssignedRadius, self.FittedCharge, self.FittedVelocity, self.FittedTrigger, self.TargetRiseTime, self.TargetAmplitude, self.IonGridRiseTime, self.IonGridAmplitude, self.IonGridTrigger, self.TargetTrigger, np.linalg.det(self.IonChiSquared), np.linalg.det(self.TargetChiSquared), np.linalg.det(self.QDQual)])
+        #             # csv_writer.writerow([self.TargetRiseTime, self.TargetAmplitude, self.IonGridRiseTime, self.IonGridAmplitude, self.IonGridTrigger, self.TargetTrigger, self.IonChiSquared, self.TargetChiSquared])
 
+        # except:
+        #     print(f"Csv dump failed for shot number {Number}")
+        #     pass
 
     # %%Target Signal Fitting Routine %% #
 
@@ -296,7 +323,7 @@ class ImpactEvent():
         try:
             # slopeguess = (baselineraw[len(baselineraw)-1] - baselineraw[0]) / (baselinedomain[len(baselinedomain-1)] - baselinedomain[0])
             slopeguess = 0
-            linparam, lin_cov = curve_fit(LinearFit, baselinedomain, baselineraw, p0=[slopeguess,0], maxfev=5_000)
+            linparam, lin_cov = curve_fit(LinearFit, baselinedomain, baselineraw, p0=[slopeguess,0], maxfev=100_000)
             linearbase = LinearFit(self.Waveforms["Time"], linparam[0], linparam[1])
             # self.y -= linearbase
             self.y = detrend(self.y)
@@ -309,7 +336,7 @@ class ImpactEvent():
 
         try:
             baselinedelined = self.y[basedex]
-            sineparam, sine_cov = curve_fit(SineFit, baselinedomain, baselinedelined, p0=[max(baselinedelined), 7000, 45], maxfev=5_000)
+            sineparam, sine_cov = curve_fit(SineFit, baselinedomain, baselinedelined, p0=[max(baselinedelined), 7000, 45], maxfev=100_000)
             sinebase = SineFit(self.Waveforms["Time"], sineparam[0], sineparam[1], sineparam[2])
             self.y -= sinebase
             self.y = butter_lowpass_filter(self.y, self.Waveforms["Time"])
@@ -325,9 +352,10 @@ class ImpactEvent():
         self.y = self.y[idx]
         self.traceNum = self.TraceNumber
         self.pre = -3.0e-5  # Before image charge
-        self.yBaseline = self.y[(self.x < self.pre)]
+        self.yBaseline = self.y.where(self.x < self.pre)
         self.yImage = self.y[(self.x.values >= self.pre) & (self.x.values < 0.0)]
         self.ionError = self.yBaseline.std()
+        print(f"Ion error = {self.ionError}")
         self.ionErrorVector = pd.DataFrame([np.nan] * len(self.yBaseline))
         self.ionMean = self.yBaseline.mean()
         self.yBaseline -= self.ionMean
@@ -352,22 +380,21 @@ class ImpactEvent():
         t2 = 3.71e-4                      # P[6] discharge time (s)
         c = 0
 
+        P0, P1, P4, P5, P6 = t0, c, A, t1, t2
 
+        model = Model(IDEXIonGrid)
+        param = model.make_params(P0=P0, P1=P1, P4=P4, P5=P5, P6=P6)
+        param['P5'].set(value=P5, min=1e-6, max=1e-3)
+        # Fit the data
+        result = model.fit(ionAmp, param, x=ionTime)
 
-        param, param_cov = curve_fit(IDEXIonGrid, ionTime, ionAmp, p0=[t0, c, A, t1, t2], maxfev=5_000)
-        # maxdex = self.y[(self.y==max(self.y))]
-        # print(f"Maxdex = {maxdex}")
-        # maxline = np.mean(self.y.iloc[maxdex-25, maxdex+25])
-        maxline = max(self.y)
-        # maxline = np.mean(self.y[maxdex-25: maxdex+25])
-        # maxline = np.mean(self.y.iloc[maxdex-25, maxdex+25])
-        param[2] = maxline - np.mean(self.yBaseline)
+        # Calculate chi-squared values
+        chi_squared = result.chisqr
+        reduced_chi_squared = result.redchi
 
+        self.result = result.best_fit
+        param['P4'].value = max(self.result) - self.yBaseline.mean()
 
-        self.result = IDEXIonGrid(ionTime, param[0], param[1], param[2], param[3], param[4])
-        param[2] = max(self.result) - self.yBaseline.mean()
-        top = max(self.result)
-        bottom = self.yBaseline.mean()
 
         if Plot:
 
@@ -382,9 +409,6 @@ class ImpactEvent():
             plt.title(f"Original Target Signal number {self.TraceNumber}", fontweight='bold', fontsize=20)
             plt.plot(self.Waveforms["Time"][idx], targetAmp[idx], label="Original target signal (V)")
             plt.plot(self.Waveforms["Time"][idx], self.y, label="Filtered Signal (V)")
-            plt.axhline(top, color='black', linestyle='--', label = "Signal peak")
-            plt.axhline(bottom, color='black', linestyle='-.', label = "Signal baseline")
-
 
 
             if linearbase is not None:
@@ -406,7 +430,7 @@ class ImpactEvent():
             plt.plot(self.x, self.result, label = "Fit (V)")
 
             plt.figtext(0.5, 0.2,
-                r"Amplitude: %.2e C, $\tau_{Rise}$: %.2e s, $\tau_{Discharge}$: %.2e s"%(2.735834054*max(self.result), param[3], 3.71e-4),
+                r"Amplitude: %.2e C, $\tau_{Rise}$: %.2e s, $\tau_{Discharge}$: %.2e s"%(2.735834054*max(self.result), param['P5'], 3.71e-4),
                 horizontalalignment ="center", 
                 verticalalignment ="center", 
                 wrap = True, fontsize = 14, 
@@ -415,7 +439,7 @@ class ImpactEvent():
             plt.legend(loc='best')
             plt.savefig(os.path.join(self.TargetFolder, f"TargetSignalFit{self.TraceNumber}.png"))
 
-        return(param, param_cov)
+        return([param[key].value for key in param.keys()], chi_squared, reduced_chi_squared, self.result, self.x, self.y)
 
     # %% Ion Grid Signal Fit
     # || Identical to the Target signal fit with less noise reduction
@@ -432,13 +456,10 @@ class ImpactEvent():
         self.y = ionGridAmp[idx]
         self.traceNum = self.TraceNumber
         self.pre = -3.0e-5  # Before image charge
-
-        # print(self.y.to_numpy())
-        # print(f"Basedex = {np.where(self.x < self.pre)[0]}")
-        # self.y = self.y.to_numpy()
-        self.yBaseline = self.y[(self.x.values < self.pre)]
+        self.yBaseline = self.y.where(self.x < self.pre)
         self.yImage = self.y[(self.x.values >= self.pre) & (self.x.values < 0.0)]
         self.ionError = self.yBaseline.std()
+        print(f"Ion error = {self.ionError}")
         self.ionErrorVector = pd.DataFrame([np.nan] * len(self.yBaseline))
         self.ionMean = self.yBaseline.mean()
         self.yBaseline -= self.ionMean
@@ -459,102 +480,63 @@ class ImpactEvent():
         # b = np.abs(min(self.yImage))     # P[2] Image amplitude
         # b = .01
         # s = 4.e-6                        # P[3] Image pulse width
-        A  = max(ionGridAmp)  # np.abs(min(self.y) - max(self.y))     # P[4] amplitude (v)
+        A  = max(ionGridAmp) # np.abs(min(self.y) - max(self.y))     # P[4] amplitude (v)
         # A = .05
         t1 = 3.71e-5                      # P[5] rise  time (s)
         t2 = 3.71e-4                      # P[6] discharge time (s)
         c = 0
 
-        param, param_cov = curve_fit(IDEXIonGrid, ionTime, self.y, p0=[t0, c, A, t1, t2], maxfev=5_000)
-        maxdex = self.y[(self.y==max(self.y))]
-        # print(f"Maxdex = {maxdex}")
+        P0, P1, P4, P5, P6 = t0, c, A, t1, t2
 
-        maxline = max(self.y)
-        # maxline = np.mean(self.y[maxdex-25: maxdex+25])
-        # maxline = np.mean(self.y.iloc[maxdex-25, maxdex+25])
-        param[2] = maxline - np.mean(self.yBaseline)
-        bottom = self.yBaseline.mean()
+        model = Model(IDEXIonGrid)
+        param = model.make_params(P0=P0, P1=P1, P4=P4, P5=P5, P6=P6)
+        # Fit the data
+        result = model.fit(ionAmp, param, x=ionTime)
+
+        # Calculate chi-squared values
+        chi_squared = result.chisqr
+        reduced_chi_squared = result.redchi
+
+        self.result = result.best_fit
+        param['P4'].value = max(self.result) - self.yBaseline.mean()
 
 
-        self.result = IDEXIonGrid(ionTime, param[0], param[1], param[2], param[3], param[4])
-        top = max(self.result)
+
 
         if Plot:
 
-            # apply_plot_style('dark')
             apply_plot_style()
             plt.cla()
             plt.clf()
-
+            plt.xlabel("Time (s)", fontsize=15)
             plt.ylabel("Voltage (V)", fontsize=15)
+
             plt.plot(self.x, originalAmp, lw = .5, label="Ion Grid (V)")
             plt.plot(self.x, self.y, label="Filtered Signal (V)")
             plt.plot(self.x, self.result, label = "Fit (V)")
-            plt.axhline(top, color='black', linestyle='--', label = "Signal peak")
-            plt.axhline(bottom, color='black', linestyle='-.', label = "Signal baseline")
+
+            plt.axhline(max(self.result), color='black', linestyle='-.')  # Black dash-dot line
+            plt.axhline(min(self.result), color='black', linestyle='--')  # Black dashed line
 
             plt.figtext(0.5, 0.2,
-                r"Amplitude: %.2e C, $\tau_{Rise}$: %.2e s, $\tau_{Discharge}$: %.2e s"%(.519602*max(self.result), param[3], 3.71e-4),
+                r"Amplitude: %.2e C, $\tau_{Rise}$: %.2e s, $\tau_{Discharge}$: %.2e s"%(.519602*max(self.result), param['P5'], 3.71e-4),
                 horizontalalignment ="center", 
                 verticalalignment ="center", 
                 wrap = True, fontsize = 14, 
                 color ="orange")
+
             plt.title(f"Ion Grid Signal Fit number {self.TraceNumber}", fontweight='bold', fontsize=20)
             plt.legend(loc='best')
+            plt.tight_layout()
             plt.savefig(os.path.join(self.IonFolder, f"IonGrid{self.TraceNumber}.png"))
 
-        return(param, param_cov)
-
-# def optimizedFitIonGridSignal(self, ionGridAmp, Plot=True):
-#     self.x, self.y = self.Waveforms["Time"].values, ionGridAmp.values
-#     idx = self.Waveforms.index[(self.Waveforms["Time"] >= -5e-5) & (self.Waveforms["Time"] <= .001)]
-#     basedex = self.Waveforms.index[self.Waveforms["Time"] <= -2e-5]
-#     basemean = ionGridAmp[basedex].mean()
-
-#     self.y -= basemean
-#     self.x = self.x[idx]
-#     self.y = self.y[idx]
-#     self.traceNum = self.TraceNumber
-#     self.pre = -3.0e-5  # Before image charge
-#     self.yBaseline = self.y[self.x < self.pre]
-#     self.yImage = self.y[(self.x >= self.pre) & (self.x < 0.0)]
-#     self.ionError = self.yBaseline.std()
-#     self.ionErrorVector = np.full(len(self.yBaseline), np.nan)
-#     self.ionMean = self.yBaseline.mean()
-#     self.yBaseline -= self.ionMean
-#     self.parameters = []
-
-#     ionTime = self.x.astype(float)
-#     ionAmp = self.y.astype(float)
-
-#     # Apply a low pass filter to improve our fits
-#     originalAmp = ionAmp
-#     self.y = butter_lowpass_filter(ionAmp, ionTime)
-
-#     print(f"Calculating Ion Fit number {self.TraceNumber}")
-#     # Initial Guess for the parameters of the ion grid signal
-#     t0 = 0.0                         # P[0] time of impact
-#     c = 0.                           # P[1] Constant offset
-#     # b = np.abs(min(self.yImage))     # P[2] Image amplitude
-#     # b = .01
-#     # s = 4.e-6                        # P[3] Image pulse width
-#     A  = max(ionGridAmp)  # np.abs(min(self.y) - max(self.y))     # P[4] amplitude (v)
-#     # A = .05
-#     t1 = 3.71e-5                      # P[5] rise  time (s)
-#     t2 = 3.71e-4                      # P[6] discharge time (s)
-#     c = 0
-
-#     # Set the options for the curve_fit function
-#     options = {"maxfev": 100_000, "ftol": 1e-12, "xtol": 1e-12}
-
-#     param, param_cov = curve_fit(IDEXIonGrid, ionTime, self.y, p0=[t0, c, A, t1, t2], **options)
-#     maxdex = np
+        return([param[key].value for key in param.keys()], chi_squared, reduced_chi_squared, self.result, self.x)
         
     # %%
     # || Employ Mihály's function (above) to assign a tentative velocity
 
     def FitQDSignal(self,QDAmplitude, Plot=True):
-        print(f"||===Fitting QD {self.TraceNumber} ===||")
+        print(f"Calculating QD Fit number {self.TraceNumber}")
 
         idx = self.Waveforms.index[self.Waveforms["Time"] <= 0.0]
         domain = self.Waveforms["Time"][idx]
@@ -585,91 +567,56 @@ class ImpactEvent():
         # ||PU Tube length - both diameters used for distance
 
         v_init = 18.2/(t_b - t_a)
-        # %% Fit the exponentially modified Gaussian
-
-        model = lmfit.Model(QDFit)
-        
+        model = Model(QDFit)
         params = model.make_params(t0=t_trig, q=min(range2), v=v_init)
-        # Set bounds for parameters (if known)
-        # params['amplitude'].min = 0
-        # params['amplitude'].max = 1000
-        # params['sigma'].min = 0
-        # params['gamma'].min = 0
 
-        # print("made parameters")
-        fit = model.fit(range2, params, Time=domain.to_numpy())
-        # print("made parameters")
+        # Fit the data
+        result = model.fit(range2, params, Time=domain.to_numpy())
 
-        result = fit.best_fit
+        # Extract fit results
+        t0_fit = result.params['t0'].value
+        q_fit = result.params['q'].value
+        v_fit = result.params['v'].value
 
-        # print("made parameters")
-        popt = fit.best_values
-        # print("made parameters")
-        param, paramcovariance = curve_fit(QDFit, domain.to_numpy(), range2, p0=[t_trig, min(range2), v_init], maxfev=5_000)
-        
-        # result = QDFit(domain.to_numpy(), popt[0], popt[1], popt[2])
+        # Calculate chi-squared values
+        chi_squared = result.chisqr
+        reduced_chi_squared = result.redchi
 
         if Plot:
-
             apply_plot_style()
             plt.cla()
             plt.clf()
 
             plt.ylabel("Voltage (V)", fontsize=15)
             plt.plot(domain, range, label="Original Signal (V)")
-            plt.plot(domain, range2, label="Filtered QD (V)")
-            plt.plot(domain, result, label = "Fit (V)")
-            plt.figtext(0.5, 0.2,
-                r"$t_{0}$: %.2e s, q: %.2e pC, v: %.2e $\frac{km}{s}$"%(popt['t0'], .05*popt['q'], popt['v']/100_000),
-                horizontalalignment ="center", 
-                verticalalignment ="center", 
-                wrap = True, fontsize = 14, 
-                color ="orange")
+            plt.plot(domain, range2, label="Filtered Signal (V)")
+            plt.plot(domain, result.best_fit, label="Fit (V)")
+            plt.figtext(
+                0.5, 0.2,
+                r"$t_{0}$: %.2e s, q: %.2e pC, v: %.2e $\frac{km}{s}$" % (t0_fit, 0.05 * q_fit, v_fit / 100_000),
+                horizontalalignment="center",
+                verticalalignment="center",
+                wrap=True,
+                fontsize=14,
+                color="orange",
+            )
             plt.title(f"QD Pickup Tube Fit number {self.TraceNumber}", fontweight='bold', fontsize=20)
             plt.legend(loc='best')
             plt.savefig(os.path.join(self.QDFolder, f"QDFit{self.TraceNumber}.png"))
 
-        return [popt['t0'], .05*popt['q'], popt['v']/100_000], paramcovariance
 
-
-
-    # # Define the RetrieveSQL method
-    def optimizedRetrieveSQL(self, velocity):
-        timeArr = self.MetaData[0]['TRIGGER_TIME']
-        date_time = datetime.datetime(*timeArr)
-        date_time = date_time.timestamp()
-
-        timestamp = 1000*int(date_time)
-
-        with Session() as session:
-            # Use prepared statements to avoid SQL injection attacks and improve performance
-            stmt = "select estimate_quality, integer_timestamp, velocity, mass, charge, radius from dust_event where mass != -1 and integer_timestamp < :timestamp and velocity > :velocity_lower and velocity < :velocity_upper order by integer_timestamp desc limit 1;"
-            params = {"timestamp": timestamp, "velocity_lower": velocity*1000-100, "velocity_upper": velocity*1000+100}
-            self.SQL_df = pd.read_sql(stmt, con=session.connection(), params=params)
-
-        self.SQL_df.columns = ["Estimate Quality", "Time", "Velocity (km/s)", "Mass (kg)", "Charge (C)", "Radius (m)"]
-        self.SQL_df["Velocity (km/s)"] /= 1000.0
-        self.SQL_df = self.SQL_df.sort_values(by=["Time"], ascending=True)
-
-        self.SQL_df["Time"] = pd.to_datetime(self.SQL_df['Time'], unit='ms')
-        self.SQL_df["Time"] = self.SQL_df["Time"].dt.tz_localize('utc').dt.tz_convert('US/Mountain')
-
-        self.SQL_df['Trace Number'] = range(1, len(self.SQL_df) + 1)
-        self.SQL_df = self.SQL_df.reset_index(drop=True)
-
-        return self.SQL_df
-
+        return [t0_fit, 0.05 * q_fit, v_fit / 100_000], chi_squared, reduced_chi_squared, result.best_fit, domain
 
     # %%
     # || Fetch all relevant metadata from the accelerator's SQL server
 
     def RetrieveSQL(self, velocity):
-        timeArr = self.MetaData[0]['TRIGGER_TIME']
+        timeArr = self.MetaData[4]['TRIGGER_TIME']
         date_time = datetime.datetime(*timeArr)
         date_time = date_time.timestamp()
 
         timestamp = 1000*int(date_time)
-        # db_connection_str = 'mysql+pymysql://root:Loucet59@localhost/impact092022'
+        db_connection_str = 'mysql+pymysql://admin:1jlwbXqCVkNdt91KCijx@impactlab.cbhrpdddmhcs.us-east-1.rds.amazonaws.com/CCLDAS_PRODUCTION'
         db_connection = create_engine(db_connection_str)
 
         time = str(timestamp)
@@ -687,66 +634,6 @@ class ImpactEvent():
         self.SQL_df['Trace Number'] = range(1, len(self.SQL_df) + 1)
         self.SQL_df = self.SQL_df.reset_index(drop=True)
         return self.SQL_df
-
-
-
-
-
-
-
-def optimizedReadTRC(dataDir, verbose=False):
-    import pathlib
-    times = []
-    amps = []
-    metas = []
-    shotKey = "00000"
-    nChannels = 0
-
-    while True:
-        trc = Trc()
-        tmpTime, tmpAmp, tmpMeta = [], [], []
-        parsetwo = False
-
-        for filename in sorted(os.listdir(dataDir)):
-            if filename.find(shotKey) != -1:
-                parsetwo = True
-                if verbose:
-                    print(str(filename))
-                try:
-                    t, y, meta = trc.open(str(pathlib.Path(filename).resolve()))
-                    tmpTime.append(t)
-                    tmpAmp.append(y)
-                    tmpMeta.append(meta)
-                    nChannels += 1
-                except FileNotFoundError:
-                    break
-
-        if not parsetwo:
-            break
-
-        times.append(tmpTime)
-        amps.append(tmpAmp)
-        metas.append(tmpMeta)
-        i = int(shotKey) + 1
-        shotKey = f'{i:05d}'
-
-    shotKey = int(shotKey) - 1
-    try:
-        nChannels = int(nChannels / shotKey)
-    except ZeroDivisionError:
-        print("No data was detected.")
-
-    if verbose:
-        print(f"{nChannels} channels detected.")
-        print(f"{shotKey} shots detected per each channel.")
-
-    # # Apply correction factors to specific channels
-    # for trace in amps:
-    #     trace[4] *= 1.499326
-    #     trace[5] *= 319.2277
-    #     trace[6] *= 31936.65
-
-    return times, amps, metas
 
 
 # %%GENERAL TRACE READER
@@ -829,6 +716,7 @@ def generalReadTRC(dataDir, verbose=False):
         if not parsetwo:
             parse = False
 
+        # print(f"tmpTime has length {len(tmpTime)}")
         times.append(tmpTime)
         amps.append(tmpAmp)
         metas.append(tmpMeta)
@@ -842,9 +730,9 @@ def generalReadTRC(dataDir, verbose=False):
 
     """
         |\1. Laser Photodiode
-        ||2. TOF Low
-        ||3. TOF Mid
-        ||4. TOF High
+        ||2. TOF L
+        ||3. TOF M
+        ||4. TOF H
         ||5. Ion Grid (Flight = 1.499326 pc/V, GSE = 0.519602 pc/V)
         ||6. Target Low Range (Flight = 319.2277 pc/V, GSE = 0.232115 pc/V)
         |/7. Target High Range (Flight = 31936.65 pc/V, GSE = Nonexistent)
@@ -859,7 +747,6 @@ def generalReadTRC(dataDir, verbose=False):
     if verbose:
         print(f"{nChannels} channels detected.")
         print(f"{shotKey} shots detected per each channel.")
-    # print(metas[0])
     return times, amps, metas
 
 
@@ -889,28 +776,69 @@ def find_nearest(a, a0):
 if __name__ == "__main__":
     """
         |\1. Laser Photodiode
-        ||2. TOF Low
-        ||3. TOF Mid
-        ||4. TOF High
+        ||2. TOF L
+        ||3. TOF M
+        ||4. TOF H
         ||5. Ion Grid (Flight = 1.499326 pc/V, GSE = 0.519602 pc/V)
         ||6. Target Low Range (Flight = 319.2277 pc/V, GSE = 0.232115 pc/V)
         |/7. Target High Range (Flight = 31936.65 pc/V, GSE = Nonexistent)
     """
 
-    # ChannelNames = ["QD Low", "QD High", "TOF Low", "TOF Mid", "TOF High", "Ion Grid", "Target (GSE)"]
-    ChannelNames = ["QD Low", "QD High", "TOF Low"]
+    # ChannelNames = ["Laser Photodiode", "TOF L", "TOF M", "TOF H", "Ion Grid", "Target Low Range", "Target High Range"]
+    # ChannelNames = ["QD Low", "QD High", "TOF L", "TOF M", "TOF H", "Ion Grid", "Target L", "Target H"]
+    # ChannelNames = ["QD Low", "QD High", "TOF L", "TOF M", "TOF H", "Ion Grid", "Target H"]
 
-    # Initalize parsing object to pass filename
-    aparser = argparse.ArgumentParser()
-    aparser.add_argument("--sourcefolder", "-s", type=str, required=True)
-    aparser.add_argument("--targetfolder", "-t", type=str, required=True)
-    args = aparser.parse_args()
+    # ChannelNames = ["Ion Grid", "TOF H Gain", "TOF L Gain", "TOF M Gain", "Target CSA", "Velocity Grid CSA"]
+    # # LaserPrimer = ImpactBook(ChannelNames, trcdir="/Users/impact/Dropbox/IDEX Pipeline/python/SpectrumPY/IDEX EM1 Laser Testing/Finding Focus")
+
+    ChannelNames = ["QD Low", "QD High", "TOF L", "TOF M", "TOF H", "Ion Grid", "Target L", "Target H"]
+    # ChannelNames = ["QD High", "Ion Grid", "Target H", "TOF L", "TOF M", "TOF H"]
+
+    # Set up argument parsing
+    parser = argparse.ArgumentParser(description="Run ImpactBook with specified directories and experiment names.")
+    parser.add_argument("--trcdir", type=str, required=True, help="Directory containing TRC files.")
+    parser.add_argument("--experimentname", type=str, required=True, help="Name of the experiment.")
+
+    # Parse the arguments
+    args = parser.parse_args()
+    trcdir = args.trcdir
+    experimentname = args.experimentname
+
+    # Call the ImpactBook function with the provided arguments
+    ImpactBook(ChannelNames, trcdir=trcdir, ExperimentName=experimentname)
+
+    # ImpactBook(ChannelNames, trcdir = "vbin_5-8", ExperimentName="Grid vel 5-8")
 
 
-    # write_to_cdf(packets)
-    try:
-        ImpactBook(ChannelNames, trcdir = args.sourcefolder, ExperimentName=args.targetfolder)
-    except Exception as e:
-        print(e)
-        pass
 
+    # ImpactBook(ChannelNames, trcdir = "/Users/impact/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/0_SpectrumPY Dust Edition/0_IDEX_EM1_Dust_Testing/IDEX_Grid_Characterization/vbin_5-8", ExperimentName="Grid vel 5-8")
+        # DustPrimer = ImpactBook(ChannelNames, trcdir = "~/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/0_SpectrumPY Dust Edition/0_IDEX_EM1_Dust_Testing/Dust_09.20.22/Target_Location_1", ExperimentName="Target Location 1")
+
+    # os.chdir("0_IDEX_EM1_Dust_Testing/IDEX_Grid_Characterization")
+    # print(os.listdir())
+
+    # ImpactBook(ChannelNames, trcdir = "vbin_5-8", ExperimentName="Grid vel 5-8")
+        # DustPrimer = ImpactBook(ChannelNames, trcdir = "~/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/0_SpectrumPY Dust Edition/0_IDEX_EM1_Dust_Testing/Dust_09.20.22/Target_Location_1", ExperimentName="Target Location 1")
+
+
+
+    # ImpactBook(ChannelNames, trcdir = "vbin_12-20", ExperimentName="Grid vel 12-20")
+        # DustPrimer = ImpactBook(ChannelNames, trcdir = "~/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/0_SpectrumPY Dust Edition/0_IDEX_EM1_Dust_Testing/Dust_09.20.22/Target_Location_1", ExperimentName="Target Location 1")
+
+
+
+
+    # # try:
+    # # ImpactBook(ChannelNames, trcdir = "/Users/impact/Dropbox/IDEX Pipeline/python/SpectrumPY/IDEX EM1 Laser Testing/Finding Focus", ExperimentName="Finding Focus Dataset")
+    #     # ImpactBook(ChannelNames, trcdir = "/Users/impact/Dropbox/Mac (2)/Documents/IDEX_dust_09.28.22/Target_Location_Detector", ExperimentName="Target Location Detector v2")
+    #     # DustPrimer = ImpactBook(ChannelNames, trcdir = "/Users/impact/Dropbox/IDEX Pipeline/python/SpectrumPY/Dust_09.20.22/Target_Location_1", ExperimentName="Target Location 1")
+    # # except:
+    # #    pass
+
+    # try:
+    #     # ImpactBook(ChannelNames, trcdir = "/Users/impact/Dropbox/IDEX Pipeline/python/SpectrumPY/IDEX EM1 Laser Testing/Finding Focus", ExperimentName="Finding Focus Dataset")
+
+    #     # ImpactBook(ChannelNames, trcdir = "/Users/impact/Dropbox/Mac (2)/Documents/IDEX_dust_09.20.22/Target_Location_Detector", ExperimentName="Target Location Detector")
+    #     DustPrimer = ImpactBook(ChannelNames, trcdir = "/Users/impact/Dropbox/IDEX Pipeline/3_Codes/2_Level 0->1/Python_Packet_Crushing/lasp_packets/tests/integration/test_xtce_based_parsing/sciData_2022_130_17_41_53.h5", ExperimentName="SciData53")
+    # except:
+    #     pass

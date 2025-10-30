@@ -67,7 +67,7 @@ from PyQt6.QtWidgets import (
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-from plot_style import apply_plot_style
+from .plot_style import apply_plot_style
 
 # %%PRETTY PLOTS
 matplotlib.use('Agg')

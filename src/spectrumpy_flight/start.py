@@ -53,10 +53,10 @@ except Exception:
     )
     _QT = "PyQt6"
 
-from readTrc import Trc
+from .readTrc import Trc
 
-import spectrum_launcher
-from spectrum_launcher import LaunchWindow
+from . import spectrum_launcher
+from .spectrum_launcher import LaunchWindow
 
 REPO_ROOT = Path(__file__).resolve().parent
 TRC_SUFFIX = ".trc"
@@ -214,7 +214,7 @@ class AutoProcessingLaunchWindow(LaunchWindow):
         self._progress_dialog = progress
 
         def run_impactbook() -> Path:
-            from ImpactBook import ImpactBook
+            from .ImpactBook import ImpactBook
 
             ImpactBook(channel_names, trcdir=str(directory), ExperimentName=experiment_name)
             return (REPO_ROOT / "HDF5" / f"{experiment_name}.h5").resolve()

@@ -2,7 +2,13 @@ import pytest
 
 np = pytest.importorskip("numpy")
 
-from dust_composition import combine_waveform_channels, detect_saturation, GAIN_HIGH, GAIN_LOW, GAIN_MEDIUM
+from spectrumpy_flight.dust_composition import (
+    GAIN_HIGH,
+    GAIN_LOW,
+    GAIN_MEDIUM,
+    combine_waveform_channels,
+    detect_saturation,
+)
 
 
 def test_detect_saturation_flags_clipped_segments_with_jitter():

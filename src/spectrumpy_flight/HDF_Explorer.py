@@ -46,7 +46,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from idex_variable_definitions import VariableDefinitionsCatalog, load_variable_definitions
+from .idex_variable_definitions import VariableDefinitionsCatalog, load_variable_definitions
 
 # --- Quicklook integration -------------------------------------------------
 
