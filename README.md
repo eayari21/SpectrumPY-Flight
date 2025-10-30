@@ -16,6 +16,20 @@ python start.py
 
 The Spectrum Launcher opens immediately and hands off to the Quicklook viewer so you can load telemetry, browse documentation, and export science plots without touching any other scripts.【F:start.py†L1-L7】【F:spectrum_launcher.py†L167-L289】
 
+## Installation
+
+Install the published package from PyPI when you want to run SpectrumPY outside
+the repository checkout:
+
+```
+python -m pip install spectrumpy-flight
+```
+
+macOS-specific preparation steps are covered in
+[`src/spectrumpy_flight/docs/macos_pip_install.md`](src/spectrumpy_flight/docs/macos_pip_install.md). The document explains
+how to prepare Homebrew Python environments, optional extras, and Qt security
+prompts for first-time launches on Ventura and newer systems.【F:src/spectrumpy_flight/docs/macos_pip_install.md†L1-L83】
+
 ---
 
 ## Core capabilities

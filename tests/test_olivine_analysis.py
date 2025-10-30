@@ -7,10 +7,12 @@ import pytest
 np = pytest.importorskip("numpy")
 h5py = pytest.importorskip("h5py")
 
-from olivine_metrics import EXPECTED_MASS_LINES, generate_olivine_metrics
+from spectrumpy_flight import package_path
+from spectrumpy_flight.olivine_metrics import EXPECTED_MASS_LINES, generate_olivine_metrics
 
 
 _OLIVINE_ENV_VAR = "OLIVINE_TEST_DATA_ROOT"
+_PACKAGE_ROOT = package_path()
 
 
 def _h5_has_path(handle: h5py.File, path: str) -> bool:
@@ -29,7 +31,7 @@ def _collect_olivine_inputs() -> list[Path]:
     if env_value:
         candidates.append(Path(env_value))
 
-    for default in (Path("HDF5"), Path("Data")):
+    for default in (_PACKAGE_ROOT / "HDF5", _PACKAGE_ROOT / "Data"):
         candidates.append(default)
 
     discovered: list[Path] = []
@@ -57,7 +59,7 @@ def _collect_olivine_inputs() -> list[Path]:
     if not discovered:
         pytest.skip(
             "No decoded olivine HDF5 files were found. "
-            "Populate the HDF5 directory or set the OLIVINE_TEST_DATA_ROOT environment variable."
+            "Populate the package HDF5 directory or set the OLIVINE_TEST_DATA_ROOT environment variable."
         )
 
     return discovered

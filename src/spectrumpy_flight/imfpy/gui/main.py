@@ -4,41 +4,32 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+from importlib import resources
 import sys
-from pathlib import Path
 from types import ModuleType
 from typing import Optional
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
-
-def _ensure_repo_root() -> None:
-    """Add the repository root to :data:`sys.path` if required."""
-
-    repo_str = str(REPO_ROOT)
-    if repo_str not in sys.path:
-        sys.path.insert(0, repo_str)
 
 
 def _load_quicklook_module() -> ModuleType:
     """Return the dynamically imported ``IDEX_quicklook`` module."""
 
-    _ensure_repo_root()
-    module_name = "IDEX_quicklook"
-    module_path = REPO_ROOT / "IDEX-quicklook.py"
-    if not module_path.exists():
-        msg = "Unable to locate 'IDEX-quicklook.py'. Ensure you are running from the SpectrumPY repository."
+    module_name = "spectrumpy_flight.IDEX_quicklook"
+    resource = resources.files("spectrumpy_flight") / "IDEX-quicklook.py"
+    if not resource.is_file():
+        msg = "Unable to locate 'IDEX-quicklook.py' inside the installed package."
         raise FileNotFoundError(msg)
 
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if spec is None or spec.loader is None:
-        msg = "Failed to create a module spec for 'IDEX-quicklook.py'."
-        raise ImportError(msg)
+    with resources.as_file(resource) as module_path:
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if spec is None or spec.loader is None:
+            msg = "Failed to create a module spec for 'IDEX-quicklook.py'."
+            raise ImportError(msg)
 
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        sys.modules.setdefault("IDEX_quicklook", module)
+        spec.loader.exec_module(module)
+        return module
 
 
 def _create_application() -> "QApplication":
@@ -83,8 +74,7 @@ def _launch_quicklook(filename: Optional[str], eventnumber: Optional[int]) -> in
 def _launch_welcome() -> int:
     """Launch the welcome screen defined in :mod:`spectrum_launcher`."""
 
-    _ensure_repo_root()
-    from spectrum_launcher import main as launcher_main
+    from .spectrum_launcher import main as launcher_main
 
     return launcher_main()
 

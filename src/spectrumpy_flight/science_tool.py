@@ -42,7 +42,7 @@ import datetime
 # import signal
 import matplotlib.pyplot as plt
 
-from plot_style import apply_plot_style
+from .plot_style import apply_plot_style
 
 apply_plot_style()
 import numpy as np
@@ -52,7 +52,7 @@ from datetime import datetime, timedelta, timezone
 # || LASP software
 from lasp_packets import xtcedef  # Gavin Medley's xtce UML implementation
 from lasp_packets import parser  # Gavin Medley's constant bitstream implementation
-from rice_decode import idex_rice_Decode
+from .rice_decode import idex_rice_Decode
 # import cdflib.cdfwrite as cdfwrite
 # import cdflib.cdfread as cdfread
 
