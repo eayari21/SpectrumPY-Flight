@@ -32,21 +32,27 @@ print(title)
 # %%
 # || Python libraries
 import subprocess
-import os
-
-
+import sys
+from importlib import util
 
 
 def run_science_tool():
     try:
-        science_tool_process = subprocess.Popen(["./science_tool.py"], shell=True)
-        science_tool_process.wait()  # Wait for the subprocess to finish
+        subprocess.run(
+            [sys.executable, "-m", "spectrumpy_flight.science_tool"],
+            check=True,
+        )
     except KeyboardInterrupt:
         print("\nKeyboard interrupt received. Terminating subprocess.")
-        science_tool_process.terminate()  # Terminate the subprocess if interrupted
+
 
 def run_backup_script():
-    subprocess.run(["./backup_science.py"], check=True, shell=True)
+    module_name = "spectrumpy_flight.backup_science"
+    if util.find_spec(module_name) is None:
+        print("Backup script not found; skipping backup stage.")
+        return
+    subprocess.run([sys.executable, "-m", module_name], check=True)
+
 
 if __name__ == "__main__":
     run_science_tool()

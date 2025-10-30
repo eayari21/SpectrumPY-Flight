@@ -4,17 +4,17 @@
 
 > Ground-system decoding, fitting, and visualization tools for the LASP/IMPACT IDEX campaign.
 
-![SpectrumPY overview](docs/media/quicklook_overview.svg)
+![SpectrumPY overview](src/spectrumpy_flight/docs/media/quicklook_overview.svg)
 
 ---
 
 ## Launch in 10 seconds
 
 ```
-python start.py
+python -m spectrumpy_flight.start
 ```
 
-The Spectrum Launcher opens immediately and hands off to the Quicklook viewer so you can load telemetry, browse documentation, and export science plots without touching any other scripts.【F:start.py†L1-L7】【F:spectrum_launcher.py†L167-L289】
+The Spectrum Launcher opens immediately and hands off to the Quicklook viewer so you can load telemetry, browse documentation, and export science plots without touching any other scripts.【F:src/spectrumpy_flight/start.py†L1-L7】【F:src/spectrumpy_flight/spectrum_launcher.py†L167-L289】
 
 ## Installation
 
@@ -131,10 +131,10 @@ The executable runs without root privileges and extracts its shared libraries on
 
 ## Documentation & tutorials
 
-* **Quicklook tutorial** – Guided walkthrough of the GUI workflow, shortcuts, and recommended analysis order.【F:docs/quicklook_tutorial.md†L1-L123】
-* **Fitting reference** – Deep dive into baseline handling, Data Browser correlations, and variable-definition lookups.【F:docs/fitting_reference.md†L1-L115】
-* **Packaging playbook** – Extended release checklists, validation steps, and troubleshooting strategies for desktop builds.【F:docs/packaging_tutorial.md†L1-L198】
-* **Olivine metrics** – Instructions for running the olivine regression and locating the generated SNR, timing, and saturation reports.【F:docs/olivine_metrics.md†L1-L64】
+* **Quicklook tutorial** – Guided walkthrough of the GUI workflow, shortcuts, and recommended analysis order.【F:src/spectrumpy_flight/docs/quicklook_tutorial.md†L1-L123】
+* **Fitting reference** – Deep dive into baseline handling, Data Browser correlations, and variable-definition lookups.【F:src/spectrumpy_flight/docs/fitting_reference.md†L1-L115】
+* **Packaging playbook** – Extended release checklists, validation steps, and troubleshooting strategies for desktop builds.【F:src/spectrumpy_flight/docs/packaging_tutorial.md†L1-L198】
+* **Olivine metrics** – Instructions for running the olivine regression and locating the generated SNR, timing, and saturation reports.【F:src/spectrumpy_flight/docs/olivine_metrics.md†L1-L64】
 
 Launch the in-app documentation center anytime (`F1`) to search and read these guides inside the Quicklook viewer.【F:IDEX-quicklook.py†L1888-L1964】
 

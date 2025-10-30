@@ -2,8 +2,9 @@
 
 # || RUN SCIENCE: Run the science tool and backup the data
 
-# Run science_tool.py
-./science_tool.py
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="${SCRIPT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
+PYTHON_BIN="${PYTHON:-python}"
 
-# Run backup_science.py
-./backup_science.py
+# Run science and optional backup routines through the packaged launcher
+"$PYTHON_BIN" -m spectrumpy_flight.run_all
