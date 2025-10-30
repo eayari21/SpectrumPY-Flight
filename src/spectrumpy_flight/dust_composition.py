@@ -785,6 +785,7 @@ def combine_waveform_channels(
     combined_corrected = np.zeros(length, dtype=float)
 
     saturated_high = np.ones(length, dtype=bool)
+    high_corrected: Optional[np.ndarray] = None
     if high_slice is not None and high_slice.size:
         high_corrected = high_slice - high_baseline
         combined_corrected[:] = high_corrected
@@ -792,22 +793,44 @@ def combine_waveform_channels(
 
     medium_scaled: Optional[np.ndarray] = None
     medium_saturated = np.ones(length, dtype=bool)
+    medium_outperform_mask: Optional[np.ndarray] = None
     if medium_slice is not None and medium_slice.size:
         medium_corrected = medium_slice - medium_baseline
         scale = high_gain / medium_gain if medium_gain else 1.0
         medium_scaled = medium_corrected * scale
         medium_saturated = detect_saturation(medium_slice, times)
+        if high_corrected is not None:
+            high_scale = float(np.nanmax(np.abs(high_corrected))) if high_corrected.size else 0.0
+            medium_scale = float(np.nanmax(np.abs(medium_scaled))) if medium_scaled.size else 0.0
+            scale_reference = max(high_scale, medium_scale)
+            if not np.isfinite(scale_reference) or scale_reference <= 0.0:
+                tolerance = 0.0
+            else:
+                tolerance = 0.015 * scale_reference + 1.0e-9
+            with np.errstate(invalid="ignore"):
+                medium_outperform_mask = np.abs(medium_scaled) > np.abs(high_corrected) + tolerance
         if high_slice is None:
             combined_corrected[:] = medium_scaled
             saturated_high = np.ones(length, dtype=bool)
 
     low_scaled: Optional[np.ndarray] = None
     low_saturated = np.ones(length, dtype=bool)
+    low_outperform_mask: Optional[np.ndarray] = None
     if low_slice is not None and low_slice.size:
         low_corrected = low_slice - low_baseline
         scale = high_gain / low_gain if low_gain else 1.0
         low_scaled = low_corrected * scale
         low_saturated = detect_saturation(low_slice, times)
+        if high_corrected is not None:
+            high_scale = float(np.nanmax(np.abs(high_corrected))) if high_corrected.size else 0.0
+            low_scale = float(np.nanmax(np.abs(low_scaled))) if low_scaled.size else 0.0
+            scale_reference = max(high_scale, low_scale)
+            if not np.isfinite(scale_reference) or scale_reference <= 0.0:
+                tolerance = 0.0
+            else:
+                tolerance = 0.02 * scale_reference + 1.0e-9
+            with np.errstate(invalid="ignore"):
+                low_outperform_mask = np.abs(low_scaled) > np.abs(high_corrected) + tolerance
         if high_slice is None and medium_slice is None:
             combined_corrected[:] = low_scaled
             saturated_high = np.ones(length, dtype=bool)
@@ -815,17 +838,25 @@ def combine_waveform_channels(
     remaining_mask = saturated_high.copy()
 
     if medium_scaled is not None:
-        replace_mask = remaining_mask & ~medium_saturated & np.isfinite(medium_scaled)
+        finite_medium = np.isfinite(medium_scaled)
+        replace_mask = remaining_mask & ~medium_saturated & finite_medium
+        if medium_outperform_mask is not None:
+            replace_mask |= medium_outperform_mask & ~medium_saturated & finite_medium
         combined_corrected[replace_mask] = medium_scaled[replace_mask]
         if high_slice is None:
             remaining_mask = medium_saturated.copy()
         else:
             remaining_mask &= medium_saturated
+        remaining_mask &= ~replace_mask
 
     if low_scaled is not None:
-        replace_mask = remaining_mask & ~low_saturated & np.isfinite(low_scaled)
+        finite_low = np.isfinite(low_scaled)
+        replace_mask = remaining_mask & ~low_saturated & finite_low
+        if low_outperform_mask is not None:
+            replace_mask |= low_outperform_mask & ~low_saturated & finite_low
         combined_corrected[replace_mask] = low_scaled[replace_mask]
         remaining_mask &= low_saturated
+        remaining_mask &= ~replace_mask
 
     return combined_corrected
 
