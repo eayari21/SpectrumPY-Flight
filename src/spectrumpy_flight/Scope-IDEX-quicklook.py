@@ -68,6 +68,7 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from .plot_style import apply_plot_style
+from .paths import default_hdf5_dir
 
 # %%PRETTY PLOTS
 matplotlib.use('Agg')
@@ -202,7 +203,7 @@ class MainWindow(QMainWindow):
             filename = QFileDialog.getOpenFileName(
                 self,
                 "Open File",
-                os.path.join(os.getcwd(), "HDF5"),
+                str(default_hdf5_dir()),
                 "HDF5 Files (*.h5)",
             )[0]
         

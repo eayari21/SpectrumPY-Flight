@@ -48,6 +48,7 @@ from typing import Union
 import numpy as np
 
 from .idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
+from .paths import default_hdf5_dir
 
 try:
     # Preferred on modern stacks
@@ -198,16 +199,15 @@ def prompt_for_data_file(
 
     if start_dir is None:
         repo_root = Path(__file__).resolve().parent
+        hdf5_dir = default_hdf5_dir()
         preferred_map = {
             "cdf": repo_root / "CDF",
-            "hdf5": repo_root / "HDF5",
+            "hdf5": hdf5_dir,
         }
         if preferred and (target_dir := preferred_map.get(preferred.lower())) and target_dir.exists():
             start_dir = str(target_dir)
         else:
-            default_dir = repo_root / "HDF5"
-            if not default_dir.exists():
-                default_dir = repo_root
+            default_dir = hdf5_dir if hdf5_dir.exists() else repo_root
             start_dir = str(default_dir)
 
     options = QFileDialog.Option.DontUseNativeDialog | QFileDialog.Option.ReadOnly

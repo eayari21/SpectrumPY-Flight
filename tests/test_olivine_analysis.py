@@ -7,7 +7,7 @@ import pytest
 np = pytest.importorskip("numpy")
 h5py = pytest.importorskip("h5py")
 
-from spectrumpy_flight import package_path
+from spectrumpy_flight import hdf5_search_paths, package_path
 from spectrumpy_flight.olivine_metrics import EXPECTED_MASS_LINES, generate_olivine_metrics
 
 
@@ -31,8 +31,9 @@ def _collect_olivine_inputs() -> list[Path]:
     if env_value:
         candidates.append(Path(env_value))
 
-    for default in (_PACKAGE_ROOT / "HDF5", _PACKAGE_ROOT / "Data"):
+    for default in hdf5_search_paths():
         candidates.append(default)
+    candidates.append(_PACKAGE_ROOT / "Data")
 
     discovered: list[Path] = []
     seen: set[Path] = set()

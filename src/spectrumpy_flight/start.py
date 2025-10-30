@@ -30,7 +30,7 @@ if __package__ in (None, ""):
 
 os.environ.pop("QT_DEBUG_PLUGINS", None)
 
-from spectrumpy_flight import package_path, spectrum_launcher
+from spectrumpy_flight import default_hdf5_dir, package_path, spectrum_launcher
 from spectrumpy_flight.readTrc import Trc
 from spectrumpy_flight.spectrum_launcher import LaunchWindow
 
@@ -133,9 +133,10 @@ class AutoProcessingLaunchWindow(LaunchWindow):
 
     # ------------------------------------------------------------------
     def select_file(self) -> None:  # type: ignore[override]
-        start_dir = self._selected_path.parent if self._selected_path else (REPO_ROOT / "HDF5")
+        hdf5_dir = default_hdf5_dir()
+        start_dir = self._selected_path.parent if self._selected_path else hdf5_dir
         if not start_dir.exists():
-            start_dir = REPO_ROOT
+            start_dir = hdf5_dir if hdf5_dir.exists() else REPO_ROOT
 
         file_dialog = QFileDialog(self, "Select data file or directory", str(start_dir))
         file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
@@ -228,7 +229,7 @@ class AutoProcessingLaunchWindow(LaunchWindow):
             from spectrumpy_flight.ImpactBook import ImpactBook
 
             ImpactBook(channel_names, trcdir=str(directory), ExperimentName=experiment_name)
-            return (REPO_ROOT / "HDF5" / f"{experiment_name}.h5").resolve()
+            return (default_hdf5_dir(create=True) / f"{experiment_name}.h5").resolve()
 
         future = self._executor.submit(run_impactbook)
         self._active_future = future
