@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Ensure Python can resolve the installed or local package
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="${SCRIPT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
+PYTHON_BIN="${PYTHON:-python}"
+
 # Set the base directories to search through
 BASE_DIRS=(
     "/Users/etay8828/Desktop/IDEX_Cal/Pre_Launch/2025_02_06_run2_split"
@@ -22,7 +27,7 @@ process_folder() {
         echo "Processing folder: $folder with experiment name: $experiment_name"
 
         # Run the script with the folder as the --trcdir argument
-        python ImpactBook.py --trcdir "$folder" --experimentname "$experiment_name"
+        "$PYTHON_BIN" -m spectrumpy_flight.ImpactBook --trcdir "$folder" --experimentname "$experiment_name"
         if [ $? -ne 0 ]; then
             echo "Error processing $folder" >> "$LOG_FILE"
         fi

@@ -46,7 +46,7 @@ database = ["mysql-connector-python>=8.0"]
 
 [project.urls]
 Homepage = "https://github.com/eayari21/4_Flight"
-Documentation = "https://github.com/eayari21/4_Flight/tree/main/docs"
+Documentation = "https://github.com/eayari21/4_Flight/tree/main/src/spectrumpy_flight/docs"
 
 [project.scripts]
 spectrumpy-gui = "spectrumpy_flight.imfpy.gui.main:main"

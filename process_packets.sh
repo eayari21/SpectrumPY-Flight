@@ -1,5 +1,9 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="${SCRIPT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
+PYTHON_BIN="${PYTHON:-python}"
+
 # Define the base directories
 # directories=("../Pre_Env" "../Post_Env")
 directories=("Data/")
@@ -23,7 +27,7 @@ for dir in "${directories[@]}"; do
 
         echo "Processing file: $file"
         # Call the Python script with the file and handle errors
-        python idex_packet.py -f "$file" || {
+        "$PYTHON_BIN" -m spectrumpy_flight.idex_packet -f "$file" || {
             echo "Error processing file: $file. Skipping."
             continue
         }

@@ -7,7 +7,7 @@ Apple silicon), Windows, and Linux. The build process relies on
 captures the Markdown documentation so the in-app help browser works offline.
 
 If you prefer a narrative, end-to-end walkthrough, read the companion
-[**SpectrumPY Packaging & Distribution Playbook**](../docs/packaging_tutorial.md)
+[**SpectrumPY Packaging & Distribution Playbook**](../src/spectrumpy_flight/docs/packaging_tutorial.md)
 for annotated checklists, validation steps, and troubleshooting recipes.
 
 ## Downloading prebuilt bundles
