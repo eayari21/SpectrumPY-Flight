@@ -9,11 +9,13 @@ Institute for Modeling Plasmas, Atmospheres and Cosmic Dust
 Works with Python 3.8.10
 """
 import os
+import sys
 import h5py
 import random
 import csv
 import math
 import copy
+from pathlib import Path
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -22,9 +24,18 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 # import seaborn as sns
-from .plot_style import apply_plot_style
 
-from pathlib import Path
+if __package__ is None or __package__ == "":
+    _MODULE_DIR = Path(__file__).resolve().parent
+    _PACKAGE_ROOT = _MODULE_DIR.parent
+    for _path in (_MODULE_DIR, _PACKAGE_ROOT):
+        _path_str = str(_path)
+        if _path_str not in sys.path:
+            sys.path.append(_path_str)
+    from plot_style import apply_plot_style
+else:
+    from .plot_style import apply_plot_style
+
 from matplotlib import colors
 from scipy.signal import find_peaks
 
