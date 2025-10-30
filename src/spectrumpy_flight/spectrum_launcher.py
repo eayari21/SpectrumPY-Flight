@@ -40,6 +40,7 @@ from PyQt6.QtWidgets import (
 import requests
 from datetime import datetime, timezone
 
+from . import default_hdf5_dir
 from .HDF_Explorer import HDFDataExplorer
 from IDEX_quicklook import MainWindow as QuicklookWindow
 
@@ -387,9 +388,10 @@ class LaunchWindow(QMainWindow):
 
     # ------------------------------------------------------------------
     def select_file(self) -> None:
-        start_dir = self._selected_path.parent if self._selected_path else (REPO_ROOT / "HDF5")
+        hdf5_dir = default_hdf5_dir()
+        start_dir = self._selected_path.parent if self._selected_path else hdf5_dir
         if not start_dir.exists():
-            start_dir = REPO_ROOT
+            start_dir = hdf5_dir if hdf5_dir.exists() else REPO_ROOT
 
         file_dialog = QFileDialog(self, "Select data file", str(start_dir))
         file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
@@ -586,8 +588,7 @@ class LaunchWindow(QMainWindow):
         return target
 
     def _convert_packet_file(self, path: Path) -> Optional[Path]:
-        output_dir = REPO_ROOT / "HDF5"
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = default_hdf5_dir(create=True)
         produced_path = output_dir / f"{path.name}.h5"
 
         command = [sys.executable, str(REPO_ROOT / "idex_packet.py"), "--file", str(path)]

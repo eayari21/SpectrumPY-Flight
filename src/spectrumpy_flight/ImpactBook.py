@@ -22,6 +22,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from .plot_style import apply_plot_style
+from .paths import default_hdf5_dir
 
 apply_plot_style()
 
@@ -138,7 +139,7 @@ class ImpactBook():
         QDFolder = os.path.join(os.getcwd(), f"QDFits/{ExperimentName}_QDFits")
         os.makedirs(QDFolder)
 
-        h5file = "./HDF5/" + f"{ExperimentName}.h5"
+        h5file = default_hdf5_dir(create=True) / f"{ExperimentName}.h5"
 
         for tracenum in range(self.NumEvents - 1):
             ImpactEventList.append(ImpactEvent(tracenum, ChannelNames, times[tracenum], amps[tracenum], metas[tracenum], ExperimentName, IonFolder, TargetFolder, QDFolder, h5file, ChannelUnits))

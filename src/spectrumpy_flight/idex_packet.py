@@ -21,6 +21,7 @@ import struct
 import matplotlib.pyplot as plt
 from pathlib import Path
 from .plot_style import apply_plot_style
+from .paths import default_hdf5_dir
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 apply_plot_style()
@@ -1125,8 +1126,7 @@ class IDEXEvent:
     def write_to_hdf5(self, waveforms: dict, filename: str):
         output_path = Path(filename)
         if not output_path.is_absolute():
-            default_dir = Path.cwd() / "HDF5"
-            default_dir.mkdir(parents=True, exist_ok=True)
+            default_dir = default_hdf5_dir(create=True)
             output_path = default_dir / output_path.name
         else:
             output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -47,6 +47,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .idex_variable_definitions import VariableDefinitionsCatalog, load_variable_definitions
+from .paths import default_hdf5_dir
 
 # --- Quicklook integration -------------------------------------------------
 
@@ -659,7 +660,7 @@ def _is_time_dataset(name: str) -> bool:
 
 
 class HDFDataExplorer(QWidget):
-    def __init__(self, source_path: str | os.PathLike[str] = "HDF5"):
+    def __init__(self, source_path: str | os.PathLike[str] | None = None):
         super().__init__()
         self.setWindowTitle("SpectrumPY — HDF Explorer")
 
@@ -667,9 +668,12 @@ class HDFDataExplorer(QWidget):
         if logo_path is not None:
             self.setWindowIcon(QIcon(str(logo_path)))
 
-        resolved = Path(source_path)
-        if not resolved.is_absolute():
-            resolved = (Path(__file__).resolve().parent / resolved).resolve()
+        if source_path is None:
+            resolved = default_hdf5_dir()
+        else:
+            resolved = Path(source_path)
+            if not resolved.is_absolute():
+                resolved = (Path(__file__).resolve().parent / resolved).resolve()
 
         if resolved.is_file():
             self.hdf5_folder = resolved.parent
@@ -1996,7 +2000,7 @@ def main() -> None:
     if logo_path is not None:
         app.setWindowIcon(QIcon(str(logo_path)))
 
-    folder = Path(__file__).resolve().parent / "HDF5"
+    folder = default_hdf5_dir()
     window = HDFDataExplorer(folder)
     window.resize(1100, 900)
     window.show()

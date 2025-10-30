@@ -35,6 +35,7 @@ print(title)
 import argparse
 import os
 import socket
+from pathlib import Path
 import bitstring
 import h5py
 import shutil
@@ -43,6 +44,7 @@ import datetime
 import matplotlib.pyplot as plt
 
 from .plot_style import apply_plot_style
+from .paths import default_hdf5_dir
 
 apply_plot_style()
 import numpy as np
@@ -433,16 +435,13 @@ class IDEXEvent:
     # || Write the waveform data 
     # || to an HDF5 file
     def write_to_hdf5(self, waveforms: dict, filename: str):
-        os.chdir('./HDF5/')
-        filename = os.path.split(filename)[-1]  # Just get the name of the file
-        # Prepend HDF5 folder to filename
+        output_dir = default_hdf5_dir(create=True)
+        output_path = output_dir / Path(filename).name
 
-        # print(waveforms.keys())
-        # print(waveforms.values())
+        if output_path.exists():
+            output_path.unlink()
 
-        if os.path.exists(filename):
-            os.remove(filename)
-        h = h5py.File(filename,'w')
+        h = h5py.File(output_path, 'w')
         for k, v in waveforms.items():
             # print(np.array(v))
             # h.create_dataset(k, data=np.array(v, dtype=np.int8))
@@ -454,7 +453,6 @@ class IDEXEvent:
                 h.create_dataset(f"/{k[0]}/Time (high sampling)", data=self.hstime)
             if(k[1]=='Ion Grid'):
                 h.create_dataset(f"/{k[0]}/Time (low sampling)", data=self.lstime)
-        os.chdir('../')
         # h.create_dataset("Time since ")
 
 # ||
