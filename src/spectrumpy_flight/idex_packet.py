@@ -15,6 +15,7 @@ import json
 import math
 import os
 import socket
+import sys
 import bitstring
 import h5py
 import shutil
@@ -22,9 +23,28 @@ import struct
 import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from .plot_style import apply_plot_style
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
+
+if __package__ is None or __package__ == "":
+    _MODULE_DIR = Path(__file__).resolve().parent
+    _PACKAGE_ROOT = _MODULE_DIR.parent
+    for _path in (_MODULE_DIR, _PACKAGE_ROOT):
+        _path_str = str(_path)
+        if _path_str not in sys.path:
+            sys.path.append(_path_str)
+    from plot_style import apply_plot_style
+    from idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
+    from rice_decode import idex_rice_Decode
+    from time2mass import time2mass, get_last_mass_line_assignments
+    from lookup.dust_estimator import estimate_particle, load_default_tables
+else:
+    from .plot_style import apply_plot_style
+    from .idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
+    from .rice_decode import idex_rice_Decode
+    from .time2mass import time2mass, get_last_mass_line_assignments
+    from .lookup.dust_estimator import estimate_particle, load_default_tables
+
 apply_plot_style()
 import numpy as np
 
@@ -34,8 +54,6 @@ MASS_STRETCH_MAX = 1.6
 COMBINED_SIGNAL_DATASET = "CombinedSignal"
 COMBINED_TIME_DATASET = "CombinedTime"
 DUST_ANALYSIS_GROUP = "Analysis/DustComposition"
-
-from .idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
 
 try:
     import cupy as cp  # Optional GPU acceleration
@@ -55,9 +73,6 @@ from scipy.special import erfc
 # || LASP software
 from lasp_packets import xtcedef  # Gavin Medley's xtce UML implementation
 from lasp_packets import parser  # Gavin Medley's constant bitstream implementation
-from .rice_decode import idex_rice_Decode
-from .time2mass import time2mass, get_last_mass_line_assignments
-from .lookup.dust_estimator import estimate_particle, load_default_tables
 import cdflib.cdfwrite as cdfwrite
 import cdflib.cdfread as cdfread
 
