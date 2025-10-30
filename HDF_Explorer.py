@@ -26,7 +26,7 @@ from matplotlib import dates as mdates, pyplot as plt, ticker
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.collections import PathCollection
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtGui import QIcon, QPalette, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -136,10 +136,25 @@ CATEGORY_DISPLAY_NAMES: Dict[str, str] = {
 
 CATEGORY_ORDER: Tuple[str, ...] = (
     CATEGORY_WAVEFORM,
-    CATEGORY_DUST,
     CATEGORY_INSTRUMENT,
+    CATEGORY_DUST,
     CATEGORY_OTHER,
 )
+
+
+def _disable_combo_row(combo: QComboBox, index: int) -> None:
+    model = combo.model()
+    try:
+        model_index = model.index(index, 0)
+    except Exception:
+        model_index = None
+    if model_index is not None:
+        try:
+            model.setData(model_index, 0, Qt.ItemDataRole.UserRole - 1)
+        except Exception:
+            combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
+    else:
+        combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
 
 
 @dataclass
@@ -275,7 +290,9 @@ class AxisSelector(QWidget):
         font = combo.font()
         font.setBold(True)
         combo.setItemData(index, font, Qt.ItemDataRole.FontRole)
-        combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
+        palette = combo.palette()
+        combo.setItemData(index, palette.color(QPalette.ColorRole.Mid), Qt.ItemDataRole.ForegroundRole)
+        _disable_combo_row(combo, index)
 
     def set_items(self, groups: Sequence[Tuple[str, Sequence[str]]]):
         prepared = [(title, [str(label) for label in labels if str(label).strip()]) for title, labels in groups]
@@ -1011,7 +1028,9 @@ class HDFDataExplorer(QWidget):
         font = combo.font()
         font.setBold(True)
         combo.setItemData(index, font, Qt.ItemDataRole.FontRole)
-        combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
+        palette = combo.palette()
+        combo.setItemData(index, palette.color(QPalette.ColorRole.Mid), Qt.ItemDataRole.ForegroundRole)
+        _disable_combo_row(combo, index)
 
     def _classify_dataset_label(
         self,

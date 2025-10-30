@@ -41,6 +41,7 @@ from matplotlib.collections import PathCollection
 
 try:  # pragma: no cover - Qt import guard
     from PySide6.QtCore import Qt
+    from PySide6.QtGui import QPalette
     from PySide6.QtWidgets import (
         QAbstractItemView,
         QCheckBox,
@@ -69,6 +70,7 @@ try:  # pragma: no cover - Qt import guard
     )
 except Exception:  # pragma: no cover - fallback to PyQt6
     from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QPalette
     from PyQt6.QtWidgets import (
         QAbstractItemView,
         QCheckBox,
@@ -1414,13 +1416,30 @@ def _species_display(label: str, mass: float) -> str:
     return f"{label}\u2003\u2003{mass:.3f} amu"
 
 
+def _disable_combo_row(combo: QComboBox, index: int) -> None:
+    model = combo.model()
+    try:
+        model_index = model.index(index, 0)
+    except Exception:
+        model_index = None
+    if model_index is not None:
+        try:
+            model.setData(model_index, 0, Qt.ItemDataRole.UserRole - 1)
+        except Exception:
+            combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
+    else:
+        combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
+
+
 def _add_combo_heading(combo: QComboBox, text: str) -> None:
     combo.addItem(text)
     index = combo.count() - 1
     font = combo.font()
     font.setBold(True)
     combo.setItemData(index, font, Qt.ItemDataRole.FontRole)
-    combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
+    palette = combo.palette()
+    combo.setItemData(index, palette.color(QPalette.ColorRole.Mid), Qt.ItemDataRole.ForegroundRole)
+    _disable_combo_row(combo, index)
 
 
 def _populate_species_combo(combo: QComboBox, *, placeholder: Optional[str] = "Assign selected line…") -> None:
