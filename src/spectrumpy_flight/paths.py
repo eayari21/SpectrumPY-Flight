@@ -19,6 +19,16 @@ def _cwd_hdf5_dir() -> Path:
     return Path.cwd() / "HDF5"
 
 
+def _repository_root() -> Path | None:
+    """Best-effort detection of the repository root when running from source."""
+
+    package_root = package_path().resolve()
+    for parent in package_root.parents:
+        if (parent / "pyproject.toml").exists() or (parent / ".git").exists():
+            return parent
+    return None
+
+
 def default_hdf5_dir(create: bool = False) -> Path:
     """Return the preferred HDF5 directory for generated products.
 
@@ -28,7 +38,8 @@ def default_hdf5_dir(create: bool = False) -> Path:
        ``Path.expanduser`` so ``"~/data"`` style values work.
     2. ``./HDF5`` relative to the current working directory.  This mirrors the
        historical layout used by the shell helpers and existing pipelines.
-    3. The package's bundled ``HDF5`` directory.  This is primarily useful when
+    3. ``HDF5/`` at the detected repository root (for editable/source checkouts).
+    4. The package's bundled ``HDF5`` directory.  This is primarily useful when
        reading shipped resources (for example, within the test suite) rather
        than writing new analysis products.
 
@@ -50,6 +61,14 @@ def default_hdf5_dir(create: bool = False) -> Path:
         if create:
             cwd_target.mkdir(parents=True, exist_ok=True)
         return cwd_target
+
+    repo_root = _repository_root()
+    if repo_root is not None:
+        repo_target = repo_root / "HDF5"
+        if repo_target.exists() or create:
+            if create:
+                repo_target.mkdir(parents=True, exist_ok=True)
+            return repo_target
 
     package_target = package_path("HDF5")
     if package_target.exists():
@@ -74,6 +93,11 @@ def hdf5_search_paths() -> list[Path]:
         paths.append(Path(env_value).expanduser())
 
     paths.append(_cwd_hdf5_dir())
+
+    repo_root = _repository_root()
+    if repo_root is not None:
+        paths.append(repo_root / "HDF5")
+
     paths.append(package_path("HDF5"))
 
     # Remove duplicates while preserving order.
