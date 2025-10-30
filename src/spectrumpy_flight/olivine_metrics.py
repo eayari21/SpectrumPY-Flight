@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import textwrap
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -12,6 +11,7 @@ from typing import Iterable, Iterator, Mapping, MutableMapping, Sequence
 import h5py
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.ticker import LogFormatterSciNotation, LogLocator, ScalarFormatter
 from matplotlib.backends.backend_pdf import PdfPages
 
 from .line_shapes import emg as _emg_profile
@@ -85,32 +85,87 @@ def _hist_figure(
     requirement_lines: Sequence[tuple[float | None, str]] | None = None,
 ) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(8, 6))
+    fig.patch.set_facecolor("white")
     finite = _finite_values(data)
 
     if finite.size:
-        bins = min(40, max(10, int(round(math.sqrt(finite.size)))))
-        ax.hist(
-            finite,
-            bins=bins,
-            color="#2a6ea6",
-            edgecolor="white",
-        )
-        ax.set_ylabel("Count")
-        if requirement_lines:
-            for value, label in requirement_lines:
-                if value is None:
-                    continue
-                ax.axvline(value, color="#c94b32", linestyle="--", linewidth=1.5)
+        positive = finite[finite > 0]
+        nonpositive_count = int(finite.size - positive.size)
+
+        if positive.size:
+            min_positive = float(np.min(positive))
+            max_positive = float(np.max(positive))
+            if np.isclose(min_positive, max_positive):
+                min_positive *= 0.9
+                max_positive *= 1.1
+
+            log_min = float(np.log10(min_positive))
+            log_max = float(np.log10(max_positive))
+            if np.isclose(log_min, log_max):
+                log_min -= 0.05
+                log_max += 0.05
+
+            bin_edges = np.logspace(log_min, log_max, num=41)
+            ax.hist(
+                positive,
+                bins=bin_edges,
+                color="#2a6ea6",
+                edgecolor="white",
+                linewidth=0.7,
+            )
+            ax.set_xscale("log")
+            ax.set_ylabel("Count", fontsize=12)
+            ax.yaxis.set_major_formatter(ScalarFormatter())
+            ax.xaxis.set_major_locator(LogLocator(base=10))
+            ax.xaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10) * 0.1))
+            ax.xaxis.set_major_formatter(LogFormatterSciNotation())
+            ax.grid(True, which="major", linestyle="--", linewidth=0.6, alpha=0.5)
+            ax.grid(True, which="minor", linestyle=":", linewidth=0.4, alpha=0.3)
+            ax.set_axisbelow(True)
+            ax.tick_params(axis="both", labelsize=10)
+            for spine in ("top", "right"):
+                ax.spines[spine].set_visible(False)
+
+            if requirement_lines:
+                y_max = ax.get_ylim()[1]
+                for value, label in requirement_lines:
+                    if value is None or value <= 0:
+                        continue
+                    ax.axvline(value, color="#c94b32", linestyle="--", linewidth=1.5)
+                    ax.annotate(
+                        label,
+                        xy=(value, y_max),
+                        xytext=(5, -10),
+                        textcoords="offset points",
+                        rotation=90,
+                        color="#c94b32",
+                        va="top",
+                        ha="left",
+                        fontsize=9,
+                    )
+
+            if nonpositive_count:
                 ax.text(
-                    value,
-                    ax.get_ylim()[1] * 0.9,
-                    label,
-                    rotation=90,
-                    color="#c94b32",
+                    0.98,
+                    0.95,
+                    f"{nonpositive_count} values ≤ 0 omitted",
+                    transform=ax.transAxes,
+                    ha="right",
                     va="top",
-                    ha="left",
                     fontsize=9,
+                    color="#6c757d",
                 )
+        else:
+            ax.text(
+                0.5,
+                0.5,
+                "Data must be positive for logarithmic histogramming.",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+                fontsize=12,
+            )
+            ax.set_axis_off()
     else:
         ax.text(
             0.5,
@@ -123,9 +178,9 @@ def _hist_figure(
         )
         ax.set_axis_off()
 
-    ax.set_title(title)
-    ax.set_xlabel(xlabel)
-    fig.text(0.5, 0.02, caption, ha="center", fontsize=10)
+    ax.set_title(title, fontsize=14, fontweight="bold")
+    ax.set_xlabel(xlabel, fontsize=12)
+    fig.text(0.5, 0.02, caption, ha="center", fontsize=11)
     fig.tight_layout(rect=(0, 0.04, 1, 1))
     return fig
 
