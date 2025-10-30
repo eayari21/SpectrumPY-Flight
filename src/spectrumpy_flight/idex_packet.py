@@ -11,6 +11,7 @@ Works with Python 3.8.10
 
 # || Python libraries
 import argparse
+import json
 import os
 import socket
 import bitstring
@@ -40,7 +41,7 @@ except Exception:  # pragma: no cover - cupy is optional
 from datetime import datetime, timedelta, timezone
 
 from scipy.optimize import curve_fit
-from scipy.signal import detrend, butter, filtfilt, find_peaks
+from scipy.signal import detrend, butter, filtfilt
 from scipy.integrate import quad
 from scipy.special import erfc
 
@@ -49,7 +50,7 @@ from scipy.special import erfc
 from lasp_packets import xtcedef  # Gavin Medley's xtce UML implementation
 from lasp_packets import parser  # Gavin Medley's constant bitstream implementation
 from .rice_decode import idex_rice_Decode
-from .time2mass import time2mass
+from .time2mass import time2mass, get_last_mass_line_assignments
 import cdflib.cdfwrite as cdfwrite
 import cdflib.cdfread as cdfread
 
@@ -1225,54 +1226,85 @@ class IDEXEvent:
                 if channel == 'TOF H':
                     stretch, shift, mass_scale = time2mass(transformed_data, analysis['time_array'])
                     stretch = float(np.clip(stretch, MASS_STRETCH_MIN, MASS_STRETCH_MAX))
-                    peaks, _ = find_peaks(transformed_data, prominence=.01)
-                    analysis['logs'].append(f"peaks = {peaks}")
-                    peak_results = []
-                    for idx, peak in enumerate(peaks):
-                        start = max(0, peak - 5)
-                        end = min(len(transformed_data), peak + 6)
-                        x_slice = analysis['time_array'][start:end]
-                        y_slice = transformed_data[start:end]
-                        analysis['logs'].append(f"Analyzing peak {peak}")
-                        analysis['logs'].append(f"x_slice = {x_slice}, y_slice = {y_slice}")
-
-                        mass_value = float(mass_scale[peak]) if peak < len(mass_scale) else np.nan
-                        analysis['logs'].append(f"Calculating mass fit for peak {mass_value}")
-                        param, param_cov, sig_amp, fitted_curve = FitEMG(x_slice, y_slice)
+                    assignments = get_last_mass_line_assignments()
+                    peaks = np.asarray(assignments.get('peaks', np.array([], dtype=int)), dtype=int)
+                    analysis['logs'].append(
+                        f"Auto-assigned {len(assignments.get('mass_lines', []))} mass line(s) with {peaks.size} detected peaks"
+                    )
+                    mass_line_records = []
+                    total_area = 0.0
+                    for line_info in assignments.get('mass_lines', []):
+                        peak_index = int(line_info.get('peak_index', 0))
+                        window = line_info.get('window', (peak_index - 10, peak_index + 10))
+                        start = max(0, int(window[0]))
+                        end = min(len(transformed_data), int(window[1]))
+                        if end - start < 4:
+                            continue
+                        x_slice = np.asarray(analysis['time_array'][start:end], dtype=float)
+                        y_slice = np.asarray(transformed_data[start:end], dtype=float)
+                        if x_slice.size == 0 or y_slice.size != x_slice.size:
+                            continue
+                        param, _param_cov, sig_amp, fitted_curve = FitEMG(x_slice, y_slice)
                         if param is None:
-                            analysis['fit_failures'].append(f"{channel}Peak{idx}")
-                            analysis['notes'].append(
-                                f"EMG fit failed for peak {idx} (mass={mass_value})"
-                            )
+                            label = line_info.get('label', f"Line{line_info.get('line_id', peak_index)}")
+                            analysis['fit_failures'].append(f"{channel}{label}")
+                            analysis['notes'].append(f"EMG fit failed for mass line {label}")
                             continue
                         area = calculate_area_under_emg(x_slice, param)
-                        analysis['logs'].append(f"Area under the EMG fit for peak {mass_value}: {area}")
                         chi_sq, red_chi = calculate_chi_squared(y_slice, fitted_curve, len(param))
-                        if np.isfinite(mass_value):
-                            mass_label = f"Peak{idx}_{mass_value:.6f}"
-                        else:
-                            mass_label = f"Peak{idx}"
-                        peak_results.append({
-                            'mass_label': mass_label,
-                            'param': np.array(param, dtype=float),
-                            'area': float(area),
+                        mass_value = float(line_info.get('mass_reference', line_info.get('mass_scale_value', np.nan)))
+                        record = {
+                            'line_id': int(line_info.get('line_id', len(mass_line_records) + 1)),
+                            'label': str(line_info.get('label', f"Line{line_info.get('line_id', len(mass_line_records) + 1)}")),
+                            'species': str(line_info.get('species', '')),
+                            'mu': float(param[0]),
+                            'sigma': float(param[1]),
+                            'lam': float(param[2]),
+                            'amplitude': float(max(area, 0.0)),
+                            'time_start': float(x_slice[0]),
+                            'time_end': float(x_slice[-1]),
+                            'mass_guess': mass_value,
+                            'assigned_mass': mass_value,
+                            'area': float(max(area, 0.0)),
+                            'abundance': 0.0,
+                            'shape': 'emg',
+                            'extras': {},
                             'fit_time': np.asarray(x_slice, dtype=float),
-                            'fit_result': np.asarray(fitted_curve, dtype=float),
+                            'fit_curve': np.asarray(fitted_curve, dtype=float),
                             'chi_sq': float(chi_sq),
                             'red_chi': float(red_chi),
                             'sig_amp': float(sig_amp),
-                            'mass_value': float(mass_value),
-                        })
+                            'peak_index': peak_index,
+                            'mass_scale_value': float(line_info.get('mass_scale_value', np.nan)),
+                        }
+                        total_area += record['area']
+                        mass_line_records.append(record)
+                        analysis['logs'].append(
+                            f"Mass line {record['label']}: m={record['mass_guess']:.3f} amu μ={record['mu']:.6f}, σ={record['sigma']:.6f}"
+                        )
 
-                    kappa = np.mean([mass_scale[peak] - np.round(mass_scale[peak], 1) for peak in peaks]) if peaks.size else np.nan
+                    if total_area > 0.0:
+                        for record in mass_line_records:
+                            record['abundance'] = float(max(record['area'], 0.0) / total_area)
+                    else:
+                        for record in mass_line_records:
+                            record['abundance'] = 0.0
+
+                    valid_peaks = peaks[(peaks >= 0) & (peaks < len(mass_scale))]
+                    if valid_peaks.size:
+                        kappa = float(np.mean(mass_scale[valid_peaks] - np.round(mass_scale[valid_peaks])))
+                    else:
+                        kappa = np.nan
                     analysis['logs'].append(f"Kappa = {kappa}")
                     analysis['mass'] = {
                         'mass_scale': np.array(mass_scale, dtype=float),
-                        'peaks': peaks,
+                        'peaks': valid_peaks,
                         'kappa': float(kappa) if np.isfinite(kappa) else np.nan,
-                        'peak_results': peak_results,
                         'stretch': stretch,
                         'shift': shift,
+                        'mass_lines': mass_line_records,
+                        'assignments': assignments,
+                        'total_area': float(total_area),
                     }
 
             if channel in target_channels:
@@ -1388,17 +1420,74 @@ class IDEXEvent:
 
                     create_dataset_if_not_exists(h, f"/{event_id}/Analysis/kappa", data=np.array([mass_data['kappa']]))
 
-                    for peak_result in mass_data['peak_results']:
-                        mass_label = peak_result['mass_label']
-                        base_path = f"/{event_id}/Analysis/{channel}/Masses/{mass_label}"
-                        create_dataset_if_not_exists(h, f"{base_path}/FitParams", data=peak_result['param'])
-                        create_dataset_if_not_exists(h, f"{base_path}/AreaUnderFit", data=np.array([peak_result['area']], dtype=float))
-                        create_dataset_if_not_exists(h, f"{base_path}/FitTime", data=peak_result['fit_time'])
-                        create_dataset_if_not_exists(h, f"{base_path}/FitResult", data=peak_result['fit_result'])
-                        create_dataset_if_not_exists(h, f"{base_path}/ChiSquared", data=np.array([peak_result['chi_sq']], dtype=float))
-                        create_dataset_if_not_exists(h, f"{base_path}/ReducedChiSquared", data=np.array([peak_result['red_chi']], dtype=float))
-                        create_dataset_if_not_exists(h, f"{base_path}/SignalAmplitude", data=np.array([peak_result['sig_amp']], dtype=float))
-                        create_dataset_if_not_exists(h, f"{base_path}/MassValue", data=np.array([peak_result['mass_value']], dtype=float))
+                    analysis_group = h.require_group(f"/{event_id}/Analysis/{channel}")
+                    analysis_group.attrs['MassStretch'] = float(mass_data.get('stretch', np.nan))
+                    analysis_group.attrs['MassShift'] = float(mass_data.get('shift', np.nan))
+
+                    mass_lines = mass_data.get('mass_lines', [])
+                    if mass_lines:
+                        str_dtype = h5py.string_dtype(encoding='utf-8', length=120)
+                        extras_dtype = h5py.string_dtype(encoding='utf-8', length=2048)
+                        table = np.zeros(len(mass_lines), dtype=[
+                            ('id', 'i4'),
+                            ('label', str_dtype),
+                            ('assigned_species', str_dtype),
+                            ('mu', 'f8'),
+                            ('sigma', 'f8'),
+                            ('lam', 'f8'),
+                            ('amplitude', 'f8'),
+                            ('time_start', 'f8'),
+                            ('time_end', 'f8'),
+                            ('mass', 'f8'),
+                            ('assigned_mass', 'f8'),
+                            ('area', 'f8'),
+                            ('abundance', 'f8'),
+                            ('shape', str_dtype),
+                            ('extras', extras_dtype),
+                        ])
+                        for idx, record in enumerate(mass_lines):
+                            extras_serialized = "{}"
+                            try:
+                                extras_serialized = json.dumps(record.get('extras', {}))
+                            except Exception:
+                                extras_serialized = "{}"
+                            assigned_species = record.get('species', '') or ''
+                            assigned_mass = float(record.get('assigned_mass', np.nan))
+                            table[idx] = (
+                                int(record.get('line_id', idx + 1)),
+                                str(record.get('label', f"Line{idx + 1}")),
+                                str(assigned_species),
+                                float(record.get('mu', np.nan)),
+                                float(record.get('sigma', np.nan)),
+                                float(record.get('lam', np.nan)),
+                                float(record.get('amplitude', 0.0)),
+                                float(record.get('time_start', np.nan)),
+                                float(record.get('time_end', np.nan)),
+                                float(record.get('mass_guess', np.nan)),
+                                assigned_mass,
+                                float(record.get('area', 0.0)),
+                                float(record.get('abundance', 0.0)),
+                                str(record.get('shape', 'emg')),
+                                extras_serialized,
+                            )
+                        if 'MassLines' in analysis_group:
+                            del analysis_group['MassLines']
+                        analysis_group.create_dataset('MassLines', data=table)
+
+                        fits_group = analysis_group.require_group('Fits')
+                        for key in list(fits_group.keys()):
+                            del fits_group[key]
+                        for record in mass_lines:
+                            line_group = fits_group.require_group(f"line_{int(record.get('line_id', 0))}")
+                            for key in list(line_group.keys()):
+                                del line_group[key]
+                            line_group.create_dataset('time', data=np.asarray(record.get('fit_time', []), dtype=float))
+                            line_group.create_dataset('values', data=np.asarray(record.get('fit_curve', []), dtype=float))
+                    else:
+                        if 'MassLines' in analysis_group:
+                            del analysis_group['MassLines']
+                        if 'Fits' in analysis_group:
+                            del analysis_group['Fits']
 
                     plt.close()
 

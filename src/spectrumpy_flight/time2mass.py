@@ -12,6 +12,11 @@ import os
 import h5py
 import random
 import csv
+import math
+import copy
+from dataclasses import dataclass
+from functools import lru_cache
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
 import numpy as np
@@ -21,14 +26,205 @@ from .plot_style import apply_plot_style
 
 from pathlib import Path
 from matplotlib import colors
-from scipy.optimize import curve_fit, minimize
 from scipy.signal import find_peaks
 
 apply_plot_style()
 plt.rcParams['agg.path.chunksize'] = 10_000
 
-MASS_STRETCH_MIN_NS = 1300.0
-MASS_STRETCH_MAX_NS = 1600.0
+MASS_STRETCH_MIN_US = 1.3
+MASS_STRETCH_MAX_US = 1.6
+
+
+@dataclass(frozen=True)
+class MassReference:
+    int_mass: int
+    mass_value: float
+    label: str
+    species: str
+
+
+_MASS_REFERENCE_SPEC: Sequence[Tuple[int, str, Sequence[str]]] = (
+    (1, "H", ("H",)),
+    (12, "C", ("C",)),
+    (16, "O", ("O",)),
+    (23, "Na", ("Na",)),
+    (24, "Mg", ("Mg24",)),
+    (25, "Mg", ("Mg25",)),
+    (26, "Mg", ("Mg26",)),
+    (28, "Si", ("Si28",)),
+    (29, "Si", ("Si29",)),
+    (30, "Si", ("Si30",)),
+    (39, "K", ("K39",)),
+    (40, "Ca", ("Ca40",)),
+    (54, "Fe", ("Fe54",)),
+    (56, "Fe", ("Fe56",)),
+    (57, "Fe", ("Fe57",)),
+    (58, "Fe", ("Fe58",)),
+)
+
+
+_LAST_ASSIGNMENTS: Optional[Dict[str, object]] = None
+
+
+def _resolve_mass_row(table: pd.DataFrame, int_mass: int, candidates: Sequence[str]) -> Tuple[float, str]:
+    mask = table["Name"].astype(str).isin(candidates)
+    if mask.any():
+        row = table.loc[mask].iloc[0]
+    else:
+        masses = table["Mass"].astype(float).to_numpy(copy=False)
+        idx = int(np.argmin(np.abs(masses - float(int_mass))))
+        row = table.iloc[idx]
+    return float(row["Mass"]), str(row["Name"])
+
+
+@lru_cache(maxsize=1)
+def _load_reference_masses() -> Tuple[MassReference, ...]:
+    path = Path(__file__).resolve().with_name("mass_comb.csv")
+    try:
+        table = pd.read_csv(path)
+    except Exception as exc:
+        raise RuntimeError(f"Unable to read mass combination table: {exc}") from exc
+
+    references: List[MassReference] = []
+    for int_mass, species, candidates in _MASS_REFERENCE_SPEC:
+        try:
+            mass_value, label = _resolve_mass_row(table, int_mass, candidates)
+        except Exception:
+            mass_value = float(int_mass)
+            label = candidates[0] if candidates else str(int_mass)
+        references.append(MassReference(
+            int_mass=int_mass,
+            mass_value=float(mass_value),
+            label=str(label),
+            species=species,
+        ))
+    references.sort(key=lambda ref: ref.mass_value)
+    return tuple(references)
+
+
+def _prepare_signal(tof: Sequence[float]) -> np.ndarray:
+    data = np.asarray(tof, dtype=float)
+    if data.size == 0:
+        return data
+    baseline_window = max(32, data.size // 10)
+    baseline = float(np.nanmedian(data[:baseline_window]))
+    adjusted = np.nan_to_num(data - baseline, nan=0.0, posinf=0.0, neginf=0.0)
+    adjusted[np.isnan(adjusted)] = 0.0
+    return np.clip(adjusted, 0.0, None)
+
+
+def _smooth_signal(signal: np.ndarray, width: int = 5) -> np.ndarray:
+    if signal.size < width or width <= 1:
+        return signal
+    kernel = np.ones(width, dtype=float) / float(width)
+    return np.convolve(signal, kernel, mode="same")
+
+
+def _robust_std(values: np.ndarray) -> float:
+    if values.size == 0:
+        return 0.0
+    median = float(np.median(values))
+    return 1.4826 * float(np.median(np.abs(values - median)))
+
+
+def _compute_mass_axis(time_zero_us: np.ndarray, stretch_us: float, shift_us: float) -> np.ndarray:
+    shifted = time_zero_us - shift_us
+    masses = np.empty_like(time_zero_us, dtype=float)
+    valid = shifted > 0
+    masses[valid] = (shifted[valid] / stretch_us) ** 2
+    masses[~valid] = 0.0
+    return np.clip(masses, 0.0, 400.0)
+
+
+def _assign_mass_lines(
+    detection_signal: np.ndarray,
+    fit_signal: np.ndarray,
+    time_axis: np.ndarray,
+    time_zero: np.ndarray,
+    step_us: float,
+    stretch_us: float,
+    shift_us: float,
+    mass_scale: np.ndarray,
+    references: Sequence[MassReference],
+) -> Dict[str, object]:
+    if detection_signal.size == 0 or step_us <= 0.0:
+        return {
+            "peaks": np.array([], dtype=int),
+            "mass_lines": [],
+            "stretch": float(stretch_us),
+            "shift": float(shift_us),
+            "step": float(step_us),
+        }
+
+    prominence = max(np.nanmax(detection_signal) * 0.05, _robust_std(detection_signal) * 4.0, 1e-6)
+    distance = max(5, int(round(0.18 / max(step_us, 1e-6))))
+    peaks, _ = find_peaks(detection_signal, prominence=prominence, distance=distance)
+    peaks = peaks.astype(int, copy=False)
+
+    tolerance = max(6, int(round(0.22 / max(step_us, 1e-6))))
+    half_window = max(8, int(round(0.30 / max(step_us, 1e-6))))
+
+    available_peaks = list(peaks)
+    mass_lines: List[Dict[str, object]] = []
+    line_id = 1
+    for reference in references:
+        expected_time_zero = shift_us + stretch_us * math.sqrt(reference.mass_value)
+        expected_index = int(round(expected_time_zero / step_us)) if step_us > 0 else 0
+        if expected_index < 0 or expected_index >= detection_signal.size:
+            continue
+        if not available_peaks:
+            break
+        distances = [abs(idx - expected_index) for idx in available_peaks]
+        best_pos = int(np.argmin(distances))
+        if distances[best_pos] > tolerance:
+            continue
+        peak_index = int(available_peaks.pop(best_pos))
+        if mass_scale.size <= peak_index:
+            continue
+        mass_at_peak = float(mass_scale[peak_index])
+        if not math.isfinite(mass_at_peak) or abs(mass_at_peak - reference.int_mass) > 1.25:
+            continue
+        start_idx = max(0, peak_index - half_window)
+        end_idx = min(detection_signal.size, peak_index + half_window + 1)
+        mass_lines.append({
+            "line_id": line_id,
+            "int_mass": reference.int_mass,
+            "label": reference.label,
+            "species": reference.species,
+            "mass_reference": reference.mass_value,
+            "peak_index": peak_index,
+            "time": float(time_axis[peak_index]) if time_axis.size > peak_index else float("nan"),
+            "time_offset": float(time_zero[peak_index]) if time_zero.size > peak_index else float("nan"),
+            "expected_time": float(time_axis[0] + expected_time_zero) if time_axis.size else float(expected_time_zero),
+            "window": (start_idx, end_idx),
+            "peak_amplitude": float(fit_signal[peak_index]) if fit_signal.size > peak_index else 0.0,
+            "mass_scale_value": mass_at_peak,
+        })
+        line_id += 1
+
+    return {
+        "peaks": peaks,
+        "mass_lines": mass_lines,
+        "stretch": float(stretch_us),
+        "shift": float(shift_us),
+        "step": float(step_us),
+    }
+
+
+def get_last_mass_line_assignments() -> Dict[str, object]:
+    if _LAST_ASSIGNMENTS is None:
+        return {
+            "peaks": np.array([], dtype=int),
+            "mass_lines": [],
+            "stretch": float("nan"),
+            "shift": float("nan"),
+            "step": float("nan"),
+        }
+    # Return a deep copy to prevent callers from mutating cached data.
+    result = copy.deepcopy(_LAST_ASSIGNMENTS)
+    if "peaks" in result:
+        result["peaks"] = np.asarray(result["peaks"], dtype=int)
+    return result
 
 
 def peak_time2mass(TOF, time):
@@ -218,143 +414,149 @@ def peak_time2mass(TOF, time):
     plt.show()
 
 def time2mass(TOF, time, *, allow_out_of_range: bool = False):
-    r"""Return an optimized mass axis for a TOF waveform.
+    """Return optimised mass-axis parameters for a TOF waveform."""
 
-    The routine estimates the stretch (``A``) and temporal offset (``t0``)
-    parameters in the classic
+    global _LAST_ASSIGNMENTS
 
-    .. math:: t = t_0 + A \sqrt{m}
-
-    relationship by aligning prominent peaks with integer mass numbers from
-    :datafile:`mass_comb.csv`. The optimization keeps the resulting mass scale
-    inside a physically realistic 1–300 amu window (allowing a small buffer up
-    to 400 amu for the heaviest species).
-
-    Parameters
-    ----------
-    TOF, time:
-        Waveform amplitude and corresponding time vectors.
-    allow_out_of_range:
-        Set to ``True`` to disable the default stretch clamp (1.3–1.6 µs).
-
-    Returns
-    -------
-    stretch_microseconds, shift_microseconds, mass_scale
-        Optimised stretch/shift parameters in microseconds and the derived mass
-        axis. The stretch is constrained to the 1.3–1.6 µs range unless
-        ``allow_out_of_range`` is enabled.
-    """
-
-    mass_table = pd.read_csv(Path(__file__).resolve().with_name("mass_comb.csv"))
-    available_masses = np.array(sorted({int(round(m)) for m in mass_table["Mass"] if 0 < m < 400}))
-
-    if len(available_masses) == 0:
-        raise ValueError("No valid masses found in mass_comb.csv")
-
+    references = _load_reference_masses()
     tof = np.asarray(TOF, dtype=float)
-    time = np.asarray(time, dtype=float)
+    time_axis = np.asarray(time, dtype=float)
 
-    time_offset = time - time[0]
-    step = np.median(np.diff(time_offset)) if len(time_offset) > 1 else 0.0
+    if tof.size == 0 or time_axis.size == 0 or tof.size != time_axis.size:
+        mass_scale = np.zeros_like(time_axis, dtype=float)
+        _LAST_ASSIGNMENTS = {
+            "peaks": np.array([], dtype=int),
+            "mass_lines": [],
+            "stretch": float("nan"),
+            "shift": float("nan"),
+            "step": float("nan"),
+        }
+        return float(MASS_STRETCH_MIN_US), 0.0, mass_scale
 
-    # Determine the native time units (seconds or microseconds).
-    if step > 1e-6:
-        scale_to_seconds = 1e-6
-    else:
-        scale_to_seconds = 1.0
+    time_zero = time_axis - time_axis[0]
+    step_us = float(np.median(np.diff(time_zero))) if time_zero.size > 1 else 0.0
+    if not np.isfinite(step_us) or step_us <= 0.0:
+        mass_scale = np.zeros_like(time_axis, dtype=float)
+        _LAST_ASSIGNMENTS = {
+            "peaks": np.array([], dtype=int),
+            "mass_lines": [],
+            "stretch": float("nan"),
+            "shift": float("nan"),
+            "step": float(step_us),
+        }
+        return float(MASS_STRETCH_MIN_US), 0.0, mass_scale
 
-    time_seconds = time_offset * scale_to_seconds
-    time_ns = time_seconds * 1e9
+    detection_signal = _prepare_signal(tof)
+    smoothed = _smooth_signal(detection_signal)
 
-    # Identify the most prominent peaks in the spectrum.
-    prominence = max(np.ptp(tof) * 0.05, 1.0)
-    peaks, _ = find_peaks(tof, prominence=prominence)
+    sqrt_masses = np.sqrt(np.array([ref.mass_value for ref in references], dtype=float))
+    if sqrt_masses.size == 0:
+        mass_scale = np.zeros_like(time_axis, dtype=float)
+        _LAST_ASSIGNMENTS = {
+            "peaks": np.array([], dtype=int),
+            "mass_lines": [],
+            "stretch": float("nan"),
+            "shift": float("nan"),
+            "step": float(step_us),
+        }
+        return float(MASS_STRETCH_MIN_US), 0.0, mass_scale
 
-    if len(peaks) < 3:
-        # Attempt a secondary search with a lower threshold.
-        peaks, _ = find_peaks(tof)
+    stretch_min = MASS_STRETCH_MIN_US
+    stretch_max = MASS_STRETCH_MAX_US
+    if allow_out_of_range:
+        stretch_min = min(stretch_min, 0.6)
+        stretch_max = max(stretch_max, 2.5)
 
-    if len(peaks) == 0:
-        # Fallback to a default mapping if no peaks are detected.
-        default_stretch_ns = 1450.0
-        mass_scale = _compute_mass_axis(time_ns, default_stretch_ns, 0.0)
-        return default_stretch_ns / 1000.0, 0.0, mass_scale
+    weights = 1.0 / np.maximum(sqrt_masses, 1.0)
+    best: Optional[Dict[str, float]] = None
 
-    # Focus on the most intense peaks to drive the calibration.
-    peak_order = np.argsort(tof[peaks])[-min(len(peaks), 20):]
-    peak_times_ns = np.sort(time_ns[peaks][peak_order])
+    def evaluate(stretch_values: Iterable[float], shift_window: Optional[Tuple[int, int]] = None) -> None:
+        nonlocal best
+        for stretch in stretch_values:
+            if stretch <= 0:
+                continue
+            expected_times = stretch * sqrt_masses
+            base_indices = np.round(expected_times / step_us).astype(int)
+            if base_indices.size == 0:
+                continue
+            shift_min_samples = int(-base_indices[0])
+            shift_max_samples = int(smoothed.size - 1 - base_indices[-1])
+            if shift_max_samples < shift_min_samples:
+                continue
+            if shift_window is not None:
+                shift_min_clamped = max(shift_min_samples, shift_window[0])
+                shift_max_clamped = min(shift_max_samples, shift_window[1])
+            else:
+                shift_min_clamped = shift_min_samples
+                shift_max_clamped = shift_max_samples
+            if shift_max_clamped < shift_min_clamped:
+                continue
+            shifts = np.arange(shift_min_clamped, shift_max_clamped + 1, dtype=int)
+            if shifts.size == 0:
+                continue
+            index_matrix = base_indices[np.newaxis, :] + shifts[:, np.newaxis]
+            index_matrix = np.clip(index_matrix, 0, smoothed.size - 1)
+            values = smoothed[index_matrix]
+            scores = (values * weights[np.newaxis, :]).sum(axis=1)
+            best_idx = int(np.argmax(scores))
+            score = float(scores[best_idx])
+            shift_samples = int(shifts[best_idx])
+            if best is None or score > best["score"]:
+                best = {
+                    "stretch": float(stretch),
+                    "shift_samples": float(shift_samples),
+                    "score": score,
+                }
 
-    def objective(params):
-        stretch_ns, shift_ns = params
-        if stretch_ns <= 0:
-            return 1e9
+    coarse_stretches = np.linspace(stretch_min, stretch_max, 181)
+    evaluate(coarse_stretches)
 
-        shifted = peak_times_ns - shift_ns
-        if np.any(shifted <= 0):
-            return 1e9
+    if best is None:
+        fallback = float(stretch_min)
+        mass_scale = _compute_mass_axis(time_zero, fallback, 0.0)
+        _LAST_ASSIGNMENTS = _assign_mass_lines(
+            smoothed,
+            tof,
+            time_axis,
+            time_zero,
+            step_us,
+            fallback,
+            0.0,
+            mass_scale,
+            references,
+        )
+        return fallback, 0.0, mass_scale
 
-        masses = (shifted / stretch_ns) ** 2
+    refined_min = best["stretch"] - 0.01
+    refined_max = best["stretch"] + 0.01
+    refined_min = max(stretch_min, refined_min)
+    refined_max = min(stretch_max, refined_max) if not allow_out_of_range else max(refined_min + 1e-6, refined_max)
+    refined_stretches = np.linspace(refined_min, refined_max, 41)
+    shift_center = int(round(best["shift_samples"]))
+    shift_window = (shift_center - 60, shift_center + 60)
+    evaluate(refined_stretches, shift_window=shift_window)
 
-        # Penalize masses outside the desired operating range.
-        penalty = 0.0
-        penalty += np.sum((1.0 - masses[masses < 1.0]) ** 2)
-        penalty += np.sum((masses[masses > 350.0] - 350.0) ** 2)
-
-        # Match peaks to the nearest known (integer) mass numbers.
-        diffs = masses[:, None] - available_masses[None, :]
-        nearest = available_masses[np.argmin(np.abs(diffs), axis=1)]
-        residual = masses - nearest
-
-        # Encourage a realistic mass span across the entire waveform.
-        full_shifted = time_ns - shift_ns
-        if np.any(full_shifted > 0):
-            mass_full = (full_shifted[full_shifted > 0] / stretch_ns) ** 2
-            penalty += max(0.0, mass_full.max() - 400.0) ** 2
-            penalty += max(0.0, 1.0 - mass_full.min()) ** 2
-        else:
-            penalty += 1e6
-
-        return float(np.mean(residual ** 2) + 0.01 * penalty)
-
-    stretch_guess = 1450.0
-    shift_guess = max(0.0, peak_times_ns[0] - stretch_guess * np.sqrt(max(available_masses[0], 1)))
-
-    bounds = [(800.0, 4000.0), (-500.0, max(time_ns[-1], 1000.0))]
-    result = minimize(objective, x0=[stretch_guess, shift_guess], bounds=bounds, method="L-BFGS-B")
-
-    if not result.success:
-        best_stretch_ns, best_shift_ns = stretch_guess, shift_guess
-    else:
-        best_stretch_ns, best_shift_ns = result.x
-
+    shift_samples = int(round(best["shift_samples"]))
+    shift_us = float(shift_samples * step_us)
+    stretch_us = float(best["stretch"])
     if not allow_out_of_range:
-        best_stretch_ns = float(np.clip(best_stretch_ns, MASS_STRETCH_MIN_NS, MASS_STRETCH_MAX_NS))
+        stretch_us = float(np.clip(stretch_us, stretch_min, stretch_max))
 
-    mass_scale = _compute_mass_axis(time_ns, best_stretch_ns, best_shift_ns)
+    mass_scale = _compute_mass_axis(time_zero, stretch_us, shift_us)
+    assignments = _assign_mass_lines(
+        smoothed,
+        tof,
+        time_axis,
+        time_zero,
+        step_us,
+        stretch_us,
+        shift_us,
+        mass_scale,
+        references,
+    )
+    _LAST_ASSIGNMENTS = assignments
 
-    # Convert the temporal parameters to microseconds for downstream consumers.
-    stretch_microseconds = best_stretch_ns / 1000.0
-    shift_microseconds = best_shift_ns / 1000.0
-
-    return float(stretch_microseconds), float(shift_microseconds), mass_scale
-
-
-def _compute_mass_axis(time_ns: np.ndarray, stretch_ns: float, shift_ns: float) -> np.ndarray:
-    """Calculate the mass scale ensuring it remains in the physical range."""
-
-    shifted = time_ns - shift_ns
-    masses = np.empty_like(time_ns, dtype=float)
-    valid = shifted > 0
-    masses[valid] = (shifted[valid] / stretch_ns) ** 2
-    masses[~valid] = 0.0
-
-    masses = np.clip(masses, 0.0, 400.0)
-    return masses
-
-    # ||
-    # ||
-    # ||
-    # %%
+    return stretch_us, shift_us, mass_scale
 
 # ||
 # ||
