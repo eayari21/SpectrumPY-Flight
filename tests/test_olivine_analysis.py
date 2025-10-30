@@ -2,12 +2,14 @@ import json
 import os
 from pathlib import Path
 
+from importlib import resources
+
 import pytest
 
 np = pytest.importorskip("numpy")
 h5py = pytest.importorskip("h5py")
 
-from olivine_metrics import EXPECTED_MASS_LINES, generate_olivine_metrics
+from spectrumpy_flight.olivine_metrics import EXPECTED_MASS_LINES, generate_olivine_metrics
 
 
 _OLIVINE_ENV_VAR = "OLIVINE_TEST_DATA_ROOT"
@@ -29,8 +31,12 @@ def _collect_olivine_inputs() -> list[Path]:
     if env_value:
         candidates.append(Path(env_value))
 
-    for default in (Path("HDF5"), Path("Data")):
-        candidates.append(default)
+    package_root = resources.files("spectrumpy_flight")
+
+    for default in ("HDF5", "Data"):
+        resource = package_root.joinpath(default)
+        if resource.exists():
+            candidates.append(Path(resource))
 
     discovered: list[Path] = []
     seen: set[Path] = set()

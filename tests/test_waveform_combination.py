@@ -2,7 +2,7 @@ import pytest
 
 np = pytest.importorskip("numpy")
 
-from dust_composition import detect_saturation
+from spectrumpy_flight.dust_composition import detect_saturation
 
 
 def test_detect_saturation_flags_clipped_segments_with_jitter():

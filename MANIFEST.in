@@ -1,0 +1,11 @@
+recursive-include src/spectrumpy_flight/docs *.md *.png *.jpg *.jpeg *.gif *.svg
+recursive-include src/spectrumpy_flight/Images *
+recursive-include src/spectrumpy_flight/HDF5 *
+recursive-include src/spectrumpy_flight/CDF *
+recursive-include src/spectrumpy_flight/Data *
+recursive-include src/spectrumpy_flight/lookup *.csv *.numbers *.txt
+recursive-include src/spectrumpy_flight/idex_logs *
+recursive-include src/spectrumpy_flight/Plots *
+include src/spectrumpy_flight/mass_comb.csv
+recursive-include src/spectrumpy_flight/tools *
+recursive-include src/spectrumpy_flight/imfpy *
