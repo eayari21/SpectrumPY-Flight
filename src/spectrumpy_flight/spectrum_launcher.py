@@ -40,7 +40,7 @@ from PyQt6.QtWidgets import (
 import requests
 from datetime import datetime, timezone
 
-from HDF_Explorer import HDFDataExplorer
+from .HDF_Explorer import HDFDataExplorer
 from IDEX_quicklook import MainWindow as QuicklookWindow
 
 APP_TITLE = "SpectrumPY: Flight Edition"

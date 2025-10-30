@@ -1,0 +1,16 @@
+graft src/spectrumpy_flight/CDF
+graft src/spectrumpy_flight/Data
+graft src/spectrumpy_flight/HDF5
+graft src/spectrumpy_flight/Images
+graft src/spectrumpy_flight/Plots
+graft src/spectrumpy_flight/docs
+graft src/spectrumpy_flight/idex_logs
+graft src/spectrumpy_flight/packaging
+include src/spectrumpy_flight/IDEX-Quicklook.spec
+include src/spectrumpy_flight/IDEX-quicklook.py
+include src/spectrumpy_flight/Scope-IDEX-quicklook.py
+include src/spectrumpy_flight/IDEX\ CDF\ Variable\ Definitions.xlsx
+include src/spectrumpy_flight/idex_combined_science_definition.xml
+include src/spectrumpy_flight/mass_comb.csv
+recursive-include src/spectrumpy_flight *.py *.csv *.xml *.md *.svg *.png *.ico *.ui *.json *.txt
+global-exclude __pycache__ *.py[cod]

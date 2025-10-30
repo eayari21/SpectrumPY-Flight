@@ -103,9 +103,9 @@ from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from matplotlib.widgets import SpanSelector
 
-from plot_style import apply_plot_style
+from .plot_style import apply_plot_style
 
-from line_shapes import (
+from .line_shapes import (
     double_emg as _line_double_emg,
     emg as _line_emg,
     generalized_normal as _line_generalized_normal,

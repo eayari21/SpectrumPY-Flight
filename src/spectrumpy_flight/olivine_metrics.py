@@ -14,8 +14,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-from line_shapes import emg as _emg_profile
-from time2mass import time2mass as optimise_time2mass
+from .line_shapes import emg as _emg_profile
+from .time2mass import time2mass as optimise_time2mass
 
 try:  # pragma: no cover - SciPy is optional in some environments
     from scipy.optimize import curve_fit as _curve_fit  # type: ignore

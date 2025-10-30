@@ -46,19 +46,21 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from idex_variable_definitions import VariableDefinitionsCatalog, load_variable_definitions
+from .idex_variable_definitions import VariableDefinitionsCatalog, load_variable_definitions
 
 # --- Quicklook integration -------------------------------------------------
 
-file_path = "./IDEX-quicklook.py"
-module_name = "IDEX_quicklook"
+_QUICKLOOK_MODULE_NAME = "IDEX_quicklook"
+_QUICKLOOK_FILE = Path(__file__).resolve().parent / "IDEX-quicklook.py"
 
-spec = importlib.util.spec_from_file_location(module_name, file_path)
-if spec is None or spec.loader is None:
-    raise ImportError("Unable to locate IDEX-quicklook module")
-module = importlib.util.module_from_spec(spec)
-sys.modules[module_name] = module
-spec.loader.exec_module(module)
+module = sys.modules.get(_QUICKLOOK_MODULE_NAME)
+if module is None:
+    spec = importlib.util.spec_from_file_location(_QUICKLOOK_MODULE_NAME, str(_QUICKLOOK_FILE))
+    if spec is None or spec.loader is None:
+        raise ImportError("Unable to locate IDEX-quicklook module")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[_QUICKLOOK_MODULE_NAME] = module
+    spec.loader.exec_module(module)
 
 from IDEX_quicklook import (  # type: ignore[attr-defined]
     FIT_MODEL_BY_CHANNEL,
@@ -690,6 +692,7 @@ class HDFDataExplorer(QWidget):
         self._quicklook_window: Optional[QuicklookWindow] = None
         self._slicer_window: Optional[Slicer3DViewer] = None
         self._scatter_artists: Dict[PathCollection, np.ndarray] = {}
+        self._timeseries_artists: List[PathCollection] = []
         self._pick_cid: Optional[int] = None
         self._selected_marker: Optional[PathCollection] = None
 
@@ -1467,6 +1470,10 @@ class HDFDataExplorer(QWidget):
         if axis is None:
             return
 
+        for artist in self._timeseries_artists:
+            self._scatter_artists.pop(artist, None)
+        self._timeseries_artists = []
+
         axis.clear()
         axis.set_facecolor("#fbfdff")
         axis.grid(True, linestyle=":", linewidth=0.7, alpha=0.6)
@@ -1501,26 +1508,31 @@ class HDFDataExplorer(QWidget):
             else:
                 epoch_values = epochs[mask]
                 value_values = values[mask]
+                point_indices = np.nonzero(mask)[0]
                 converted = self._convert_epoch_values(epoch_values, tzinfo)
                 if converted is not None:
-                    axis.scatter(
+                    scatter = axis.scatter(
                         converted,
                         value_values,
                         s=36,
                         color="#2563eb",
                         edgecolors="white",
                         linewidths=0.5,
+                        picker=True,
                     )
+                    self._register_timeseries_scatter(scatter, point_indices)
                     datetime_used = True
                 else:
-                    axis.scatter(
+                    scatter = axis.scatter(
                         epoch_values,
                         value_values,
                         s=36,
                         color="#2563eb",
                         edgecolors="white",
                         linewidths=0.5,
+                        picker=True,
                     )
+                    self._register_timeseries_scatter(scatter, point_indices)
                     raw_epoch_used = True
                 plotted = True
         else:
@@ -1555,37 +1567,44 @@ class HDFDataExplorer(QWidget):
                     values_masked = value_flat[mask]
                     convert_times = self._is_epoch_series(time_key, times_masked)
                     label = f"Event {self.data_store.events[idx].event_name}"
+                    event_indices = np.full(values_masked.shape, idx, dtype=int)
                     if convert_times:
                         converted = self._convert_epoch_values(times_masked, tzinfo)
                         if converted is not None:
-                            axis.scatter(
+                            scatter = axis.scatter(
                                 converted,
                                 values_masked,
                                 s=25,
                                 label=label,
                                 edgecolors="white",
                                 linewidths=0.4,
+                                picker=True,
                             )
+                            self._register_timeseries_scatter(scatter, event_indices)
                             datetime_used = True
                         else:
-                            axis.scatter(
+                            scatter = axis.scatter(
                                 times_masked,
                                 values_masked,
                                 s=25,
                                 label=label,
                                 edgecolors="white",
                                 linewidths=0.4,
+                                picker=True,
                             )
+                            self._register_timeseries_scatter(scatter, event_indices)
                             raw_epoch_used = True
                     else:
-                        axis.scatter(
+                        scatter = axis.scatter(
                             times_masked,
                             values_masked,
                             s=25,
                             label=label,
                             edgecolors="white",
                             linewidths=0.4,
+                            picker=True,
                         )
+                        self._register_timeseries_scatter(scatter, event_indices)
                         relative_time_used = True
                     plotted = True
 
@@ -1610,26 +1629,31 @@ class HDFDataExplorer(QWidget):
                     epochs_masked = epochs_flat[mask]
                     values_masked = values_flat[mask]
                     label = f"Event {self.data_store.events[idx].event_name}"
+                    event_indices = np.full(values_masked.shape, idx, dtype=int)
                     converted = self._convert_epoch_values(epochs_masked, tzinfo)
                     if converted is not None:
-                        axis.scatter(
+                        scatter = axis.scatter(
                             converted,
                             values_masked,
                             s=25,
                             label=label,
                             edgecolors="white",
                             linewidths=0.4,
+                            picker=True,
                         )
+                        self._register_timeseries_scatter(scatter, event_indices)
                         datetime_used = True
                     else:
-                        axis.scatter(
+                        scatter = axis.scatter(
                             epochs_masked,
                             values_masked,
                             s=25,
                             label=label,
                             edgecolors="white",
                             linewidths=0.4,
+                            picker=True,
                         )
+                        self._register_timeseries_scatter(scatter, event_indices)
                         raw_epoch_used = True
                     plotted = True
 
@@ -1637,6 +1661,7 @@ class HDFDataExplorer(QWidget):
                 epochs = self._event_epoch_series()
                 epoch_values: List[float] = []
                 epoch_times: List[float] = []
+                epoch_indices: List[int] = []
 
                 for idx, value_entry in enumerate(values_series):
                     if self._payload_size(value_entry) == 0 or idx >= epochs.size:
@@ -1653,31 +1678,37 @@ class HDFDataExplorer(QWidget):
                         continue
                     epoch_times.append(epoch)
                     epoch_values.append(float(np.mean(finite)))
+                    epoch_indices.append(idx)
 
                 if epoch_times:
                     order = np.argsort(epoch_times)
                     ordered_epochs = np.asarray(epoch_times, dtype=float)[order]
                     ordered_values = np.asarray(epoch_values, dtype=float)[order]
+                    ordered_indices = np.asarray(epoch_indices, dtype=int)[order]
                     converted = self._convert_epoch_values(ordered_epochs, tzinfo)
                     if converted is not None:
-                        axis.scatter(
+                        scatter = axis.scatter(
                             converted,
                             ordered_values,
                             s=36,
                             color="#2563eb",
                             edgecolors="white",
                             linewidths=0.5,
+                            picker=True,
                         )
+                        self._register_timeseries_scatter(scatter, ordered_indices)
                         datetime_used = True
                     else:
-                        axis.scatter(
+                        scatter = axis.scatter(
                             ordered_epochs,
                             ordered_values,
                             s=36,
                             color="#2563eb",
                             edgecolors="white",
                             linewidths=0.5,
+                            picker=True,
                         )
+                        self._register_timeseries_scatter(scatter, ordered_indices)
                         raw_epoch_used = True
                     plotted = True
                 else:
@@ -1705,6 +1736,18 @@ class HDFDataExplorer(QWidget):
 
         axis.set_title("Timeseries view", fontsize=14, fontweight="bold")
         self.canvas.draw_idle()
+
+    # ------------------------------------------------------------------
+    def _register_timeseries_scatter(self, scatter: PathCollection, event_indices: Union[np.ndarray, Sequence[int]]) -> None:
+        if not isinstance(scatter, PathCollection):
+            return
+        try:
+            scatter.set_picker(True)
+        except Exception:
+            pass
+        indices = np.asarray(event_indices, dtype=int).ravel()
+        self._scatter_artists[scatter] = indices
+        self._timeseries_artists.append(scatter)
 
     # ------------------------------------------------------------------
     def _current_timezone(self) -> Tuple[str, timezone]:
