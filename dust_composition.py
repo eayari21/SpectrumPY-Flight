@@ -29,7 +29,7 @@ import json
 import math
 import re
 import unicodedata
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -1387,11 +1387,73 @@ SPECIES_CHOICES: List[Tuple[str, float]] = [
     ("CaAl2Si2O8", 278.203),
 ]
 
+_ATOMIC_SPECIES_PATTERN = re.compile(r"^\d*[A-Z][a-z]?(?:[+-]\d+)?$")
+
+
+def _is_atomic_species(label: str) -> bool:
+    return bool(_ATOMIC_SPECIES_PATTERN.fullmatch(label))
+
+
+_ATOMIC_SPECIES_CHOICES: Tuple[Tuple[str, float], ...] = tuple(
+    (name, mass) for name, mass in SPECIES_CHOICES if _is_atomic_species(name)
+)
+
+_MOLECULAR_SPECIES_CHOICES: Tuple[Tuple[str, float], ...] = tuple(
+    (name, mass) for name, mass in SPECIES_CHOICES if not _is_atomic_species(name)
+)
+
+SPECIES_GROUPS: Tuple[Tuple[str, Tuple[Tuple[str, float], ...]], ...] = (
+    ("Atomic species", _ATOMIC_SPECIES_CHOICES),
+    ("Molecular species", _MOLECULAR_SPECIES_CHOICES),
+)
+
 SPECIES_BY_LABEL: Dict[str, float] = {name: mass for name, mass in SPECIES_CHOICES}
 
 
 def _species_display(label: str, mass: float) -> str:
-    return f"{label} ({mass:.3f} amu)"
+    return f"{label}\u2003\u2003{mass:.3f} amu"
+
+
+def _add_combo_heading(combo: QComboBox, text: str) -> None:
+    combo.addItem(text)
+    index = combo.count() - 1
+    font = combo.font()
+    font.setBold(True)
+    combo.setItemData(index, font, Qt.ItemDataRole.FontRole)
+    combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
+
+
+def _populate_species_combo(combo: QComboBox, *, placeholder: Optional[str] = "Assign selected line…") -> None:
+    combo.clear()
+    if placeholder is not None:
+        combo.addItem(placeholder, userData=None)
+    for group_label, entries in SPECIES_GROUPS:
+        if not entries:
+            continue
+        if combo.count() > (1 if placeholder is not None else 0):
+            combo.insertSeparator(combo.count())
+        _add_combo_heading(combo, group_label)
+        for name, mass in entries:
+            combo.addItem(_species_display(name, mass), (name, mass))
+
+
+def _group_samples_by_category() -> List[Tuple[str, List[SampleDefinition]]]:
+    grouped: "OrderedDict[str, List[SampleDefinition]]" = OrderedDict()
+    for sample in SAMPLE_LIBRARY:
+        grouped.setdefault(sample.category, []).append(sample)
+    return list(grouped.items())
+
+
+def _populate_sample_guess_combo(combo: QComboBox) -> None:
+    combo.clear()
+    combo.addItem("Auto (closest match)", userData=None)
+    for category, samples in _group_samples_by_category():
+        if not samples:
+            continue
+        combo.insertSeparator(combo.count())
+        _add_combo_heading(combo, category)
+        for sample in samples:
+            combo.addItem(sample.name, userData=sample.name)
 
 
 def _species_for_label(label: str) -> Optional[Tuple[str, float]]:
@@ -1757,9 +1819,7 @@ class InspectMassLineDialog(QDialog):
         form.setSpacing(8)
 
         self.species_combo = QComboBox(parameter_box)
-        self.species_combo.addItem("Custom / manual entry", userData=None)
-        for name, mass in SPECIES_CHOICES:
-            self.species_combo.addItem(_species_display(name, mass), (name, mass))
+        _populate_species_combo(self.species_combo, placeholder="Custom / manual entry")
         self.species_combo.currentIndexChanged.connect(self._on_species_changed)
         form.addRow("Species:", self.species_combo)
 
@@ -2348,24 +2408,30 @@ class TernaryAxisSelector(QWidget):
         self._divider_label.setVisible(is_ratio)
 
     # ------------------------------------------------------------------
-    def _apply_items(self, combo: QComboBox, items: Sequence[str]) -> None:
+    def _apply_items(self, combo: QComboBox, groups: Sequence[Tuple[str, Sequence[str]]]) -> None:
         current = combo.currentText()
         combo.blockSignals(True)
         combo.clear()
         combo.addItem("— Select —")
-        for label in items:
-            combo.addItem(label)
-        if current and current in items:
+        for heading, labels in groups:
+            combo.insertSeparator(combo.count())
+            _add_combo_heading(combo, heading)
+            for label in labels:
+                combo.addItem(label)
+        if current and combo.findText(current) != -1:
             combo.setCurrentText(current)
+        else:
+            combo.setCurrentIndex(0)
         combo.blockSignals(False)
 
     # ------------------------------------------------------------------
-    def set_items(self, items: Sequence[str]) -> None:
-        labels = list(items)
-        if not labels:
-            labels = ["No scalar data detected"]
-        self._apply_items(self._primary_combo, labels)
-        self._apply_items(self._secondary_combo, labels)
+    def set_items(self, groups: Sequence[Tuple[str, Sequence[str]]]) -> None:
+        prepared = [(title, [str(label) for label in labels if str(label).strip()]) for title, labels in groups]
+        prepared = [(title, entries) for title, entries in prepared if entries]
+        if not prepared:
+            prepared = [("Available parameters", ["No scalar data detected"])]
+        self._apply_items(self._primary_combo, prepared)
+        self._apply_items(self._secondary_combo, prepared)
         self._update_secondary_visibility()
 
     # ------------------------------------------------------------------
@@ -2386,6 +2452,7 @@ class TernaryAxisSelector(QWidget):
 class ScalarRepository:
     events: List[str] = field(default_factory=list)
     scalars: Dict[str, List[float]] = field(default_factory=dict)
+    categories: Dict[str, str] = field(default_factory=dict)
 
     def append_event(self, name: str) -> int:
         index = len(self.events)
@@ -2394,16 +2461,39 @@ class ScalarRepository:
             values.append(math.nan)
         return index
 
-    def assign(self, key: str, index: int, value: float) -> None:
+    def assign(self, key: str, index: int, value: float, *, category: str) -> None:
         if key not in self.scalars:
             self.scalars[key] = [math.nan] * len(self.events)
+            self.categories[key] = category
         series = self.scalars[key]
         if index >= len(series):
             series.extend([math.nan] * (index + 1 - len(series)))
+        self.categories.setdefault(key, category)
         series[index] = value
 
     def keys(self) -> List[str]:
         return sorted(self.scalars.keys())
+
+    def grouped_keys(self) -> List[Tuple[str, List[str]]]:
+        groups: Dict[str, List[str]] = {}
+        for key in self.scalars:
+            code = self.categories.get(key, "other")
+            groups.setdefault(code, []).append(key)
+        order = [
+            ("waveform", "Waveform analysis"),
+            ("dust", "Dust analysis"),
+            ("instrument", "Instrument settings"),
+        ]
+        ordered: List[Tuple[str, List[str]]] = []
+        for code, title in order:
+            entries = sorted(groups.pop(code, []))
+            if entries:
+                ordered.append((title, entries))
+        for code, entries in sorted(groups.items()):
+            if entries:
+                title = "Other parameters" if code == "other" else code.title()
+                ordered.append((title, sorted(entries)))
+        return ordered
 
     def resolve(self, key: Optional[str]) -> np.ndarray:
         if not key or key not in self.scalars:
@@ -2520,11 +2610,11 @@ class TernaryCompositionDialog(QDialog):
         self.status_label.setStyleSheet("color: #495057;")
         layout.addWidget(self.status_label)
 
-        scalar_labels = self._repository.keys()
+        scalar_groups = self._repository.grouped_keys()
         for selector in (self.axis_a, self.axis_b, self.axis_c):
-            selector.set_items(scalar_labels)
+            selector.set_items(scalar_groups)
 
-        if not scalar_labels:
+        if not any(labels for _, labels in scalar_groups):
             self.plot_button.setEnabled(False)
             self.status_label.setText("No scalar quantities found in the loaded events.")
             self._draw_placeholder("Load analysis data with scalar quantities to begin.")
@@ -2548,6 +2638,29 @@ class TernaryCompositionDialog(QDialog):
         return repo
 
     # ------------------------------------------------------------------
+    @staticmethod
+    def _categorise_scalar_label(label: str) -> str:
+        lowered = label.lower()
+        if label.startswith("Metadata/"):
+            return "instrument"
+        if label.startswith("Dust/"):
+            return "dust"
+        waveform_tokens = (
+            "waveform",
+            "signal",
+            "tof",
+            "mass",
+            "baseline",
+            "trigger",
+            "rise",
+            "decay",
+            "fit",
+        )
+        if any(token in lowered for token in waveform_tokens):
+            return "waveform"
+        return "other"
+
+    # ------------------------------------------------------------------
     def _collect_group_scalars(
         self,
         repo: ScalarRepository,
@@ -2562,7 +2675,8 @@ class TernaryCompositionDialog(QDialog):
             elif isinstance(obj, h5py.Dataset):
                 value = self._extract_scalar(obj)
                 if value is not None and math.isfinite(value):
-                    repo.assign(f"{prefix}{name}", index, float(value))
+                    label = f"{prefix}{name}"
+                    repo.assign(label, index, float(value), category=self._categorise_scalar_label(label))
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -2657,9 +2771,11 @@ class TernaryCompositionDialog(QDialog):
                 element_totals[element] += abundance
 
         for species, total in species_totals.items():
-            repo.assign(f"Dust/Species/{species}", index, total)
+            label = f"Dust/Species/{species}"
+            repo.assign(label, index, total, category="dust")
         for element, total in element_totals.items():
-            repo.assign(f"Dust/Element/{element}", index, total)
+            label = f"Dust/Element/{element}"
+            repo.assign(label, index, total, category="dust")
 
     # ------------------------------------------------------------------
     def _resolve_axis(self, selection: TernaryAxisSelection) -> np.ndarray:
@@ -4088,9 +4204,7 @@ class DustCompositionWindow(QMainWindow):
         self.mass_assignment_label.setStyleSheet("font-weight: 500;")
         layout.addWidget(self.mass_assignment_label)
         self.mass_species_combo = QComboBox(box)
-        self.mass_species_combo.addItem("Assign selected line…", userData=None)
-        for name, mass in SPECIES_CHOICES:
-            self.mass_species_combo.addItem(_species_display(name, mass), (name, mass))
+        _populate_species_combo(self.mass_species_combo)
         self.mass_species_combo.currentIndexChanged.connect(self._on_mass_species_chosen)
         layout.addWidget(self.mass_species_combo)
         self.control_layout.addWidget(box)
@@ -4161,9 +4275,7 @@ class DustCompositionWindow(QMainWindow):
         self.sample_guess_combo.setEditable(True)
         self.sample_guess_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.sample_guess_combo.setToolTip("Select a material from the reference library or enter your own description.")
-        self.sample_guess_combo.addItem("Auto (closest match)", userData=None)
-        for sample in SAMPLE_LIBRARY:
-            self.sample_guess_combo.addItem(f"{sample.category} — {sample.name}", userData=sample.name)
+        _populate_sample_guess_combo(self.sample_guess_combo)
         self.sample_guess_combo.currentIndexChanged.connect(self._on_sample_guess_changed)
         self.sample_guess_combo.editTextChanged.connect(self._on_sample_guess_text_changed)
         layout.addWidget(self.sample_guess_combo)

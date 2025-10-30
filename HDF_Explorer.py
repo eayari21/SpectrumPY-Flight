@@ -122,6 +122,25 @@ TOF_TOKENS = (
 
 TIME_CONSTANT_TOKENS = ("rise", "trigger", "decay")
 
+CATEGORY_WAVEFORM = "waveform"
+CATEGORY_DUST = "dust"
+CATEGORY_INSTRUMENT = "instrument"
+CATEGORY_OTHER = "other"
+
+CATEGORY_DISPLAY_NAMES: Dict[str, str] = {
+    CATEGORY_WAVEFORM: "Waveform analysis",
+    CATEGORY_DUST: "Dust analysis",
+    CATEGORY_INSTRUMENT: "Instrument settings",
+    CATEGORY_OTHER: "Other parameters",
+}
+
+CATEGORY_ORDER: Tuple[str, ...] = (
+    CATEGORY_WAVEFORM,
+    CATEGORY_DUST,
+    CATEGORY_INSTRUMENT,
+    CATEGORY_OTHER,
+)
+
 
 @dataclass
 class EventRecord:
@@ -179,6 +198,8 @@ class DataStore:
     array_time_keys: Dict[str, Optional[str]] = field(default_factory=dict)
     dataset_paths: Dict[str, str] = field(default_factory=dict)
     units: Dict[str, str] = field(default_factory=dict)
+    scalar_categories: Dict[str, str] = field(default_factory=dict)
+    array_categories: Dict[str, str] = field(default_factory=dict)
     metadata_epoch_key: Optional[str] = None
 
     def append_event(self, record: EventRecord) -> int:
@@ -248,14 +269,34 @@ class AxisSelector(QWidget):
         is_ratio = self._mode.currentText().lower() == "ratio"
         self._secondary.setVisible(is_ratio)
 
-    def set_items(self, labels: Sequence[str]):
+    def _insert_heading(self, combo: QComboBox, text: str) -> None:
+        combo.addItem(text)
+        index = combo.count() - 1
+        font = combo.font()
+        font.setBold(True)
+        combo.setItemData(index, font, Qt.ItemDataRole.FontRole)
+        combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
+
+    def set_items(self, groups: Sequence[Tuple[str, Sequence[str]]]):
+        prepared = [(title, [str(label) for label in labels if str(label).strip()]) for title, labels in groups]
+        prepared = [(title, entries) for title, entries in prepared if entries]
+        if not prepared:
+            prepared = [("Available parameters", ["No scalar data detected"])]
+
         def _apply(combo: QComboBox):
             current = combo.currentText()
             combo.blockSignals(True)
             combo.clear()
-            combo.addItems(labels)
-            if current and current in labels:
+            combo.addItem("— Select —")
+            for heading, labels in prepared:
+                combo.insertSeparator(combo.count())
+                self._insert_heading(combo, heading)
+                for label in labels:
+                    combo.addItem(label)
+            if current and combo.findText(current) != -1:
                 combo.setCurrentText(current)
+            else:
+                combo.setCurrentIndex(0)
             combo.blockSignals(False)
 
         _apply(self._primary)
@@ -266,6 +307,10 @@ class AxisSelector(QWidget):
         mode = self._mode.currentText().lower()
         primary = self._primary.currentText() or None
         secondary = self._secondary.currentText() or None
+        if self._primary.currentIndex() <= 0:
+            primary = None
+        if self._secondary.currentIndex() <= 0:
+            secondary = None
         if mode != "ratio":
             secondary = None
         return AxisSelection(mode=mode, primary=primary, secondary=secondary)
@@ -278,7 +323,7 @@ class Slicer3DViewer(QDialog):
         self,
         parent: Optional[QWidget],
         *,
-        axis_labels: Sequence[str],
+        axis_groups: Sequence[Tuple[str, Sequence[str]]],
         resolver: Callable[[AxisSelection], np.ndarray],
     ):
         super().__init__(parent)
@@ -290,7 +335,7 @@ class Slicer3DViewer(QDialog):
         self.axis_x = AxisSelector("X axis:")
         self.axis_y = AxisSelector("Y axis:")
         self.axis_z = AxisSelector("Z axis:")
-        self.set_axis_items(axis_labels)
+        self.set_axis_items(axis_groups)
 
         self.bin_spin = QSpinBox()
         self.bin_spin.setRange(8, 200)
@@ -371,11 +416,9 @@ class Slicer3DViewer(QDialog):
         self._clear_axes("Select axes and click 'Recompute volume' to begin.")
 
     # ------------------------------------------------------------------
-    def set_axis_items(self, labels: Sequence[str]) -> None:
-        if not labels:
-            labels = ["No scalar datasets detected"]
+    def set_axis_items(self, groups: Sequence[Tuple[str, Sequence[str]]]) -> None:
         for selector in (self.axis_x, self.axis_y, self.axis_z):
-            selector.set_items(labels)
+            selector.set_items(groups)
 
     # ------------------------------------------------------------------
     def recompute_volume(self) -> None:
@@ -796,53 +839,52 @@ class HDFDataExplorer(QWidget):
 
     # ------------------------------------------------------------------
     def _refresh_selectors(self) -> None:
-        scalar_labels = sorted(self.data_store.scalars.keys())
-        if not scalar_labels:
-            placeholder = ["No scalar datasets detected"]
-            for selector in (self.axis_x1, self.axis_y1, self.axis_c1, self.axis_x2, self.axis_y2, self.axis_c2):
-                selector.set_items(placeholder)
-            self.plot_button.setEnabled(False)
-            self.slicer_button.setEnabled(False)
-        else:
-            for selector in (self.axis_x1, self.axis_y1, self.axis_c1, self.axis_x2, self.axis_y2, self.axis_c2):
-                selector.set_items(scalar_labels)
-            self.plot_button.setEnabled(True)
-            self.slicer_button.setEnabled(True)
-            if self._slicer_window is not None:
-                self._slicer_window.set_axis_items(scalar_labels)
+        scalar_groups = self._group_scalar_labels()
+        has_scalar_data = bool(self.data_store.scalars)
+        selectors = (self.axis_x1, self.axis_y1, self.axis_c1, self.axis_x2, self.axis_y2, self.axis_c2)
+        for selector in selectors:
+            selector.set_items(scalar_groups)
+        self.plot_button.setEnabled(has_scalar_data)
+        self.slicer_button.setEnabled(has_scalar_data)
+        if self._slicer_window is not None:
+            self._slicer_window.set_axis_items(scalar_groups)
 
-        scalar_labels = sorted(self.data_store.scalars.keys())
-        array_labels = sorted(
-            key for key in self.data_store.arrays.keys() if not _is_time_dataset(key)
-        )
-        timeseries_labels = scalar_labels + array_labels
-        if timeseries_labels:
-            self.timeseries_combo.blockSignals(True)
-            current = self.timeseries_combo.currentText()
-            self.timeseries_combo.clear()
-            self.timeseries_combo.addItems(timeseries_labels)
-            if current in timeseries_labels:
+        timeseries_groups = self._group_timeseries_labels()
+        has_timeseries = any(labels for _, labels in timeseries_groups)
+        self.timeseries_combo.blockSignals(True)
+        current = self.timeseries_combo.currentText()
+        self.timeseries_combo.clear()
+        if has_timeseries:
+            self.timeseries_combo.addItem("Select dataset…")
+            for heading, labels in timeseries_groups:
+                self.timeseries_combo.insertSeparator(self.timeseries_combo.count())
+                self._add_combo_heading(self.timeseries_combo, heading)
+                for label in labels:
+                    self.timeseries_combo.addItem(label)
+            if current and self.timeseries_combo.findText(current) != -1:
                 self.timeseries_combo.setCurrentText(current)
-            self.timeseries_combo.blockSignals(False)
+            else:
+                self.timeseries_combo.setCurrentIndex(0)
+            self.timeseries_combo.setEnabled(True)
             self.timeseries_button.setEnabled(True)
         else:
-            self.timeseries_combo.clear()
             self.timeseries_combo.addItem("No datasets available")
             self.timeseries_combo.setEnabled(False)
             self.timeseries_button.setEnabled(False)
+        self.timeseries_combo.blockSignals(False)
 
     # ------------------------------------------------------------------
     def open_slicer_viewer(self) -> None:
-        scalar_labels = sorted(self.data_store.scalars.keys())
-        if not scalar_labels:
+        if not self.data_store.scalars:
             QMessageBox.information(self, "No scalar data", "Load an HDF5 file with scalar quantities to use the 3D viewer.")
             return
 
+        scalar_groups = self._group_scalar_labels()
         if self._slicer_window is None:
-            self._slicer_window = Slicer3DViewer(self, axis_labels=scalar_labels, resolver=self._resolve_axis)
+            self._slicer_window = Slicer3DViewer(self, axis_groups=scalar_groups, resolver=self._resolve_axis)
             self._slicer_window.destroyed.connect(lambda *_: setattr(self, "_slicer_window", None))
         else:
-            self._slicer_window.set_axis_items(scalar_labels)
+            self._slicer_window.set_axis_items(scalar_groups)
 
         self._slicer_window.show()
         self._slicer_window.raise_()
@@ -961,6 +1003,84 @@ class HDFDataExplorer(QWidget):
                 dtype=dtype,
             )
         return datasets
+
+    @staticmethod
+    def _add_combo_heading(combo: QComboBox, text: str) -> None:
+        combo.addItem(text)
+        index = combo.count() - 1
+        font = combo.font()
+        font.setBold(True)
+        combo.setItemData(index, font, Qt.ItemDataRole.FontRole)
+        combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
+
+    def _classify_dataset_label(
+        self,
+        *,
+        label: str,
+        dataset_name: str,
+        full_path: str,
+        category: str,
+    ) -> str:
+        if category == "metadata":
+            return CATEGORY_INSTRUMENT
+        text = " ".join((label, dataset_name, full_path)).lower()
+        if any(token in text for token in ("dust", "abundance", "rsf", "composition", "species")):
+            return CATEGORY_DUST
+        if any(
+            token in text
+            for token in (
+                "waveform",
+                "signal",
+                "tof",
+                "massline",
+                "counts",
+                "target",
+                "ion",
+                "baseline",
+                "trigger",
+                "rise",
+                "decay",
+                "fitparam",
+                "fit_param",
+                "fit parameter",
+                "fit parameters",
+            )
+        ):
+            return CATEGORY_WAVEFORM
+        return CATEGORY_OTHER
+
+    def _group_labels_by_category(
+        self,
+        labels: Sequence[str],
+        categories: Dict[str, str],
+    ) -> List[Tuple[str, List[str]]]:
+        grouped: Dict[str, List[str]] = {}
+        for label in labels:
+            code = categories.get(label, CATEGORY_OTHER)
+            grouped.setdefault(code, []).append(label)
+        ordered: List[Tuple[str, List[str]]] = []
+        for code in CATEGORY_ORDER:
+            entries = sorted(grouped.pop(code, []))
+            if entries:
+                ordered.append((CATEGORY_DISPLAY_NAMES.get(code, code.title()), entries))
+        for code, entries in sorted(grouped.items()):
+            if entries:
+                ordered.append((CATEGORY_DISPLAY_NAMES.get(code, code.title()), sorted(entries)))
+        return ordered
+
+    def _group_scalar_labels(self) -> List[Tuple[str, List[str]]]:
+        labels = sorted(self.data_store.scalars.keys())
+        return self._group_labels_by_category(labels, self.data_store.scalar_categories)
+
+    def _group_timeseries_labels(self) -> List[Tuple[str, List[str]]]:
+        scalar_labels = sorted(self.data_store.scalars.keys())
+        array_labels = sorted(
+            key for key in self.data_store.arrays.keys() if not _is_time_dataset(key)
+        )
+        combined = scalar_labels + [label for label in array_labels if label not in scalar_labels]
+        categories = dict(self.data_store.array_categories)
+        categories.update(self.data_store.scalar_categories)
+        return self._group_labels_by_category(combined, categories)
 
     # ------------------------------------------------------------------
     def _extract_epoch(self, group: h5py.Group) -> Optional[float]:
@@ -1094,11 +1214,20 @@ class HDFDataExplorer(QWidget):
     ) -> None:
         time_series: Dict[str, ArrayPayload] = {}
         value_series: Dict[str, ArrayPayload] = {}
+        value_categories: Dict[str, str] = {}
+        time_categories: Dict[str, str] = {}
 
         for name, array in datasets.items():
             full_path = f"{group_name}/{name}"
             label = f"{label_prefix}{name}" if label_prefix else name
             store.dataset_paths.setdefault(label, full_path)
+
+            label_category = self._classify_dataset_label(
+                label=label,
+                dataset_name=name,
+                full_path=full_path,
+                category=category,
+            )
 
             if not _is_time_dataset(name) and label not in store.units:
                 unit = self._infer_dataset_units(
@@ -1114,6 +1243,7 @@ class HDFDataExplorer(QWidget):
             size = self._payload_size(array)
             if ndim == 0 or size == 1:
                 series = store.ensure_scalar_entry(label)
+                store.scalar_categories.setdefault(label, label_category)
                 scalar_value = self._scalar_from_array(array)
                 if scalar_value is not None:
                     series[event_index] = scalar_value
@@ -1123,15 +1253,24 @@ class HDFDataExplorer(QWidget):
             if any(suffix in lowered for suffix in FIT_PARAM_SUFFIXES):
                 materialized = self._materialize_payload(array)
                 if materialized is not None:
-                    self._ingest_fit_parameters(store, event_index, label, full_path, materialized)
+                    self._ingest_fit_parameters(
+                        store,
+                        event_index,
+                        label,
+                        full_path,
+                        materialized,
+                        label_category,
+                    )
                 continue
 
             if _is_time_dataset(name):
                 time_series[label] = array
+                time_categories[label] = label_category
                 if category == "metadata" and store.metadata_epoch_key is None and "epoch" in lowered:
                     store.metadata_epoch_key = label
             else:
                 value_series[label] = array
+                value_categories[label] = label_category
 
         for name, arr in value_series.items():
             series = store.ensure_array_entry(name)
@@ -1141,6 +1280,7 @@ class HDFDataExplorer(QWidget):
                 series[event_index] = np.array(arr, copy=True)
             if name not in store.array_time_keys:
                 store.array_time_keys[name] = self._guess_time_key(name, time_series)
+            store.array_categories.setdefault(name, value_categories.get(name, CATEGORY_OTHER))
 
         for name, arr in time_series.items():
             series = store.ensure_array_entry(name)
@@ -1149,6 +1289,7 @@ class HDFDataExplorer(QWidget):
             else:
                 series[event_index] = np.array(arr, copy=True)
             store.array_time_keys.setdefault(name, None)
+            store.array_categories.setdefault(name, time_categories.get(name, CATEGORY_OTHER))
 
     # ------------------------------------------------------------------
     def _guess_time_key(self, dataset_name: str, time_series: Dict[str, np.ndarray]) -> Optional[str]:
@@ -1173,6 +1314,7 @@ class HDFDataExplorer(QWidget):
         dataset_name: str,
         full_path: str,
         values: np.ndarray,
+        label_category: str,
     ) -> None:
         flat = np.ravel(values)
         channel = _infer_channel_from_name(dataset_name)
@@ -1187,6 +1329,7 @@ class HDFDataExplorer(QWidget):
                 scalar_value = float(value)
             label = _friendly_scalar_label(base_label, channel, mass_label, param_labels[idx])
             series = store.ensure_scalar_entry(label)
+            store.scalar_categories.setdefault(label, label_category)
             series[event_index] = scalar_value
 
     # ------------------------------------------------------------------
