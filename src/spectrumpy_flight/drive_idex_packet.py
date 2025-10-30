@@ -42,6 +42,30 @@ def needs_conversion(src: Path, out_dir: Path) -> Tuple[bool, Path]:
     dst = out_dir / (src.name + ".h5")
     return (not dst.exists()), dst
 
+def _maybe_prepend_pythonpath(env: dict) -> None:
+    """Ensure the spectrumpy_flight source tree is importable.
+
+    When running from a source checkout, the package lives under ``src`` and
+    is not necessarily installed.  Add that directory to ``PYTHONPATH`` so
+    ``python -m spectrumpy_flight.idex_packet`` works in child processes.
+    """
+
+    here = Path(__file__).resolve()
+    # ``.../src/spectrumpy_flight/drive_idex_packet.py`` -> ``.../src``
+    src_root = here.parents[1]
+    if not (src_root / "spectrumpy_flight").exists():
+        return
+
+    existing = env.get("PYTHONPATH")
+    src_str = str(src_root)
+    if existing:
+        if src_str in existing.split(os.pathsep):
+            return
+        env["PYTHONPATH"] = os.pathsep.join([src_str, existing])
+    else:
+        env["PYTHONPATH"] = src_str
+
+
 def build_env(threads_per_proc: int | None) -> dict:
     env = os.environ.copy()
     if threads_per_proc:
@@ -52,6 +76,7 @@ def build_env(threads_per_proc: int | None) -> dict:
         env["MKL_NUM_THREADS"] = t
         env["NUMEXPR_NUM_THREADS"] = t
         env["VECLIB_MAXIMUM_THREADS"] = t  # Accelerate (macOS)
+    _maybe_prepend_pythonpath(env)
     return env
 
 def run_one(idx: int, py: str, entrypoint: tuple[str, str | Path], src: Path, env: dict,
@@ -100,17 +125,19 @@ def locate_idex_entrypoint(explicit: str | None) -> tuple[str, str | Path]:
         raise FileNotFoundError(f"Cannot locate idex script at '{explicit}'")
 
     # Prefer the installed module when available; works for pip installs.
+    module_name = "spectrumpy_flight.idex_packet"
     try:
-        spec = importlib.util.find_spec("spectrumpy_flight.idex_packet")
+        spec = importlib.util.find_spec(module_name)
     except ModuleNotFoundError:
         spec = None
     if spec is not None:
-        return ("module", "spectrumpy_flight.idex_packet")
+        return ("module", module_name)
 
-    # Fallback to a sibling file, which covers running from a source checkout/zip.
-    sibling = Path(__file__).with_name("idex_packet.py")
-    if sibling.is_file():
-        return ("script", sibling.resolve())
+    # Running from a source checkout: ensure the package directory exists and
+    # prefer invoking it as a module so relative imports succeed.
+    package_dir = Path(__file__).resolve().parent
+    if (package_dir / "idex_packet.py").is_file():
+        return ("module", module_name)
 
     raise FileNotFoundError("Unable to find spectrumpy_flight.idex_packet entrypoint")
 
