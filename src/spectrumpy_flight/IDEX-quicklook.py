@@ -37,6 +37,7 @@ if not __package__:
 
 import html
 import textwrap
+from datetime import timedelta
 
 try:
     import h5py  # type: ignore
@@ -46,6 +47,9 @@ except Exception:  # pragma: no cover - optional dependency for environments wit
 # --- ERFC shim compatible with NumPy 1.x/2.x (SciPy optional) ---
 from typing import Union
 import numpy as np
+import pandas as pd
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import QueuePool
 
 from .idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
 from .paths import default_hdf5_dir
@@ -124,7 +128,7 @@ try:
         QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
         QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton, QTextBrowser,
         QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter,
-        QScrollArea, QFrame, QGroupBox
+        QScrollArea, QFrame, QGroupBox, QDoubleSpinBox, QSpinBox
     )
     _QT = "PySide6"
 except Exception:
@@ -136,7 +140,7 @@ except Exception:
         QHBoxLayout, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
         QCheckBox, QDialogButtonBox, QMenu, QMenuBar, QToolButton, QTextBrowser,
         QListWidget, QListWidgetItem, QLineEdit, QWidgetAction, QStyle, QSplitter,
-        QScrollArea, QFrame, QGroupBox
+        QScrollArea, QFrame, QGroupBox, QDoubleSpinBox, QSpinBox
     )
     _QT = "PyQt6"
 
@@ -1842,6 +1846,730 @@ def create_data_source(filename: str) -> BaseDataSource:
         return CDFDataSource(filename)
 
 
+# --------- SQL matching helpers ---------
+SQL_DB_URI = os.environ.get(
+    "IDEX_SQL_URI",
+    "mysql+pymysql://admin:1jlwbXqCVkNdt91KCijx@impactlab.cbhrpdddmhcs.us-east-1.rds.amazonaws.com/CCLDAS_PRODUCTION",
+)
+
+_SQL_ENGINE = None
+
+
+def _get_sql_engine():
+    global _SQL_ENGINE
+    if _SQL_ENGINE is None:
+        _SQL_ENGINE = create_engine(
+            SQL_DB_URI,
+            poolclass=QueuePool,
+            pool_size=5,
+            max_overflow=10,
+        )
+    return _SQL_ENGINE
+
+
+def _first_finite_scalar(values: Any) -> Optional[float]:
+    if values is None:
+        return None
+
+    try:
+        arr = np.asarray(values, dtype=float)
+    except Exception:
+        try:
+            arr = np.asarray(values)
+        except Exception:
+            return None
+        arr = arr.ravel()
+        for item in arr:
+            try:
+                candidate = float(item)
+            except Exception:
+                continue
+            if np.isfinite(candidate):
+                return float(candidate)
+        return None
+
+    arr = np.asarray(arr, dtype=float).ravel()
+    if arr.size == 0:
+        return None
+
+    for value in arr:
+        if np.isfinite(value):
+            return float(value)
+    return None
+
+
+def _get_dataset_scalar(data_source: BaseDataSource, event: str, dataset: str) -> Optional[float]:
+    try:
+        data = data_source.get_dataset(event, dataset)
+    except Exception:
+        return None
+    return _first_finite_scalar(data)
+
+
+_EVENT_TIME_DATASETS: List[Tuple[str, str]] = [
+    ("Analysis/Accelerator Timestamp", "milliseconds"),
+    ("Analysis/AcceleratorTimestamp", "milliseconds"),
+    ("Analysis/Trigger Time (ms)", "milliseconds"),
+    ("Analysis/Trigger Time", "seconds"),
+    ("Analysis/TriggerTime", "seconds"),
+    ("Analysis/TriggerTimeMs", "milliseconds"),
+    ("Analysis/QD Trigger (ms)", "milliseconds"),
+    ("Analysis/QD Trigger", "seconds"),
+    ("Analysis/QD Trigger Time", "seconds"),
+    ("Metadata/Trigger Time (ms)", "milliseconds"),
+    ("Metadata/TriggerTime", "milliseconds"),
+    ("Metadata/IntegerTimestamp", "milliseconds"),
+]
+
+_EVENT_VELOCITY_DATASETS: List[Tuple[str, str]] = [
+    ("Analysis/Particle Velocity (kmps, QD Fit)", "kmps"),
+    ("Analysis/Particle Velocity (kmps, Accelerator)", "kmps"),
+    ("Analysis/QD Velocity (km/s)", "kmps"),
+    ("Analysis/QD Velocity Estimate", "kmps"),
+    ("Analysis/QD Velocity", "kmps"),
+    ("Analysis/QD Velocity (m/s)", "mps"),
+    ("Analysis/QDFitVelocity", "kmps"),
+    ("Analysis/Accelerator Velocity", "kmps"),
+    ("Analysis/Ion Grid Velocity Estimate", "kmps"),
+    ("Analysis/Target H Velocity Estimate", "kmps"),
+    ("Analysis/Target L Velocity Estimate", "kmps"),
+]
+
+
+def _guess_event_timestamp_ms(data_source: BaseDataSource, event: str) -> Optional[float]:
+    getter = getattr(data_source, "get_epoch_seconds", None)
+    if callable(getter):
+        try:
+            epoch_seconds = getter(event)
+        except Exception:
+            epoch_seconds = None
+        if epoch_seconds is not None:
+            try:
+                return float(epoch_seconds) * 1000.0
+            except Exception:
+                pass
+
+    for dataset, unit in _EVENT_TIME_DATASETS:
+        value = _get_dataset_scalar(data_source, event, dataset)
+        if value is None:
+            continue
+        if unit == "milliseconds":
+            return float(value)
+        if unit == "seconds":
+            return float(value) * 1000.0
+        if unit == "microseconds":
+            return float(value) / 1000.0
+
+    return None
+
+
+def _guess_event_velocity_kmps(data_source: BaseDataSource, event: str) -> Optional[float]:
+    for dataset, unit in _EVENT_VELOCITY_DATASETS:
+        value = _get_dataset_scalar(data_source, event, dataset)
+        if value is None:
+            continue
+        if unit == "kmps":
+            return float(value)
+        if unit == "mps":
+            return float(value) / 1000.0
+    return None
+
+
+def _timestamp_to_iso(ms: Optional[float]) -> str:
+    if ms is None or not np.isfinite(ms):
+        return "Unavailable"
+    try:
+        dt = datetime.fromtimestamp(float(ms) / 1000.0, tz=timezone.utc)
+    except Exception:
+        return f"{ms:.0f} ms"
+    return dt.isoformat()
+
+
+def _format_delta_ms(delta_ms: Optional[float]) -> str:
+    if delta_ms is None or not np.isfinite(delta_ms):
+        return "–"
+    if abs(delta_ms) < 1e-3:
+        return "0 ms"
+    sign = "-" if delta_ms < 0 else "+"
+    delta = timedelta(milliseconds=abs(delta_ms))
+    total_seconds = delta.total_seconds()
+    if total_seconds >= 3600:
+        hours = total_seconds / 3600.0
+        return f"{sign}{hours:.2f} h"
+    if total_seconds >= 60:
+        minutes = total_seconds / 60.0
+        return f"{sign}{minutes:.2f} min"
+    if total_seconds >= 1:
+        return f"{sign}{total_seconds:.2f} s"
+    return f"{sign}{abs(delta_ms):.0f} ms"
+
+
+def _format_float(value: Optional[float], precision: int = 3) -> str:
+    if value is None or not np.isfinite(value):
+        return "–"
+    if abs(value) >= 1e3 or (abs(value) > 0 and abs(value) < 1e-3):
+        return f"{value:.{precision}e}"
+    return f"{value:.{precision}f}"
+
+
+def _format_mass(value: Optional[float]) -> str:
+    return _format_float(value, precision=3)
+
+
+def _format_charge(value: Optional[float]) -> str:
+    return _format_float(value, precision=3)
+
+
+@dataclass
+class SQLMatchCriteria:
+    time_ms: Optional[float] = None
+    time_window_ms: float = 2000.0
+    velocity_kmps: Optional[float] = None
+    velocity_tolerance_kmps: float = 0.2
+    min_quality: Optional[int] = 0
+    limit: int = 20
+    extra_filter: str = ""
+
+
+@dataclass
+class SQLMatchResult:
+    record_id: Optional[int]
+    estimate_quality: Optional[float]
+    timestamp_ms: Optional[float]
+    velocity_mps: Optional[float]
+    mass_kg: Optional[float]
+    charge_c: Optional[float]
+    radius_m: Optional[float]
+
+    @property
+    def velocity_kmps(self) -> Optional[float]:
+        if self.velocity_mps is None or not np.isfinite(self.velocity_mps):
+            return None
+        return float(self.velocity_mps) / 1000.0
+
+    def age_ms(self, reference_ms: Optional[float]) -> Optional[float]:
+        if reference_ms is None or self.timestamp_ms is None:
+            return None
+        if not np.isfinite(reference_ms) or not np.isfinite(self.timestamp_ms):
+            return None
+        return float(self.timestamp_ms) - float(reference_ms)
+
+
+def build_default_criteria(data_source: BaseDataSource, event: str) -> SQLMatchCriteria:
+    time_ms = _guess_event_timestamp_ms(data_source, event)
+    velocity_kmps = _guess_event_velocity_kmps(data_source, event)
+    return SQLMatchCriteria(time_ms=time_ms, velocity_kmps=velocity_kmps)
+
+
+def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult], str, Dict[str, Any]]:
+    engine = _get_sql_engine()
+    where_clauses = ["mass != -1"]
+    params: Dict[str, Any] = {}
+    order_terms: List[str] = []
+
+    if criteria.time_ms is not None and np.isfinite(criteria.time_ms):
+        window = max(criteria.time_window_ms, 0.0)
+        time_lower = float(criteria.time_ms) - window
+        time_upper = float(criteria.time_ms) + window
+        where_clauses.append("integer_timestamp BETWEEN :time_lower AND :time_upper")
+        params["time_lower"] = int(time_lower)
+        params["time_upper"] = int(time_upper)
+        params["time_center"] = int(criteria.time_ms)
+        order_terms.append("ABS(integer_timestamp - :time_center)")
+    else:
+        order_terms.append("integer_timestamp DESC")
+
+    if criteria.velocity_kmps is not None and np.isfinite(criteria.velocity_kmps):
+        target_mps = float(criteria.velocity_kmps) * 1000.0
+        tol = max(criteria.velocity_tolerance_kmps, 0.0) * 1000.0
+        where_clauses.append("velocity BETWEEN :velocity_lower AND :velocity_upper")
+        params["velocity_lower"] = target_mps - tol
+        params["velocity_upper"] = target_mps + tol
+        params["velocity_target"] = target_mps
+        order_terms.append("ABS(velocity - :velocity_target)")
+
+    if criteria.min_quality is not None:
+        where_clauses.append("estimate_quality >= :min_quality")
+        params["min_quality"] = int(criteria.min_quality)
+
+    extra = criteria.extra_filter.strip()
+    if extra:
+        where_clauses.append(f"({extra})")
+
+    where_sql = " AND ".join(where_clauses) if where_clauses else "1"
+    order_sql = ", ".join(order_terms)
+
+    sql = (
+        "SELECT id, estimate_quality, integer_timestamp, velocity, mass, charge, radius "
+        "FROM dust_event "
+        f"WHERE {where_sql} "
+    )
+    if order_sql:
+        sql += f"ORDER BY {order_sql} "
+    if criteria.limit:
+        sql += "LIMIT :limit"
+        params["limit"] = int(criteria.limit)
+
+    with engine.connect() as connection:
+        frame = pd.read_sql_query(text(sql), connection, params=params)
+
+    results: List[SQLMatchResult] = []
+    for row in frame.itertuples(index=False):
+        record_id = getattr(row, "id", None)
+        estimate_quality = getattr(row, "estimate_quality", None)
+        timestamp_ms = getattr(row, "integer_timestamp", None)
+        velocity = getattr(row, "velocity", None)
+        mass = getattr(row, "mass", None)
+        charge = getattr(row, "charge", None)
+        radius = getattr(row, "radius", None)
+        results.append(
+            SQLMatchResult(
+                record_id=int(record_id) if record_id is not None else None,
+                estimate_quality=float(estimate_quality) if estimate_quality is not None else None,
+                timestamp_ms=float(timestamp_ms) if timestamp_ms is not None else None,
+                velocity_mps=float(velocity) if velocity is not None else None,
+                mass_kg=float(mass) if mass is not None else None,
+                charge_c=float(charge) if charge is not None else None,
+                radius_m=float(radius) if radius is not None else None,
+            )
+        )
+
+    return results, sql, params
+
+
+def _write_sql_match(
+    h5_handle: Any,
+    event: str,
+    match: SQLMatchResult,
+    criteria: SQLMatchCriteria,
+) -> None:
+    if h5_handle is None or h5py is None:
+        raise RuntimeError("The current file is not writable.")
+
+    try:
+        analysis_group = h5_handle.require_group(f"{event}/Analysis")
+        match_group = analysis_group.require_group("SQLMatch")
+    except Exception as exc:  # pragma: no cover - defensive
+        raise RuntimeError(f"Unable to create SQLMatch group: {exc}") from exc
+
+    payload: Dict[str, Any] = {
+        "RecordID": match.record_id if match.record_id is not None else -1,
+        "EstimateQuality": match.estimate_quality if match.estimate_quality is not None else np.nan,
+        "IntegerTimestamp": match.timestamp_ms if match.timestamp_ms is not None else np.nan,
+        "VelocityMetersPerSecond": match.velocity_mps if match.velocity_mps is not None else np.nan,
+        "VelocityKilometersPerSecond": match.velocity_kmps if match.velocity_kmps is not None else np.nan,
+        "MassKilograms": match.mass_kg if match.mass_kg is not None else np.nan,
+        "ChargeCoulombs": match.charge_c if match.charge_c is not None else np.nan,
+        "RadiusMeters": match.radius_m if match.radius_m is not None else np.nan,
+        "QueryCenterTimestamp": criteria.time_ms if criteria.time_ms is not None else np.nan,
+        "QueryWindowMilliseconds": criteria.time_window_ms,
+        "QueryVelocityKilometersPerSecond": criteria.velocity_kmps if criteria.velocity_kmps is not None else np.nan,
+        "QueryVelocityToleranceKilometersPerSecond": criteria.velocity_tolerance_kmps,
+        "MinimumEstimateQuality": criteria.min_quality if criteria.min_quality is not None else np.nan,
+        "ResultLimit": criteria.limit,
+    }
+
+    for name, value in payload.items():
+        if name in match_group:
+            del match_group[name]
+        if isinstance(value, str):
+            dtype = h5py.string_dtype(encoding="utf-8") if h5py is not None else None
+            match_group.create_dataset(name, data=np.array(value, dtype=dtype))
+        else:
+            match_group.create_dataset(name, data=np.array(value, dtype=float))
+
+    extra = criteria.extra_filter.strip()
+    if extra:
+        if "ExtraFilter" in match_group:
+            del match_group["ExtraFilter"]
+        match_group.create_dataset("ExtraFilter", data=np.array(extra, dtype=h5py.string_dtype("utf-8")))
+
+    match_group.attrs["MatchedAtUTC"] = datetime.now(timezone.utc).isoformat()
+
+    try:
+        h5_handle.flush()
+    except Exception:  # pragma: no cover - filesystem edge cases
+        pass
+
+
+class SQLMatchDialog(QDialog):
+    COLUMN_DEFINITIONS: List[Tuple[str, Callable[[SQLMatchResult], str]]] = [
+        ("ID", lambda m: "–" if m.record_id is None else str(m.record_id)),
+        ("Quality", lambda m: _format_float(m.estimate_quality, precision=1)),
+        ("Timestamp (UTC)", lambda m: _timestamp_to_iso(m.timestamp_ms)),
+        ("Δt", lambda m: _format_delta_ms(m.age_ms(m._reference_time_ms))),  # type: ignore[attr-defined]
+        ("Velocity (km/s)", lambda m: _format_float(m.velocity_kmps, precision=3)),
+        ("Mass (kg)", lambda m: _format_mass(m.mass_kg)),
+        ("Charge (C)", lambda m: _format_charge(m.charge_c)),
+        ("Radius (m)", lambda m: _format_float(m.radius_m, precision=3)),
+    ]
+
+    def __init__(
+        self,
+        data_source: BaseDataSource,
+        event_name: str,
+        *,
+        event_names: Optional[List[str]] = None,
+        parent: Optional[QWidget] = None,
+        h5_handle: Any = None,
+        on_event_changed: Optional[Callable[[str], None]] = None,
+        status_callback: Optional[Callable[[str, int], None]] = None,
+    ):
+        super().__init__(parent)
+        self.setWindowTitle("Accelerator SQL Matching")
+        self.resize(980, 720)
+
+        self._data_source = data_source
+        self._event_names = event_names or []
+        self._current_event = event_name if event_name in self._event_names else (self._event_names[0] if self._event_names else event_name)
+        self._h5_handle = h5_handle
+        self._on_event_changed = on_event_changed
+        self._status_callback = status_callback
+        self._default_criteria = SQLMatchCriteria()
+        self._last_criteria = SQLMatchCriteria()
+        self._matches: List[SQLMatchResult] = []
+        self._last_query_sql: str = ""
+        self._last_query_params: Dict[str, Any] = {}
+        self._reference_time_ms: Optional[float] = None
+
+        self._build_ui()
+        self._populate_event_combo()
+        if self._current_event:
+            self._refresh_for_event(self._current_event, notify_parent=False)
+
+    def _build_ui(self) -> None:
+        layout = QVBoxLayout(self)
+
+        header_layout = QHBoxLayout()
+        header_layout.addWidget(QLabel("Event:"))
+        self.event_combo = QComboBox(self)
+        self.event_combo.currentIndexChanged.connect(self._event_combo_changed)
+        header_layout.addWidget(self.event_combo)
+        header_layout.addStretch(1)
+        layout.addLayout(header_layout)
+
+        self.summary_label = QLabel("Select an event to begin.")
+        self.summary_label.setWordWrap(True)
+        layout.addWidget(self.summary_label)
+
+        criteria_group = QGroupBox("Search criteria", self)
+        criteria_layout = QGridLayout(criteria_group)
+
+        self.timestamp_edit = QLineEdit(self)
+        self.timestamp_edit.setPlaceholderText("Epoch milliseconds (leave blank to ignore)")
+        criteria_layout.addWidget(QLabel("Timestamp (ms)"), 0, 0)
+        criteria_layout.addWidget(self.timestamp_edit, 0, 1)
+
+        self.time_window_spin = QDoubleSpinBox(self)
+        self.time_window_spin.setRange(1.0, 3600_000.0)
+        self.time_window_spin.setDecimals(0)
+        self.time_window_spin.setSingleStep(250.0)
+        criteria_layout.addWidget(QLabel("± Window (ms)"), 0, 2)
+        criteria_layout.addWidget(self.time_window_spin, 0, 3)
+
+        self.velocity_edit = QLineEdit(self)
+        self.velocity_edit.setPlaceholderText("Velocity in km/s (optional)")
+        criteria_layout.addWidget(QLabel("Velocity (km/s)"), 1, 0)
+        criteria_layout.addWidget(self.velocity_edit, 1, 1)
+
+        self.velocity_tol_spin = QDoubleSpinBox(self)
+        self.velocity_tol_spin.setRange(0.0, 100.0)
+        self.velocity_tol_spin.setDecimals(3)
+        self.velocity_tol_spin.setSingleStep(0.05)
+        criteria_layout.addWidget(QLabel("± Velocity tol. (km/s)"), 1, 2)
+        criteria_layout.addWidget(self.velocity_tol_spin, 1, 3)
+
+        self.quality_spin = QSpinBox(self)
+        self.quality_spin.setRange(-100, 100)
+        self.quality_spin.setValue(0)
+        criteria_layout.addWidget(QLabel("Minimum quality"), 2, 0)
+        criteria_layout.addWidget(self.quality_spin, 2, 1)
+
+        self.limit_spin = QSpinBox(self)
+        self.limit_spin.setRange(1, 200)
+        self.limit_spin.setValue(20)
+        criteria_layout.addWidget(QLabel("Result limit"), 2, 2)
+        criteria_layout.addWidget(self.limit_spin, 2, 3)
+
+        self.extra_filter_edit = QLineEdit(self)
+        self.extra_filter_edit.setPlaceholderText("Additional SQL filter (advanced)")
+        criteria_layout.addWidget(QLabel("Extra filter"), 3, 0)
+        criteria_layout.addWidget(self.extra_filter_edit, 3, 1, 1, 3)
+
+        layout.addWidget(criteria_group)
+
+        button_row = QHBoxLayout()
+        self.refresh_button = QPushButton("Refresh matches", self)
+        self.refresh_button.clicked.connect(self.run_search)
+        button_row.addWidget(self.refresh_button)
+
+        self.reset_button = QPushButton("Reset to event defaults", self)
+        self.reset_button.clicked.connect(self.reset_to_defaults)
+        button_row.addWidget(self.reset_button)
+
+        self.copy_sql_button = QPushButton("Copy SQL", self)
+        self.copy_sql_button.clicked.connect(self.copy_last_query)
+        button_row.addWidget(self.copy_sql_button)
+
+        button_row.addStretch(1)
+        layout.addLayout(button_row)
+
+        self.matches_table = QTableWidget(self)
+        self.matches_table.setColumnCount(len(self.COLUMN_DEFINITIONS))
+        self.matches_table.setHorizontalHeaderLabels([label for label, _ in self.COLUMN_DEFINITIONS])
+        self.matches_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.matches_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.matches_table.horizontalHeader().setStretchLastSection(True)
+        self.matches_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.matches_table.verticalHeader().setVisible(False)
+        self.matches_table.itemSelectionChanged.connect(self._update_details_from_selection)
+        layout.addWidget(self.matches_table)
+
+        details_group = QGroupBox("Match details", self)
+        details_layout = QVBoxLayout(details_group)
+        self.details_browser = QTextBrowser(self)
+        self.details_browser.setOpenExternalLinks(True)
+        details_layout.addWidget(self.details_browser)
+        layout.addWidget(details_group)
+
+        bottom_row = QHBoxLayout()
+        bottom_row.addStretch(1)
+        self.apply_button = QPushButton("Apply match to event", self)
+        self.apply_button.clicked.connect(self.apply_match)
+        self.apply_button.setEnabled(False)
+        bottom_row.addWidget(self.apply_button)
+
+        close_button = QPushButton("Close", self)
+        close_button.clicked.connect(self.close)
+        bottom_row.addWidget(close_button)
+        layout.addLayout(bottom_row)
+
+    def _populate_event_combo(self) -> None:
+        self.event_combo.blockSignals(True)
+        self.event_combo.clear()
+        self.event_combo.addItems(self._event_names)
+        self.event_combo.blockSignals(False)
+        if self._current_event and self._current_event in self._event_names:
+            index = self._event_names.index(self._current_event)
+            self.event_combo.setCurrentIndex(index)
+
+    def _event_combo_changed(self, index: int) -> None:
+        if index < 0 or index >= len(self._event_names):
+            return
+        event_name = self._event_names[index]
+        self._refresh_for_event(event_name, notify_parent=True)
+
+    def _refresh_for_event(self, event_name: str, notify_parent: bool) -> None:
+        self._current_event = event_name
+        self._default_criteria = build_default_criteria(self._data_source, event_name)
+        self._reference_time_ms = self._default_criteria.time_ms
+        self._set_criteria_fields(self._default_criteria)
+        self._update_summary_label()
+        self.run_search()
+        if notify_parent and self._on_event_changed is not None:
+            self._on_event_changed(event_name)
+
+    def _set_criteria_fields(self, criteria: SQLMatchCriteria) -> None:
+        if criteria.time_ms is None or not np.isfinite(criteria.time_ms):
+            self.timestamp_edit.clear()
+        else:
+            self.timestamp_edit.setText(f"{criteria.time_ms:.3f}")
+        self.time_window_spin.setValue(criteria.time_window_ms)
+        if criteria.velocity_kmps is None or not np.isfinite(criteria.velocity_kmps):
+            self.velocity_edit.clear()
+        else:
+            self.velocity_edit.setText(f"{criteria.velocity_kmps:.4f}")
+        self.velocity_tol_spin.setValue(criteria.velocity_tolerance_kmps)
+        self.quality_spin.setValue(criteria.min_quality or 0)
+        self.limit_spin.setValue(criteria.limit)
+        self.extra_filter_edit.setText(criteria.extra_filter)
+
+    def _collect_criteria(self) -> Optional[SQLMatchCriteria]:
+        timestamp_text = self.timestamp_edit.text().strip()
+        velocity_text = self.velocity_edit.text().strip()
+
+        time_ms: Optional[float]
+        if timestamp_text:
+            try:
+                time_ms = float(timestamp_text)
+            except ValueError:
+                QMessageBox.warning(self, "Invalid timestamp", "Timestamp must be a numeric value in milliseconds.")
+                return None
+        else:
+            time_ms = None
+
+        velocity_kmps: Optional[float]
+        if velocity_text:
+            try:
+                velocity_kmps = float(velocity_text)
+            except ValueError:
+                QMessageBox.warning(self, "Invalid velocity", "Velocity must be expressed in km/s.")
+                return None
+        else:
+            velocity_kmps = None
+
+        criteria = SQLMatchCriteria(
+            time_ms=time_ms,
+            time_window_ms=float(self.time_window_spin.value()),
+            velocity_kmps=velocity_kmps,
+            velocity_tolerance_kmps=float(self.velocity_tol_spin.value()),
+            min_quality=int(self.quality_spin.value()),
+            limit=int(self.limit_spin.value()),
+            extra_filter=self.extra_filter_edit.text().strip(),
+        )
+        return criteria
+
+    def run_search(self) -> None:
+        criteria = self._collect_criteria()
+        if criteria is None:
+            return
+
+        try:
+            results, sql, params = query_dust_events(criteria)
+        except Exception as exc:
+            QMessageBox.critical(self, "SQL query failed", f"Unable to execute the query:\n{exc}")
+            return
+
+        self._matches = results
+        self._last_query_sql = sql
+        self._last_query_params = params
+        self._last_criteria = criteria
+        self._populate_table()
+        if results:
+            self.matches_table.selectRow(0)
+        else:
+            self.apply_button.setEnabled(False)
+            self.details_browser.setText("No results were returned for the current criteria.")
+
+    def _populate_table(self) -> None:
+        self.matches_table.setRowCount(len(self._matches))
+        reference = self._reference_time_ms
+        for row_index, match in enumerate(self._matches):
+            setattr(match, "_reference_time_ms", reference)  # type: ignore[attr-defined]
+            for col_index, (_label, formatter) in enumerate(self.COLUMN_DEFINITIONS):
+                value = formatter(match)
+                item = QTableWidgetItem(value)
+                item.setFlags(item.flags() ^ Qt.ItemFlag.ItemIsEditable)
+                self.matches_table.setItem(row_index, col_index, item)
+        self.matches_table.resizeRowsToContents()
+
+    def _update_details_from_selection(self) -> None:
+        match = self._current_selection()
+        self.apply_button.setEnabled(match is not None)
+        if match is None:
+            return
+
+        lines = ["<b>Selected SQL record</b>"]
+        lines.append(f"<b>ID:</b> {match.record_id if match.record_id is not None else '–'}")
+        lines.append(f"<b>Timestamp (UTC):</b> {_timestamp_to_iso(match.timestamp_ms)}")
+        delta = match.age_ms(self._reference_time_ms)
+        lines.append(f"<b>Δt relative to event:</b> {_format_delta_ms(delta)}")
+        lines.append(f"<b>Estimate quality:</b> {_format_float(match.estimate_quality, precision=1)}")
+        lines.append(f"<b>Velocity:</b> {_format_float(match.velocity_kmps, precision=4)} km/s")
+        lines.append(f"<b>Mass:</b> {_format_mass(match.mass_kg)} kg")
+        lines.append(f"<b>Charge:</b> {_format_charge(match.charge_c)} C")
+        lines.append(f"<b>Radius:</b> {_format_float(match.radius_m, precision=3)} m")
+
+        if self._last_query_sql:
+            lines.append("<hr/>")
+            lines.append("<b>SQL query</b>")
+            lines.append(f"<pre>{html.escape(self._last_query_sql)}</pre>")
+            if self._last_query_params:
+                lines.append("<b>Parameters</b>")
+                formatted_params = "<br/>".join(
+                    f"&nbsp;&nbsp;{html.escape(str(key))} = {html.escape(str(value))}"
+                    for key, value in self._last_query_params.items()
+                )
+                lines.append(formatted_params)
+
+        self.details_browser.setHtml("<br/>".join(lines))
+
+    def _current_selection(self) -> Optional[SQLMatchResult]:
+        selected = self.matches_table.selectionModel()
+        if not selected:
+            return None
+        indexes = selected.selectedRows()
+        if not indexes:
+            return None
+        row = indexes[0].row()
+        if row < 0 or row >= len(self._matches):
+            return None
+        return self._matches[row]
+
+    def apply_match(self) -> None:
+        match = self._current_selection()
+        if match is None or not self._current_event:
+            return
+        try:
+            _write_sql_match(self._h5_handle, self._current_event, match, self._last_criteria)
+        except RuntimeError as exc:
+            QMessageBox.critical(self, "Unable to save", str(exc))
+            return
+
+        message = (
+            f"Stored SQL match for event {self._current_event} (record {match.record_id if match.record_id is not None else '–'})."
+        )
+        if self._status_callback is not None:
+            self._status_callback(message, 6000)
+        QMessageBox.information(self, "Match saved", message)
+
+    def reset_to_defaults(self) -> None:
+        self._set_criteria_fields(self._default_criteria)
+        self.run_search()
+
+    def copy_last_query(self) -> None:
+        clipboard = QApplication.clipboard()
+        combined = self._last_query_sql
+        if self._last_query_params:
+            combined += "\n\n" + "\n".join(f":{key} = {value}" for key, value in self._last_query_params.items())
+        clipboard.setText(combined)
+        if self._status_callback is not None:
+            self._status_callback("Copied SQL query to clipboard.", 4000)
+
+    def _update_summary_label(self) -> None:
+        event_time = _timestamp_to_iso(self._default_criteria.time_ms)
+        velocity = _format_float(self._default_criteria.velocity_kmps, precision=4)
+        summary = [f"<b>Event:</b> {html.escape(str(self._current_event))}"]
+        summary.append(f"<b>Trigger (UTC):</b> {event_time}")
+        summary.append(f"<b>Velocity estimate:</b> {velocity} km/s")
+        self.summary_label.setText("<br/>".join(summary))
+
+    def set_current_event(self, event_name: Optional[str]) -> None:
+        if not event_name or event_name not in self._event_names:
+            return
+        index = self._event_names.index(event_name)
+        self.event_combo.blockSignals(True)
+        self.event_combo.setCurrentIndex(index)
+        self.event_combo.blockSignals(False)
+        self._refresh_for_event(event_name, notify_parent=False)
+
+
+def launch_sql_matcher_window(
+    data_source: BaseDataSource,
+    event_name: str,
+    *,
+    event_names: Optional[List[str]] = None,
+    parent: Optional[QWidget] = None,
+    h5_handle: Any = None,
+    on_event_changed: Optional[Callable[[str], None]] = None,
+    status_callback: Optional[Callable[[str, int], None]] = None,
+) -> SQLMatchDialog:
+    dialog = SQLMatchDialog(
+        data_source,
+        event_name,
+        event_names=event_names,
+        parent=parent,
+        h5_handle=h5_handle,
+        on_event_changed=on_event_changed,
+        status_callback=status_callback,
+    )
+    dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+    dialog.show()
+    dialog.raise_()
+    dialog.activateWindow()
+    return dialog
+
+
 Y_AXIS_LABELS: Dict[str, str] = {
     "Target L": r"$Q_{TL}$ [pC]",
     "Target H": r"$Q_{TH}$ [pC]",
@@ -2065,6 +2793,13 @@ class MainWindow(QMainWindow):
         self.open_noise_analysis_action.setStatusTip("Inspect noise characteristics for the current event")
         self.open_noise_analysis_action.triggered.connect(self.action_open_noise_analysis)
 
+        self.open_sql_matcher_action = QAction("Accelerator Match…", self)
+        self.open_sql_matcher_action.setShortcut("Ctrl+Shift+M")
+        self.open_sql_matcher_action.setStatusTip(
+            "Match the current event against accelerator SQL records.",
+        )
+        self.open_sql_matcher_action.triggered.connect(self.action_open_sql_matcher)
+
         help_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DialogHelpButton)
         self.help_action = QAction(help_icon, "Documentation Center", self)
         self.help_action.setShortcut("F1")
@@ -2114,6 +2849,7 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self.open_variable_definitions_action)
         view_menu.addAction(self.open_dust_estimator_action)
         view_menu.addAction(self.open_noise_analysis_action)
+        view_menu.addAction(self.open_sql_matcher_action)
 
         help_menu = menubar.addMenu("&Help")
         help_menu.addAction(self.help_action)
@@ -2235,6 +2971,33 @@ class MainWindow(QMainWindow):
         )
         self.dust_estimator_button.clicked.connect(act_dust_estimator.trigger)
         tb.addWidget(self.dust_estimator_button)
+
+        self.sql_match_button = QPushButton("Accelerator Match", self)
+        self.sql_match_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.sql_match_button.setMinimumHeight(46)
+        self.sql_match_button.setStyleSheet(
+            """
+            QPushButton {
+                font-size: 16px;
+                font-weight: 700;
+                padding: 10px 22px;
+                border-radius: 14px;
+                background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                                 stop:0 #228be6, stop:1 #1c7ed6);
+                color: #ffffff;
+                border: 1px solid #1864ab;
+            }
+            QPushButton:hover {
+                background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                                 stop:0 #1c7ed6, stop:1 #1971c2);
+            }
+            QPushButton:pressed {
+                background-color: #184a8b;
+            }
+            """
+        )
+        self.sql_match_button.clicked.connect(self.open_sql_matcher_action.trigger)
+        tb.addWidget(self.sql_match_button)
 
         act_noise = self.open_noise_analysis_action
         self.addAction(act_noise)
@@ -2726,6 +3489,41 @@ class MainWindow(QMainWindow):
 
         window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         window.show()
+
+        self._child_windows.append(window)
+
+        def _cleanup(*_args):
+            if window in self._child_windows:
+                self._child_windows.remove(window)
+
+        window.destroyed.connect(_cleanup)
+
+    def action_open_sql_matcher(self):
+        if not self._current_event or not self._data_source:
+            QMessageBox.information(
+                self,
+                "No Event",
+                "Open a data file and select an event before matching SQL records.",
+            )
+            return
+
+        try:
+            window = launch_sql_matcher_window(
+                self._data_source,
+                self._current_event,
+                event_names=self._events,
+                parent=self,
+                h5_handle=self._h5,
+                on_event_changed=self._handle_child_event_change,
+                status_callback=lambda message, duration=6000: self.statusBar().showMessage(message, duration),
+            )
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "SQL Match Error",
+                f"Unable to launch the accelerator matching interface:\n{exc}",
+            )
+            return
 
         self._child_windows.append(window)
 
