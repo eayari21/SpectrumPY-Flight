@@ -1055,8 +1055,6 @@ class HDFDataExplorer(QWidget):
         category: str,
     ) -> str:
         text = " ".join((label, dataset_name, full_path)).lower()
-        if "accelerator" in text or "sqlmatch" in text:
-            return CATEGORY_ACCELERATOR
         if category == "metadata":
             return CATEGORY_INSTRUMENT
         if any(token in text for token in ("dust", "abundance", "rsf", "composition", "species")):
@@ -1068,6 +1066,7 @@ class HDFDataExplorer(QWidget):
                 "signal",
                 "tof",
                 "massline",
+                "mass lines",
                 "counts",
                 "target",
                 "ion",
@@ -1082,6 +1081,8 @@ class HDFDataExplorer(QWidget):
             )
         ):
             return CATEGORY_WAVEFORM
+        if "sqlmatch" in text or "accelerator" in text:
+            return CATEGORY_ACCELERATOR
         return CATEGORY_OTHER
 
     def _group_labels_by_category(
