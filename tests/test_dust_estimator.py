@@ -33,6 +33,12 @@ def test_select_velocity_clamps_when_outside_range():
     assert value == 1.0
 
 
+def test_select_velocity_single_candidate_returns_value_before_source():
+    value, source = select_velocity(5.0, None)
+    assert math.isclose(value, 5.0)
+    assert source == "rise_time"
+
+
 def test_estimate_particle_averages_and_computes_mass():
     rise_params = make_flat_curve(10.0)
     ratio_params = make_flat_curve(12.0)

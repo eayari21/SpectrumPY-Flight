@@ -205,7 +205,8 @@ def select_velocity(
         avg = sum(value for _, value in candidates) / 2.0
         return avg, "average"
     if candidates:
-        return candidates[0]
+        source, value = candidates[0]
+        return value, source
     for source, value in ("rise_time", rise_velocity), ("collection_efficiency", ratio_velocity):
         if value is None or not math.isfinite(value):
             continue
