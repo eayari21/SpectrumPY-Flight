@@ -1849,7 +1849,7 @@ def create_data_source(filename: str) -> BaseDataSource:
 # --------- SQL matching helpers ---------
 SQL_DB_URI = os.environ.get(
     "IDEX_SQL_URI",
-    "mysql+pymysql://admin:1jlwbXqCVkNdt91KCijx@impactlab.cbhrpdddmhcs.us-east-1.rds.amazonaws.com/CCLDAS_PRODUCTION",
+    "mysql+pymysql://admin:1jlwbXqCVkNdt91KCijx@impactlab.cbhrpdddmhcs.us-east-1.rds.amazonaws.com/impactdb",
 )
 
 _SQL_ENGINE = None
@@ -2100,7 +2100,7 @@ def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult],
     order_sql = ", ".join(order_terms)
 
     sql = (
-        "SELECT id, estimate_quality, integer_timestamp, velocity, mass, charge, radius "
+        "SELECT id_dust_event, estimate_quality, integer_timestamp, velocity, mass, charge, radius "
         "FROM dust_event "
         f"WHERE {where_sql} "
     )
