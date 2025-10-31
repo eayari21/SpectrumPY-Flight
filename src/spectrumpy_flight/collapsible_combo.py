@@ -175,14 +175,10 @@ if _QT_AVAILABLE:
             expanded = self._group_state.get(group_id, True)
             hidden = not expanded
             for row in self._group_children.get(group_id, []):
-                item = self.model().item(row)
-                if item is not None:
-                    item.setHidden(hidden)
+                self._set_row_hidden(row, hidden)
             separator_row = self._separator_rows.get(group_id)
             if separator_row is not None:
-                sep_item = self.model().item(separator_row)
-                if sep_item is not None:
-                    sep_item.setHidden(hidden)
+                self._set_row_hidden(separator_row, hidden)
 
         # ------------------------------------------------------------------
         def _update_heading_text(self, group_id: int) -> None:
@@ -202,6 +198,26 @@ if _QT_AVAILABLE:
                 self._group_state[group_id] = True
                 self._refresh_group_visibility(group_id)
                 self._update_heading_text(group_id)
+
+        # ------------------------------------------------------------------
+        def _set_row_hidden(self, row: int, hidden: bool) -> None:
+            model = self.model()
+            if model is None:
+                return
+
+            item = model.item(row)
+            if item is not None and hasattr(item, "setHidden"):
+                item.setHidden(hidden)
+                return
+
+            view = self.view()
+            if hasattr(view, "setRowHidden"):
+                view.setRowHidden(row, hidden)
+                return
+
+            index = self._model_index(row)
+            role = Qt.ItemDataRole.UserRole - 1
+            model.setData(index, 0 if hidden else 1, role)
 
 
 else:  # pragma: no cover - fallback stub for environments without Qt bindings
