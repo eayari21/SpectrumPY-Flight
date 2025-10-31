@@ -229,3 +229,23 @@ def test_combine_waveform_channels_respects_manual_selection():
     expected = medium - np.mean(medium[baseline_mask])
 
     assert np.allclose(combined, expected, rtol=1e-6, atol=1e-6)
+
+
+def test_combine_waveform_channels_baseline_with_descending_time_axis():
+    times = np.linspace(10.0, -5.0, 800)
+    baseline_level = 123.0
+    slope = 0.02
+
+    high = baseline_level + slope * np.arange(times.size)
+
+    combined = combine_waveform_channels(times, high, None, None)
+    assert combined is not None
+
+    start = times[0]
+    baseline_mask = (start - times) <= 1.0
+    assert baseline_mask.any()
+
+    expected = high - np.mean(high[baseline_mask])
+
+    assert np.allclose(np.mean(combined[baseline_mask]), 0.0, atol=1e-6)
+    np.testing.assert_allclose(combined, expected, rtol=1e-6, atol=1e-6)
