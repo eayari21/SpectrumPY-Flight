@@ -284,8 +284,11 @@ def _combine_waveform_channels(
 
     for label, array, length in candidates:
         if label == "TOF H":
-            truncated_times = times[:length]
-            baseline = _first_microsecond_mean(array, truncated_times)
+            sample_count = min(length, 50)
+            if sample_count == 0:
+                baseline = 0.0
+            else:
+                baseline = float(np.nanmean(array[:sample_count]))
             return array - baseline
 
     label, array, length = candidates[0]
@@ -1607,7 +1610,14 @@ class IDEXEvent:
                     time_array = np.arange(len(transformed_data), dtype=float)
                 analysis['time_array'] = np.asarray(time_array, dtype=float)
 
-                baseline_value = _estimate_baseline(analysis['time_array'], transformed_data)
+                if channel == 'TOF H':
+                    sample_count = min(transformed_data.size, 50)
+                    if sample_count == 0:
+                        baseline_value = 0.0
+                    else:
+                        baseline_value = float(np.nanmean(transformed_data[:sample_count]))
+                else:
+                    baseline_value = _estimate_baseline(analysis['time_array'], transformed_data)
                 analysis['baseline'] = baseline_value
 
                 if analysis['time_array'].size:
