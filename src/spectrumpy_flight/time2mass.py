@@ -176,6 +176,10 @@ def _assign_mass_lines(
     half_window = max(8, int(round(0.30 / max(step_us, 1e-6))))
 
     available_peaks = list(peaks)
+    used_indices = set()
+    absolute_max = float(np.nanmax(detection_signal)) if detection_signal.size else 0.0
+    noise_floor = _robust_std(detection_signal)
+    min_peak_height = max(absolute_max * 0.005, noise_floor * 5.0, 1e-6)
     mass_lines: List[Dict[str, object]] = []
     line_id = 1
     for reference in references:
@@ -183,13 +187,35 @@ def _assign_mass_lines(
         expected_index = int(round(expected_time_zero / step_us)) if step_us > 0 else 0
         if expected_index < 0 or expected_index >= detection_signal.size:
             continue
-        if not available_peaks:
-            break
-        distances = [abs(idx - expected_index) for idx in available_peaks]
-        best_pos = int(np.argmin(distances))
-        if distances[best_pos] > tolerance:
+        peak_index: Optional[int] = None
+        if available_peaks:
+            distances = [abs(idx - expected_index) for idx in available_peaks]
+            best_pos = int(np.argmin(distances))
+            if distances[best_pos] <= tolerance:
+                peak_index = int(available_peaks.pop(best_pos))
+                used_indices.add(peak_index)
+
+        if peak_index is None:
+            start_idx = max(0, expected_index - tolerance)
+            end_idx = min(detection_signal.size, expected_index + tolerance + 1)
+            if end_idx - start_idx >= 3:
+                local_window = detection_signal[start_idx:end_idx]
+                local_idx = int(np.argmax(local_window))
+                candidate_index = start_idx + local_idx
+                if candidate_index not in used_indices:
+                    candidate_height = float(detection_signal[candidate_index])
+                    local_baseline = float(np.nanmedian(local_window))
+                    if (
+                        candidate_height >= min_peak_height
+                        and candidate_height - local_baseline >= max(noise_floor, 1e-6)
+                    ):
+                        peak_index = candidate_index
+                        used_indices.add(peak_index)
+                        if peak_index in available_peaks:
+                            available_peaks.remove(peak_index)
+
+        if peak_index is None:
             continue
-        peak_index = int(available_peaks.pop(best_pos))
         if mass_scale.size <= peak_index:
             continue
         mass_at_peak = float(mass_scale[peak_index])
