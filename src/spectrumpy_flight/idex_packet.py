@@ -218,14 +218,14 @@ def _first_microsecond_mean(values: Optional[np.ndarray], times: Optional[np.nda
         return 0.0
 
     if times is None:
-        sample_count = min(arr.size, 260)
+        sample_count = min(arr.size, 50)
         if sample_count == 0:
             return 0.0
         return float(np.nanmean(arr[:sample_count]))
 
     time_arr = np.asarray(times, dtype=float)
     if time_arr.size == 0:
-        sample_count = min(arr.size, 260)
+        sample_count = min(arr.size, 50)
         if sample_count == 0:
             return 0.0
         return float(np.nanmean(arr[:sample_count]))
@@ -238,9 +238,17 @@ def _first_microsecond_mean(values: Optional[np.ndarray], times: Optional[np.nda
     time_arr = time_arr[:length]
 
     if length >= 2:
-        dt = float(np.nanmedian(np.diff(time_arr)))
+        diffs = np.diff(time_arr)
+        finite_diffs = diffs[np.isfinite(diffs) & (diffs != 0.0)]
+        dt = float(np.nanmedian(np.abs(finite_diffs))) if finite_diffs.size else 0.0
+        direction = 0.0
+        for diff in diffs:
+            if np.isfinite(diff) and diff != 0.0:
+                direction = math.copysign(1.0, diff)
+                break
     else:
         dt = 0.0
+        direction = 0.0
 
     if np.isfinite(dt) and dt > 0.0 and dt < 1.0e-6:
         window = 1.0e-6
@@ -248,13 +256,20 @@ def _first_microsecond_mean(values: Optional[np.ndarray], times: Optional[np.nda
         window = 1.0
 
     start = float(time_arr[0])
-    mask = (time_arr - start) <= window
+    if direction > 0.0:
+        mask = (time_arr >= start) & ((time_arr - start) <= window)
+    elif direction < 0.0:
+        mask = (time_arr <= start) & ((start - time_arr) <= window)
+    else:
+        mask = np.abs(time_arr - start) <= window
+
+    mask[0] = True
 
     if not np.any(mask):
         if np.isfinite(dt) and dt > 0.0:
             samples = int(math.ceil(window / dt))
         else:
-            samples = 260
+            samples = 50
         samples = min(max(samples, 1), length)
         mask = np.zeros(length, dtype=bool)
         mask[:samples] = True
