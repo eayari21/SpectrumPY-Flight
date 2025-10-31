@@ -126,12 +126,14 @@ TOF_TOKENS = (
 TIME_CONSTANT_TOKENS = ("rise", "trigger", "decay")
 
 CATEGORY_WAVEFORM = "waveform"
+CATEGORY_ACCELERATOR = "accelerator"
 CATEGORY_DUST = "dust"
 CATEGORY_INSTRUMENT = "instrument"
 CATEGORY_OTHER = "other"
 
 CATEGORY_DISPLAY_NAMES: Dict[str, str] = {
     CATEGORY_WAVEFORM: "Waveform analysis",
+    CATEGORY_ACCELERATOR: "Accelerator metadata",
     CATEGORY_DUST: "Dust analysis",
     CATEGORY_INSTRUMENT: "Instrument settings",
     CATEGORY_OTHER: "Other parameters",
@@ -139,6 +141,7 @@ CATEGORY_DISPLAY_NAMES: Dict[str, str] = {
 
 CATEGORY_ORDER: Tuple[str, ...] = (
     CATEGORY_WAVEFORM,
+    CATEGORY_ACCELERATOR,
     CATEGORY_INSTRUMENT,
     CATEGORY_DUST,
     CATEGORY_OTHER,
@@ -998,34 +1001,38 @@ class HDFDataExplorer(QWidget):
         return store
 
     # ------------------------------------------------------------------
-    def _collect_group_datasets(self, group: h5py.Group, file_path: Path) -> Dict[str, ArrayPayload]:
+    def _collect_group_datasets(
+        self, group: h5py.Group, file_path: Path, prefix: str = ""
+    ) -> Dict[str, ArrayPayload]:
         datasets: Dict[str, ArrayPayload] = {}
-        for name, dataset in group.items():
-            if not isinstance(dataset, h5py.Dataset):
-                continue
-            try:
-                size = int(dataset.size)
-            except Exception:
-                size = 0
-            if size == 0:
-                continue
-            if size <= 2048:
+        for name, item in group.items():
+            key = f"{prefix}{name}" if not prefix else f"{prefix}/{name}"
+            if isinstance(item, h5py.Dataset):
                 try:
-                    data = np.array(dataset[()])
+                    size = int(item.size)
                 except Exception:
+                    size = 0
+                if size == 0:
                     continue
-                datasets[name] = data
-                continue
-            try:
-                dtype = np.dtype(dataset.dtype)
-            except (TypeError, ValueError):
-                dtype = np.dtype("float64")
-            datasets[name] = LazyDataset(
-                file_path=file_path,
-                dataset_path=dataset.name,
-                shape=dataset.shape or (),
-                dtype=dtype,
-            )
+                if size <= 2048:
+                    try:
+                        data = np.array(item[()])
+                    except Exception:
+                        continue
+                    datasets[key] = data
+                    continue
+                try:
+                    dtype = np.dtype(item.dtype)
+                except (TypeError, ValueError):
+                    dtype = np.dtype("float64")
+                datasets[key] = LazyDataset(
+                    file_path=file_path,
+                    dataset_path=item.name,
+                    shape=item.shape or (),
+                    dtype=dtype,
+                )
+            elif isinstance(item, h5py.Group):
+                datasets.update(self._collect_group_datasets(item, file_path, prefix=key))
         return datasets
 
     @staticmethod
@@ -1047,9 +1054,11 @@ class HDFDataExplorer(QWidget):
         full_path: str,
         category: str,
     ) -> str:
+        text = " ".join((label, dataset_name, full_path)).lower()
+        if "accelerator" in text or "sqlmatch" in text:
+            return CATEGORY_ACCELERATOR
         if category == "metadata":
             return CATEGORY_INSTRUMENT
-        text = " ".join((label, dataset_name, full_path)).lower()
         if any(token in text for token in ("dust", "abundance", "rsf", "composition", "species")):
             return CATEGORY_DUST
         if any(

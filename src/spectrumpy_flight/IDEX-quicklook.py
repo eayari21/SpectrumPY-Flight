@@ -2040,6 +2040,36 @@ class SQLMatchResult:
     mass_kg: Optional[float]
     charge_c: Optional[float]
     radius_m: Optional[float]
+    experiment_settings_id: Optional[int] = None
+    dust_info_id: Optional[int] = None
+    experiment_tag: Optional[str] = None
+    experiment_description: Optional[str] = None
+    experiment_timestamp_ms: Optional[float] = None
+    run_start_ms: Optional[float] = None
+    run_stop_ms: Optional[float] = None
+    dust_type_id: Optional[int] = None
+    dust_source_builder: Optional[int] = None
+    dust_shot_count: Optional[float] = None
+    dust_initial_mass: Optional[float] = None
+    dust_final_mass: Optional[float] = None
+    dust_run_time: Optional[float] = None
+    dust_source_notes: Optional[str] = None
+    source_settings_id: Optional[int] = None
+    source_settings_key: Optional[str] = None
+    source_einzel_voltage: Optional[float] = None
+    source_needle_voltage: Optional[float] = None
+    source_frequency: Optional[float] = None
+    source_width: Optional[float] = None
+    source_amplitude: Optional[float] = None
+    source_x_voltage: Optional[float] = None
+    source_y_voltage: Optional[float] = None
+    psu_velocity_max: Optional[float] = None
+    psu_velocity_min: Optional[float] = None
+    psu_charge_max: Optional[float] = None
+    psu_charge_min: Optional[float] = None
+    psu_mass_max: Optional[float] = None
+    psu_mass_min: Optional[float] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def velocity_kmps(self) -> Optional[float]:
@@ -2059,6 +2089,41 @@ def build_default_criteria(data_source: BaseDataSource, event: str) -> SQLMatchC
     time_ms = _guess_event_timestamp_ms(data_source, event)
     velocity_kmps = _guess_event_velocity_kmps(data_source, event)
     return SQLMatchCriteria(time_ms=time_ms, velocity_kmps=velocity_kmps)
+
+
+def _coerce_optional_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not np.isfinite(numeric):
+        return None
+    return numeric
+
+
+def _coerce_optional_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, (float, np.floating)) and (np.isnan(value) or np.isinf(value)):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _coerce_optional_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            value = value.decode("utf-8", errors="ignore")
+        except Exception:
+            value = value.decode("latin1", errors="ignore")
+    text = str(value).strip()
+    return text or None
 
 
 def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult], str, Dict[str, Any]]:
@@ -2100,8 +2165,49 @@ def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult],
     order_sql = ", ".join(order_terms)
 
     sql = (
-        "SELECT id_dust_event, estimate_quality, integer_timestamp, velocity, mass, charge, radius "
-        "FROM dust_event "
+        "SELECT "
+        "de.id_dust_event AS id_dust_event, "
+        "de.estimate_quality AS estimate_quality, "
+        "de.integer_timestamp AS integer_timestamp, "
+        "de.velocity AS velocity, "
+        "de.mass AS mass, "
+        "de.charge AS charge, "
+        "de.radius AS radius, "
+        "de.id_experiment_settings AS id_experiment_settings, "
+        "de.id_dust_info AS id_dust_info, "
+        "es.integer_timestamp AS experiment_integer_timestamp, "
+        "es.tag AS experiment_tag, "
+        "es.description AS experiment_description, "
+        "rt.start_timestamp AS run_start_timestamp, "
+        "rt.stop_timestamp AS run_stop_timestamp, "
+        "di.dust_type AS dust_type, "
+        "di.source_builder AS dust_source_builder, "
+        "di.shot_count AS dust_shot_count, "
+        "di.initial_dust_mass AS dust_initial_mass, "
+        "di.final_dust_mass AS dust_final_mass, "
+        "di.run_time AS dust_run_time, "
+        "di.dust_source_notes AS dust_source_notes, "
+        "ss.id_source_settings AS source_settings_id, "
+        "ss.settings_id AS source_settings_key, "
+        "ss.einzel_voltage AS source_einzel_voltage, "
+        "ss.needle_voltage AS source_needle_voltage, "
+        "ss.frequency AS source_frequency, "
+        "ss.width AS source_width, "
+        "ss.amplitude AS source_amplitude, "
+        "ss.x_voltage AS source_x_voltage, "
+        "ss.y_voltage AS source_y_voltage, "
+        "psu.velocity_max AS psu_velocity_max, "
+        "psu.velocity_min AS psu_velocity_min, "
+        "psu.charge_max AS psu_charge_max, "
+        "psu.charge_min AS psu_charge_min, "
+        "psu.mass_max AS psu_mass_max, "
+        "psu.mass_min AS psu_mass_min "
+        "FROM dust_event AS de "
+        "LEFT JOIN dust_info AS di ON de.id_dust_info = di.id_dust_info "
+        "LEFT JOIN experiment_settings AS es ON de.id_experiment_settings = es.id_experiment_settings "
+        "LEFT JOIN run_times AS rt ON es.id_experiment_settings = rt.id_experiment_settings "
+        "LEFT JOIN source_settings AS ss ON es.integer_timestamp = ss.integer_timestamp "
+        "LEFT JOIN psu ON de.integer_timestamp = psu.integer_timestamp "
         f"WHERE {where_sql} "
     )
     if order_sql:
@@ -2114,25 +2220,122 @@ def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult],
         frame = pd.read_sql_query(text(sql), connection, params=params)
 
     results: List[SQLMatchResult] = []
-    for row in frame.itertuples(index=False):
-        record_id = getattr(row, "id", None)
-        estimate_quality = getattr(row, "estimate_quality", None)
-        timestamp_ms = getattr(row, "integer_timestamp", None)
-        velocity = getattr(row, "velocity", None)
-        mass = getattr(row, "mass", None)
-        charge = getattr(row, "charge", None)
-        radius = getattr(row, "radius", None)
-        results.append(
-            SQLMatchResult(
-                record_id=int(record_id) if record_id is not None else None,
-                estimate_quality=float(estimate_quality) if estimate_quality is not None else None,
-                timestamp_ms=float(timestamp_ms) if timestamp_ms is not None else None,
-                velocity_mps=float(velocity) if velocity is not None else None,
-                mass_kg=float(mass) if mass is not None else None,
-                charge_c=float(charge) if charge is not None else None,
-                radius_m=float(radius) if radius is not None else None,
-            )
+    for row in frame.to_dict(orient="records"):
+        record_id = _coerce_optional_int(row.get("id_dust_event"))
+        estimate_quality = _coerce_optional_float(row.get("estimate_quality"))
+        timestamp_ms = _coerce_optional_float(row.get("integer_timestamp"))
+        velocity = _coerce_optional_float(row.get("velocity"))
+        mass = _coerce_optional_float(row.get("mass"))
+        charge = _coerce_optional_float(row.get("charge"))
+        radius = _coerce_optional_float(row.get("radius"))
+        experiment_settings_id = _coerce_optional_int(row.get("id_experiment_settings"))
+        dust_info_id = _coerce_optional_int(row.get("id_dust_info"))
+        experiment_timestamp = _coerce_optional_float(row.get("experiment_integer_timestamp"))
+        run_start = _coerce_optional_float(row.get("run_start_timestamp"))
+        run_stop = _coerce_optional_float(row.get("run_stop_timestamp"))
+        dust_type_id = _coerce_optional_int(row.get("dust_type"))
+        dust_source_builder = _coerce_optional_int(row.get("dust_source_builder"))
+        dust_shot_count = _coerce_optional_float(row.get("dust_shot_count"))
+        dust_initial_mass = _coerce_optional_float(row.get("dust_initial_mass"))
+        dust_final_mass = _coerce_optional_float(row.get("dust_final_mass"))
+        dust_run_time = _coerce_optional_float(row.get("dust_run_time"))
+        dust_source_notes = _coerce_optional_str(row.get("dust_source_notes"))
+        source_settings_id = _coerce_optional_int(row.get("source_settings_id"))
+        source_settings_key = _coerce_optional_str(row.get("source_settings_key"))
+        source_einzel = _coerce_optional_float(row.get("source_einzel_voltage"))
+        source_needle = _coerce_optional_float(row.get("source_needle_voltage"))
+        source_frequency = _coerce_optional_float(row.get("source_frequency"))
+        source_width = _coerce_optional_float(row.get("source_width"))
+        source_amplitude = _coerce_optional_float(row.get("source_amplitude"))
+        source_x_voltage = _coerce_optional_float(row.get("source_x_voltage"))
+        source_y_voltage = _coerce_optional_float(row.get("source_y_voltage"))
+        psu_velocity_max = _coerce_optional_float(row.get("psu_velocity_max"))
+        psu_velocity_min = _coerce_optional_float(row.get("psu_velocity_min"))
+        psu_charge_max = _coerce_optional_float(row.get("psu_charge_max"))
+        psu_charge_min = _coerce_optional_float(row.get("psu_charge_min"))
+        psu_mass_max = _coerce_optional_float(row.get("psu_mass_max"))
+        psu_mass_min = _coerce_optional_float(row.get("psu_mass_min"))
+
+        match = SQLMatchResult(
+            record_id=record_id,
+            estimate_quality=estimate_quality,
+            timestamp_ms=timestamp_ms,
+            velocity_mps=velocity,
+            mass_kg=mass,
+            charge_c=charge,
+            radius_m=radius,
+            experiment_settings_id=experiment_settings_id,
+            dust_info_id=dust_info_id,
+            experiment_tag=_coerce_optional_str(row.get("experiment_tag")),
+            experiment_description=_coerce_optional_str(row.get("experiment_description")),
+            experiment_timestamp_ms=experiment_timestamp,
+            run_start_ms=run_start,
+            run_stop_ms=run_stop,
+            dust_type_id=dust_type_id,
+            dust_source_builder=dust_source_builder,
+            dust_shot_count=dust_shot_count,
+            dust_initial_mass=dust_initial_mass,
+            dust_final_mass=dust_final_mass,
+            dust_run_time=dust_run_time,
+            dust_source_notes=dust_source_notes,
+            source_settings_id=source_settings_id,
+            source_settings_key=source_settings_key,
+            source_einzel_voltage=source_einzel,
+            source_needle_voltage=source_needle,
+            source_frequency=source_frequency,
+            source_width=source_width,
+            source_amplitude=source_amplitude,
+            source_x_voltage=source_x_voltage,
+            source_y_voltage=source_y_voltage,
+            psu_velocity_max=psu_velocity_max,
+            psu_velocity_min=psu_velocity_min,
+            psu_charge_max=psu_charge_max,
+            psu_charge_min=psu_charge_min,
+            psu_mass_max=psu_mass_max,
+            psu_mass_min=psu_mass_min,
         )
+
+        metadata: Dict[str, Any] = {
+            "RecordID": record_id,
+            "EstimateQuality": estimate_quality,
+            "IntegerTimestamp": timestamp_ms,
+            "VelocityMetersPerSecond": velocity,
+            "VelocityKilometersPerSecond": match.velocity_kmps,
+            "MassKilograms": mass,
+            "ChargeCoulombs": charge,
+            "RadiusMeters": radius,
+            "ExperimentSettingsID": experiment_settings_id,
+            "DustInfoID": dust_info_id,
+            "ExperimentTimestamp": experiment_timestamp,
+            "ExperimentTag": match.experiment_tag,
+            "ExperimentDescription": match.experiment_description,
+            "RunStartTimestamp": run_start,
+            "RunStopTimestamp": run_stop,
+            "DustTypeID": dust_type_id,
+            "DustSourceBuilder": dust_source_builder,
+            "DustShotCount": dust_shot_count,
+            "DustInitialMass": dust_initial_mass,
+            "DustFinalMass": dust_final_mass,
+            "DustRunTime": dust_run_time,
+            "DustSourceNotes": dust_source_notes,
+            "SourceSettingsID": source_settings_id,
+            "SourceSettingsKey": source_settings_key,
+            "SourceEinzelVoltage": source_einzel,
+            "SourceNeedleVoltage": source_needle,
+            "SourceFrequency": source_frequency,
+            "SourceWidth": source_width,
+            "SourceAmplitude": source_amplitude,
+            "SourceXVoltage": source_x_voltage,
+            "SourceYVoltage": source_y_voltage,
+            "PSUVelocityMax": psu_velocity_max,
+            "PSUVelocityMin": psu_velocity_min,
+            "PSUChargeMax": psu_charge_max,
+            "PSUChargeMin": psu_charge_min,
+            "PSUMassMax": psu_mass_max,
+            "PSUMassMin": psu_mass_min,
+        }
+        match.metadata = metadata
+        results.append(match)
 
     return results, sql, params
 
@@ -2152,6 +2355,32 @@ def _write_sql_match(
     except Exception as exc:  # pragma: no cover - defensive
         raise RuntimeError(f"Unable to create SQLMatch group: {exc}") from exc
 
+    string_fields = {
+        "ExperimentTag",
+        "ExperimentDescription",
+        "DustSourceNotes",
+        "SourceSettingsKey",
+    }
+
+    def _write_scalar(group: Any, name: str, value: Any) -> None:
+        if group is None:
+            return
+        if name in group:
+            del group[name]
+        if name in string_fields:
+            text_value = value if isinstance(value, str) else "" if value is None else str(value)
+            dtype = h5py.string_dtype(encoding="utf-8") if h5py is not None else None
+            group.create_dataset(name, data=np.array(text_value, dtype=dtype))
+            return
+        numeric: float
+        if name == "RecordID":
+            coerced = _coerce_optional_float(value)
+            numeric = float(coerced) if coerced is not None else -1.0
+        else:
+            coerced = _coerce_optional_float(value)
+            numeric = float(coerced) if coerced is not None else np.nan
+        group.create_dataset(name, data=np.array(numeric, dtype=float))
+
     payload: Dict[str, Any] = {
         "RecordID": match.record_id if match.record_id is not None else -1,
         "EstimateQuality": match.estimate_quality if match.estimate_quality is not None else np.nan,
@@ -2170,19 +2399,56 @@ def _write_sql_match(
     }
 
     for name, value in payload.items():
-        if name in match_group:
-            del match_group[name]
-        if isinstance(value, str):
-            dtype = h5py.string_dtype(encoding="utf-8") if h5py is not None else None
-            match_group.create_dataset(name, data=np.array(value, dtype=dtype))
-        else:
-            match_group.create_dataset(name, data=np.array(value, dtype=float))
+        _write_scalar(match_group, name, value)
 
     extra = criteria.extra_filter.strip()
     if extra:
         if "ExtraFilter" in match_group:
             del match_group["ExtraFilter"]
         match_group.create_dataset("ExtraFilter", data=np.array(extra, dtype=h5py.string_dtype("utf-8")))
+
+    accelerator_group = analysis_group.require_group("AcceleratorMetadata")
+    accelerator_payload = dict(match.metadata or {})
+    accelerator_payload.setdefault("RecordID", match.record_id)
+    accelerator_payload.setdefault("EstimateQuality", match.estimate_quality)
+    accelerator_payload.setdefault("IntegerTimestamp", match.timestamp_ms)
+    accelerator_payload.setdefault("VelocityMetersPerSecond", match.velocity_mps)
+    accelerator_payload.setdefault("VelocityKilometersPerSecond", match.velocity_kmps)
+    accelerator_payload.setdefault("MassKilograms", match.mass_kg)
+    accelerator_payload.setdefault("ChargeCoulombs", match.charge_c)
+    accelerator_payload.setdefault("RadiusMeters", match.radius_m)
+    accelerator_payload.setdefault("ExperimentSettingsID", match.experiment_settings_id)
+    accelerator_payload.setdefault("DustInfoID", match.dust_info_id)
+    accelerator_payload.setdefault("ExperimentTag", match.experiment_tag)
+    accelerator_payload.setdefault("ExperimentDescription", match.experiment_description)
+    accelerator_payload.setdefault("ExperimentTimestamp", match.experiment_timestamp_ms)
+    accelerator_payload.setdefault("RunStartTimestamp", match.run_start_ms)
+    accelerator_payload.setdefault("RunStopTimestamp", match.run_stop_ms)
+    accelerator_payload.setdefault("DustTypeID", match.dust_type_id)
+    accelerator_payload.setdefault("DustSourceBuilder", match.dust_source_builder)
+    accelerator_payload.setdefault("DustShotCount", match.dust_shot_count)
+    accelerator_payload.setdefault("DustInitialMass", match.dust_initial_mass)
+    accelerator_payload.setdefault("DustFinalMass", match.dust_final_mass)
+    accelerator_payload.setdefault("DustRunTime", match.dust_run_time)
+    accelerator_payload.setdefault("DustSourceNotes", match.dust_source_notes)
+    accelerator_payload.setdefault("SourceSettingsID", match.source_settings_id)
+    accelerator_payload.setdefault("SourceSettingsKey", match.source_settings_key)
+    accelerator_payload.setdefault("SourceEinzelVoltage", match.source_einzel_voltage)
+    accelerator_payload.setdefault("SourceNeedleVoltage", match.source_needle_voltage)
+    accelerator_payload.setdefault("SourceFrequency", match.source_frequency)
+    accelerator_payload.setdefault("SourceWidth", match.source_width)
+    accelerator_payload.setdefault("SourceAmplitude", match.source_amplitude)
+    accelerator_payload.setdefault("SourceXVoltage", match.source_x_voltage)
+    accelerator_payload.setdefault("SourceYVoltage", match.source_y_voltage)
+    accelerator_payload.setdefault("PSUVelocityMax", match.psu_velocity_max)
+    accelerator_payload.setdefault("PSUVelocityMin", match.psu_velocity_min)
+    accelerator_payload.setdefault("PSUChargeMax", match.psu_charge_max)
+    accelerator_payload.setdefault("PSUChargeMin", match.psu_charge_min)
+    accelerator_payload.setdefault("PSUMassMax", match.psu_mass_max)
+    accelerator_payload.setdefault("PSUMassMin", match.psu_mass_min)
+
+    for name, value in sorted(accelerator_payload.items()):
+        _write_scalar(accelerator_group, name, value)
 
     match_group.attrs["MatchedAtUTC"] = datetime.now(timezone.utc).isoformat()
 
@@ -2202,6 +2468,7 @@ class SQLMatchDialog(QDialog):
         ("Mass (kg)", lambda m: _format_mass(m.mass_kg)),
         ("Charge (C)", lambda m: _format_charge(m.charge_c)),
         ("Radius (m)", lambda m: _format_float(m.radius_m, precision=3)),
+        ("Experiment tag", lambda m: m.experiment_tag or "–"),
     ]
 
     def __init__(
@@ -2469,6 +2736,86 @@ class SQLMatchDialog(QDialog):
         lines.append(f"<b>Mass:</b> {_format_mass(match.mass_kg)} kg")
         lines.append(f"<b>Charge:</b> {_format_charge(match.charge_c)} C")
         lines.append(f"<b>Radius:</b> {_format_float(match.radius_m, precision=3)} m")
+
+        def _fmt_int(value: Optional[int]) -> str:
+            return "–" if value is None else html.escape(str(value))
+
+        def _fmt_text(value: Optional[str], *, max_length: int = 600) -> str:
+            if value is None or not value.strip():
+                return "–"
+            escaped = html.escape(value.strip())
+            if len(escaped) > max_length:
+                return escaped[:max_length] + "…"
+            return escaped
+
+        def _fmt_timestamp(value: Optional[float]) -> str:
+            if value is None or not np.isfinite(value):
+                return "–"
+            return _timestamp_to_iso(value)
+
+        def _fmt_count(value: Optional[float]) -> str:
+            if value is None or not np.isfinite(value):
+                return "–"
+            rounded = round(value)
+            if abs(value - rounded) < 1e-6:
+                return html.escape(str(int(rounded)))
+            return _format_float(value, precision=3)
+
+        def _append_section(title: str, entries: Sequence[Tuple[str, str]]) -> None:
+            valid = [f"<b>{html.escape(label)}:</b> {value}" for label, value in entries if value != "–"]
+            if valid:
+                lines.append("<hr/>")
+                lines.append(f"<b>{html.escape(title)}</b>")
+                lines.extend(valid)
+
+        experiment_entries = [
+            ("Settings ID", _fmt_int(match.experiment_settings_id)),
+            ("Tag", _fmt_text(match.experiment_tag)),
+            ("Description", _fmt_text(match.experiment_description, max_length=800)),
+            ("Timestamp (UTC)", _fmt_timestamp(match.experiment_timestamp_ms)),
+        ]
+        _append_section("Experiment settings", experiment_entries)
+
+        run_entries = [
+            ("Run start (UTC)", _fmt_timestamp(match.run_start_ms)),
+            ("Run stop (UTC)", _fmt_timestamp(match.run_stop_ms)),
+        ]
+        _append_section("Run window", run_entries)
+
+        dust_entries = [
+            ("Dust info ID", _fmt_int(match.dust_info_id)),
+            ("Dust type ID", _fmt_int(match.dust_type_id)),
+            ("Source builder", _fmt_int(match.dust_source_builder)),
+            ("Shot count", _fmt_count(match.dust_shot_count)),
+            ("Initial mass (kg)", _format_mass(match.dust_initial_mass)),
+            ("Final mass (kg)", _format_mass(match.dust_final_mass)),
+            ("Run time", _format_float(match.dust_run_time, precision=3)),
+            ("Source notes", _fmt_text(match.dust_source_notes, max_length=1200)),
+        ]
+        _append_section("Dust source", dust_entries)
+
+        source_entries = [
+            ("Source settings ID", _fmt_int(match.source_settings_id)),
+            ("Settings key", _fmt_text(match.source_settings_key)),
+            ("Einzel voltage", _format_float(match.source_einzel_voltage, precision=3)),
+            ("Needle voltage", _format_float(match.source_needle_voltage, precision=3)),
+            ("Frequency", _format_float(match.source_frequency, precision=3)),
+            ("Width", _format_float(match.source_width, precision=3)),
+            ("Amplitude", _format_float(match.source_amplitude, precision=3)),
+            ("X voltage", _format_float(match.source_x_voltage, precision=3)),
+            ("Y voltage", _format_float(match.source_y_voltage, precision=3)),
+        ]
+        _append_section("Source settings", source_entries)
+
+        psu_entries = [
+            ("Velocity max", _format_float(match.psu_velocity_max, precision=3)),
+            ("Velocity min", _format_float(match.psu_velocity_min, precision=3)),
+            ("Charge max", _format_float(match.psu_charge_max, precision=3)),
+            ("Charge min", _format_float(match.psu_charge_min, precision=3)),
+            ("Mass max", _format_float(match.psu_mass_max, precision=3)),
+            ("Mass min", _format_float(match.psu_mass_min, precision=3)),
+        ]
+        _append_section("PSU limits", psu_entries)
 
         if self._last_query_sql:
             lines.append("<hr/>")

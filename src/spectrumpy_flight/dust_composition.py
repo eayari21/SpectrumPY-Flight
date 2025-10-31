@@ -2563,6 +2563,7 @@ class ScalarRepository:
             groups.setdefault(code, []).append(key)
         order = [
             ("waveform", "Waveform analysis"),
+            ("accelerator", "Accelerator metadata"),
             ("dust", "Dust analysis"),
             ("instrument", "Instrument settings"),
         ]
@@ -2723,6 +2724,8 @@ class TernaryCompositionDialog(QDialog):
     @staticmethod
     def _categorise_scalar_label(label: str) -> str:
         lowered = label.lower()
+        if "accelerator" in lowered:
+            return "accelerator"
         if label.startswith("Metadata/"):
             return "instrument"
         if label.startswith("Dust/"):
