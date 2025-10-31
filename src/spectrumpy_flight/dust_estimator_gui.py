@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 import sys
 from pathlib import Path
-from typing import Callable, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 import numpy as np
 
@@ -433,6 +433,38 @@ class DustEstimatorWindow(QMainWindow):
             spin.setValue(clamped)
         spin.blockSignals(False)
 
+    def _decode_text_attr(self, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            text = value.strip()
+            return text or None
+        if isinstance(value, bytes):
+            try:
+                decoded = value.decode("utf-8")
+            except Exception:
+                decoded = value.decode("utf-8", errors="ignore")
+            text = decoded.strip()
+            return text or None
+        try:
+            array = np.asarray(value)
+        except Exception:
+            return None
+        if array.size == 0:
+            return None
+        element = array.ravel()[0]
+        if isinstance(element, str):
+            text = element.strip()
+            return text or None
+        if isinstance(element, bytes):
+            try:
+                decoded = element.decode("utf-8")
+            except Exception:
+                decoded = element.decode("utf-8", errors="ignore")
+            text = decoded.strip()
+            return text or None
+        return None
+
     def _read_scalar_dataset(self, dataset_path: str) -> Optional[float]:
         if h5py is None or self._h5 is None:
             return None
@@ -488,6 +520,60 @@ class DustEstimatorWindow(QMainWindow):
             return decoded or None
         return None
 
+    def _read_fit_parameters(self, channel: str) -> Optional[tuple[np.ndarray, Optional[str]]]:
+        if h5py is None or self._h5 is None or self._event_name is None:
+            return None
+        dataset_path = f"/{self._event_name}/Analysis/{channel} Fit Parameters"
+        try:
+            dataset = self._h5[dataset_path]
+        except Exception:
+            return None
+        if not isinstance(dataset, h5py.Dataset):
+            return None
+        try:
+            data = np.asarray(dataset[()], dtype=float).ravel()
+        except Exception:
+            return None
+        if data.size == 0:
+            return None
+        unit_hint: Optional[str] = None
+        try:
+            unit_hint = self._decode_text_attr(dataset.attrs.get("Units"))
+            if unit_hint is None:
+                unit_hint = self._decode_text_attr(dataset.attrs.get("units"))
+        except Exception:
+            unit_hint = None
+        return data, unit_hint
+
+    def _convert_amplitude_to_coulombs(self, amplitude: float, unit_hint: Optional[str]) -> float:
+        unit = unit_hint.lower() if unit_hint else ""
+        if unit:
+            if "pc" in unit or "pico" in unit:
+                return amplitude * 1.0e-12
+            if unit in {"c", "coulomb", "coulombs"}:
+                return amplitude
+        if abs(amplitude) > 1.0e-6:
+            return amplitude * 1.0e-12
+        return amplitude
+
+    def _read_fit_amplitude(self, channel: str) -> Optional[float]:
+        result = self._read_fit_parameters(channel)
+        if result is None:
+            return None
+        params, unit_hint = result
+        if params.size >= 4:
+            amplitude = params[3]
+        elif params.size >= 3:
+            amplitude = params[2]
+        else:
+            return None
+        if not math.isfinite(amplitude):
+            return None
+        amplitude_c = self._convert_amplitude_to_coulombs(abs(float(amplitude)), unit_hint)
+        if not math.isfinite(amplitude_c):
+            return None
+        return amplitude_c
+
     def _load_event_data(self) -> None:
         self._clear_stored_values()
 
@@ -520,15 +606,22 @@ class DustEstimatorWindow(QMainWindow):
         ratio_velocity = self._read_scalar_dataset(f"/{self._event_name}/Analysis/Target H Velocity From Ratio")
         velocity_source = self._read_string_dataset(f"/{self._event_name}/Analysis/Target H Velocity Source")
 
-        self._set_spin_from_dataset(self.target_charge_spin, charge_c)
-        self._set_spin_from_dataset(self.ion_charge_spin, ion_charge_c)
+        fit_target_charge_c = self._read_fit_amplitude("Target H")
+        fit_ion_charge_c = self._read_fit_amplitude("Ion Grid")
+
+        target_spin_value = fit_target_charge_c if fit_target_charge_c is not None else charge_c
+        ion_spin_value = fit_ion_charge_c if fit_ion_charge_c is not None else ion_charge_c
+
+        self._set_spin_from_dataset(self.target_charge_spin, target_spin_value)
+        self._set_spin_from_dataset(self.ion_charge_spin, ion_spin_value)
         self._set_spin_from_dataset(self.rise_time_spin, rise_time_us)
 
-        self._set_value_label(
-            self.stored_charge_value,
-            charge_c * 1.0e12 if charge_c is not None and math.isfinite(charge_c) else None,
-            "pC",
-        )
+        display_charge_c = charge_c if charge_c is not None else target_spin_value
+        display_charge_pc = None
+        if display_charge_c is not None and math.isfinite(display_charge_c):
+            display_charge_pc = display_charge_c * 1.0e12
+
+        self._set_value_label(self.stored_charge_value, display_charge_pc, "pC")
         self._set_value_label(self.stored_velocity_value, velocity, "km/s")
         self._set_value_label(self.stored_mass_value, mass, "kg")
         self._set_value_label(self.stored_yield_value, yield_pc_per_kg, "pC/kg")
