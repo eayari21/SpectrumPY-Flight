@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Set
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Set
 
 # ---------------------------------------------------------------------------
 # Support execution both as part of the ``spectrumpy_flight`` package and when
@@ -4431,6 +4431,14 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "No Parameters", "No editable fit parameters were found for this event.")
             return
 
+        def _load_channel_data(event_name: str) -> Dict[str, FitData]:
+            data_map: Dict[str, FitData] = {}
+            for channel in FIT_ELIGIBLE_CHANNELS:
+                data = self.get_fit_data(event_name, channel)
+                if data.has_parameters():
+                    data_map[channel] = data
+            return data_map
+
         dialog = FitParameterDialog(
             parent=self,
             event_name=self._current_event,
@@ -4440,6 +4448,9 @@ class MainWindow(QMainWindow):
             save_callback=self.update_fit_override,
             reset_callback=self.clear_fit_override,
             waveform_getter=self.get_low_rate_waveform,
+            event_names=self._events,
+            data_loader=_load_channel_data,
+            event_change_callback=self._handle_child_event_change,
         )
         dialog.exec()
 
@@ -4660,31 +4671,28 @@ class FitParameterDialog(QDialog):
         save_callback: Callable[..., bool],
         reset_callback: Callable[[str, str, str], None],
         waveform_getter: Callable[[str, str], Tuple[Optional[np.ndarray], Optional[np.ndarray]]],
+        *,
+        event_names: Optional[Sequence[str]] = None,
+        data_loader: Optional[Callable[[str], Dict[str, FitData]]] = None,
+        event_change_callback: Optional[Callable[[str], None]] = None,
     ):
         super().__init__(parent)
         self.setModal(True)
-        self.setWindowTitle(f"Fit Parameters — Event {event_name}")
         self.setMinimumSize(760, 720)
 
         self._event_name = event_name
-        self._channel_data = channel_data
         self._value_getter = value_getter
         self._fixed_getter = fixed_getter
         self._save_callback = save_callback
         self._reset_callback = reset_callback
         self._waveform_getter = waveform_getter
+        self._data_loader = data_loader
+        self._event_change_callback = event_change_callback
+        self._event_names = list(event_names or [])
+        self._updating_event_combo = False
 
         self._param_arrays: Dict[Tuple[str, str], np.ndarray] = {}
         self._channel_datasets: Dict[str, List[str]] = {}
-        for channel, data in channel_data.items():
-            entries: List[str] = []
-            for path, array in data.iter_parameter_items():
-                self._param_arrays[(channel, path)] = np.asarray(array)
-                entries.append(path)
-            if entries:
-                entries.sort(key=lambda value: _dataset_sort_key(channel, value))
-                self._channel_datasets[channel] = entries
-
         self._fixed_masks: Dict[Tuple[str, str], np.ndarray] = {}
         self._waveform_cache: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
         self._missing_waveforms: Set[str] = set()
@@ -4696,13 +4704,64 @@ class FitParameterDialog(QDialog):
         self._preview_manual_selection = False
         self._updating_preview_selection = False
 
+        self._selector_keyword_map: Dict[str, Tuple[str, ...]] = {
+            "baseline": ("baseline",),
+            "offset": ("offset",),
+            "amplitude": ("amplitude", "amp"),
+            "trigger": ("trigger", "t0", "impact onset", "onset"),
+            "start": ("start", "window start"),
+            "end": ("end", "window end"),
+        }
+        self._selector_buttons: Dict[str, QToolButton] = {}
+        self._selector_mode: Optional[str] = None
+        self._selector_values: Dict[str, Optional[float]] = {
+            "baseline": None,
+            "offset": None,
+            "amplitude": None,
+            "trigger": None,
+            "start": None,
+            "end": None,
+        }
+        self._preview_time = np.array([], dtype=float)
+        self._preview_values = np.array([], dtype=float)
+        self._preview_signal_time = np.array([], dtype=float)
+        self._preview_signal_values = np.array([], dtype=float)
+        self._preview_ax = None
+        self._preview_offset = 0.0
+
+        self._ingest_channel_data(channel_data)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
 
-        header = QLabel(f"Editing parameters for event {event_name}", self)
-        header.setStyleSheet("font-size: 18px; font-weight: bold;")
-        layout.addWidget(header)
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(12)
+
+        self.header_label = QLabel("", self)
+        self.header_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        header_row.addWidget(self.header_label, stretch=1)
+
+        if self._event_names and self._data_loader is not None:
+            header_row.addStretch(1)
+            event_label = QLabel("Event:", self)
+            event_label.setStyleSheet("font-size: 15px;")
+            header_row.addWidget(event_label)
+
+            self.event_combo = QComboBox(self)
+            self.event_combo.setStyleSheet("font-size: 15px; min-height: 32px;")
+            for name in self._event_names:
+                self.event_combo.addItem(name)
+            if event_name in self._event_names:
+                index = self._event_names.index(event_name)
+                self.event_combo.setCurrentIndex(index)
+            self.event_combo.currentTextChanged.connect(self._on_event_combo_changed)
+            header_row.addWidget(self.event_combo)
+        else:
+            self.event_combo = None
+
+        layout.addLayout(header_row)
 
         self.formula_label = QLabel("", self)
         self.formula_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -4719,8 +4778,6 @@ class FitParameterDialog(QDialog):
 
         self.channel_combo = QComboBox(self)
         self.channel_combo.setStyleSheet("font-size: 15px; min-height: 36px;")
-        for channel in sorted(channel_data.keys()):
-            self.channel_combo.addItem(channel)
         self.channel_combo.currentTextChanged.connect(self._on_channel_changed)
         chooser_row.addWidget(QLabel("Channel:", self))
         chooser_row.addWidget(self.channel_combo)
@@ -4769,29 +4826,6 @@ class FitParameterDialog(QDialog):
         self.preview_status_label.setStyleSheet("font-size: 13px; color: #555555;")
         self.preview_status_label.setWordWrap(True)
         preview_layout.addWidget(self.preview_status_label)
-
-        self._selector_keyword_map: Dict[str, Tuple[str, ...]] = {
-            "baseline": ("baseline",),
-            "offset": ("offset",),
-            "amplitude": ("amplitude", "amp"),
-            "trigger": ("trigger", "t0", "impact onset", "onset"),
-            "start": ("start", "window start"),
-            "end": ("end", "window end"),
-        }
-        self._selector_buttons: Dict[str, QToolButton] = {}
-        self._selector_mode: Optional[str] = None
-        self._selector_values: Dict[str, Optional[float]] = {
-            "baseline": None,
-            "offset": None,
-            "amplitude": None,
-            "trigger": None,
-            "start": None,
-            "end": None,
-        }
-        self._preview_time = np.array([], dtype=float)
-        self._preview_values = np.array([], dtype=float)
-        self._preview_ax = None
-        self._preview_offset = 0.0
 
         preview_box = QGroupBox("Fit preview", self)
         preview_box.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
@@ -4912,15 +4946,142 @@ class FitParameterDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-        self._populate_waveform_options()
+        self._update_header_text()
+        self.setWindowTitle(f"Fit Parameters — Event {self._event_name}")
 
-        if self.channel_combo.count() > 0:
-            self._on_channel_changed(self.channel_combo.currentText())
-        else:
-            self._update_waveform_plot()
+        self._populate_waveform_options()
+        self._refresh_channel_combo()
         self._update_action_states()
 
     # ---- UI helpers -----------------------------------------------------
+    def _ingest_channel_data(self, channel_data: Dict[str, FitData]) -> None:
+        self._channel_data = dict(channel_data)
+        self._param_arrays.clear()
+        self._channel_datasets.clear()
+        for channel, data in self._channel_data.items():
+            entries: List[str] = []
+            for path, array in data.iter_parameter_items():
+                self._param_arrays[(channel, path)] = np.asarray(array)
+                entries.append(path)
+            if entries:
+                entries.sort(key=lambda value: _dataset_sort_key(channel, value))
+                self._channel_datasets[channel] = entries
+
+    def _update_header_text(self) -> None:
+        self.header_label.setText(f"Editing parameters for event {self._event_name}")
+
+    def _refresh_channel_combo(
+        self,
+        preferred_channel: Optional[str] = None,
+        preferred_dataset: Optional[str] = None,
+    ) -> None:
+        self.channel_combo.blockSignals(True)
+        self.channel_combo.clear()
+        for channel in sorted(self._channel_datasets.keys()):
+            self.channel_combo.addItem(channel)
+        self.channel_combo.blockSignals(False)
+
+        if self.channel_combo.count() == 0:
+            self.dataset_combo.blockSignals(True)
+            self.dataset_combo.clear()
+            self.dataset_combo.blockSignals(False)
+            self._display_dataset(None, None)
+            self._populate_waveform_options()
+            self._update_waveform_plot()
+            self._load_preview_series(None, None)
+            self._update_preview_plot()
+            return
+
+        target_channel = preferred_channel
+        if not target_channel or target_channel not in self._channel_datasets:
+            target_channel = self.channel_combo.itemText(0)
+        index = self.channel_combo.findText(target_channel)
+        if index < 0:
+            index = 0
+        self.channel_combo.setCurrentIndex(index)
+
+        dataset_entries = self._channel_datasets.get(target_channel, [])
+        target_dataset = preferred_dataset if preferred_dataset in dataset_entries else None
+        if target_dataset is None and dataset_entries:
+            target_dataset = dataset_entries[0]
+        if target_dataset is not None:
+            dataset_index = self.dataset_combo.findData(target_dataset)
+            if dataset_index >= 0:
+                self.dataset_combo.setCurrentIndex(dataset_index)
+                return
+
+        self._on_channel_changed(target_channel)
+
+    def _sync_event_combo_selection(self) -> None:
+        if self.event_combo is None:
+            return
+        index = self.event_combo.findText(self._event_name)
+        if index < 0:
+            return
+        self._updating_event_combo = True
+        try:
+            self.event_combo.setCurrentIndex(index)
+        finally:
+            self._updating_event_combo = False
+
+    def _on_event_combo_changed(self, event_name: str) -> None:
+        if self._updating_event_combo:
+            return
+        if not event_name or event_name == self._event_name:
+            return
+        self._change_event(event_name, notify_parent=True)
+
+    def _change_event(self, event_name: str, *, notify_parent: bool) -> None:
+        if self._data_loader is None:
+            return
+        try:
+            new_data = self._data_loader(event_name)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Fit Parameters",
+                f"Unable to load parameters for event {event_name}:\n{exc}",
+            )
+            self._sync_event_combo_selection()
+            return
+
+        self._event_name = event_name
+        self.setWindowTitle(f"Fit Parameters — Event {self._event_name}")
+        self._update_header_text()
+
+        self._ingest_channel_data(new_data)
+        self._fixed_masks.clear()
+        self._waveform_cache.clear()
+        self._missing_waveforms.clear()
+        self._preview_manual_selection = False
+        self._updating_preview_selection = False
+        for key in list(self._selector_values.keys()):
+            self._selector_values[key] = None
+
+        self._populate_waveform_options()
+        previous_channel = self._current_channel
+        previous_dataset = self._current_dataset
+        self._current_channel = None
+        self._current_dataset = None
+        self._current_shape = None
+        self._refresh_channel_combo(previous_channel, previous_dataset)
+        self._update_action_states()
+
+        if notify_parent and self._event_change_callback is not None:
+            try:
+                self._event_change_callback(event_name)
+            except Exception:
+                pass
+
+    def set_current_event(self, event_name: Optional[str]) -> None:
+        if not event_name or event_name == self._event_name:
+            self._sync_event_combo_selection()
+            return
+        if self._event_names and event_name not in self._event_names:
+            return
+        self._change_event(event_name, notify_parent=False)
+        self._sync_event_combo_selection()
+
     def _populate_waveform_options(self) -> None:
         available: List[str] = []
         for name in sorted(FIT_ELIGIBLE_CHANNELS):
@@ -5292,6 +5453,8 @@ class FitParameterDialog(QDialog):
     def _load_preview_series(self, channel: Optional[str], dataset_path: Optional[str]) -> None:
         self._preview_time = np.array([], dtype=float)
         self._preview_values = np.array([], dtype=float)
+        self._preview_signal_time = np.array([], dtype=float)
+        self._preview_signal_values = np.array([], dtype=float)
         self._preview_ax = None
         if not channel or not dataset_path:
             self._update_selector_button_states()
@@ -5318,12 +5481,31 @@ class FitParameterDialog(QDialog):
                     value_values = value_arr
                     break
 
-        if time_values is None or value_values is None:
-            self._update_selector_button_states()
-            return
+        if time_values is not None and value_values is not None:
+            self._preview_time = np.asarray(time_values, dtype=float).ravel()
+            self._preview_values = np.asarray(value_values, dtype=float).ravel()
 
-        self._preview_time = np.asarray(time_values, dtype=float).ravel()
-        self._preview_values = np.asarray(value_values, dtype=float).ravel()
+        waveform_pair = self._get_waveform(channel)
+        if waveform_pair is not None:
+            wave_time, wave_values = waveform_pair
+            wave_time = np.asarray(wave_time, dtype=float).ravel()
+            wave_values = np.asarray(wave_values, dtype=float).ravel()
+            mask = np.isfinite(wave_time) & np.isfinite(wave_values)
+            wave_time = wave_time[mask]
+            wave_values = wave_values[mask]
+            if self._preview_time.size:
+                t_min = float(np.nanmin(self._preview_time))
+                t_max = float(np.nanmax(self._preview_time))
+                if np.isfinite(t_min) and np.isfinite(t_max):
+                    window_mask = (wave_time >= t_min) & (wave_time <= t_max)
+                    if np.any(window_mask):
+                        wave_time = wave_time[window_mask]
+                        wave_values = wave_values[window_mask]
+            if wave_time.size:
+                order = np.argsort(wave_time)
+                self._preview_signal_time = wave_time[order]
+                self._preview_signal_values = wave_values[order]
+
         self._update_selector_button_states()
 
     def _update_preview_plot(self) -> None:
@@ -5331,21 +5513,41 @@ class FitParameterDialog(QDialog):
         ax = self._preview_figure.add_subplot(111)
         self._preview_ax = ax
 
-        if self._preview_time.size == 0 or self._preview_values.size == 0:
+        has_fit = self._preview_time.size > 0 and self._preview_values.size > 0
+        has_signal = (
+            self._preview_signal_time.size > 0 and self._preview_signal_values.size > 0
+        )
+
+        if not has_fit and not has_signal:
             ax.text(0.5, 0.5, "No fit preview available for this dataset.", ha="center", va="center")
             ax.set_axis_off()
             self._preview_canvas.draw_idle()
             return
 
-        order = np.argsort(self._preview_time)
-        time_data = self._preview_time[order]
-        value_data = self._preview_values[order]
+        if has_signal:
+            ax.plot(
+                self._preview_signal_time,
+                self._preview_signal_values,
+                color="#adb5bd",
+                linewidth=1.0,
+                label="Signal",
+            )
 
-        ax.plot(time_data, value_data, color="#0c5da5", linewidth=1.8, label="Fit curve")
+        if has_fit:
+            order = np.argsort(self._preview_time)
+            time_data = self._preview_time[order]
+            value_data = self._preview_values[order]
+            ax.plot(time_data, value_data, color="#0c5da5", linewidth=1.8, label="Fit curve")
+
         ax.set_xlabel("Time (µs)")
-        ax.set_ylabel("Value")
+        channel_label = self._current_channel or ""
+        if channel_label:
+            ax.set_ylabel(y_label_with_units(channel_label))
+        else:
+            ax.set_ylabel("Value")
         ax.grid(True, alpha=0.35)
-        ax.legend(loc="best")
+        if has_signal or has_fit:
+            ax.legend(loc="best")
         self._preview_offset = 0.0
         self._draw_preview_overlays(ax)
         self._preview_canvas.draw_idle()
@@ -5449,7 +5651,11 @@ class FitParameterDialog(QDialog):
         self._update_selector_button_states()
 
     def _update_selector_button_states(self) -> None:
-        has_preview = self._preview_time.size > 0 and self._preview_values.size > 0
+        has_fit = self._preview_time.size > 0 and self._preview_values.size > 0
+        has_signal = (
+            self._preview_signal_time.size > 0 and self._preview_signal_values.size > 0
+        )
+        has_preview = has_fit or has_signal
         for mode, button in self._selector_buttons.items():
             if not isinstance(button, QToolButton):
                 continue
