@@ -4,7 +4,14 @@ from __future__ import annotations
 import math
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional, Sequence
+
+import numpy as np
+
+try:  # pragma: no cover - optional at runtime
+    import h5py
+except Exception:  # pragma: no cover - graceful fallback when unavailable
+    h5py = None  # type: ignore[assignment]
 
 try:  # pragma: no cover - prefer PySide6 when available
     from PySide6.QtCore import Qt
@@ -125,10 +132,36 @@ class ParameterDisplay(QWidget):
 class DustEstimatorWindow(QMainWindow):
     """Main application window that combines inputs, formulas, and results."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self,
+        parent: Optional[QWidget] = None,
+        *,
+        h5: Optional["h5py.File"] = None,
+        event_name: Optional[str] = None,
+        event_names: Optional[Sequence[str]] = None,
+        on_event_changed: Optional[Callable[[str], None]] = None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Dust Velocity and Mass Estimator")
         self.resize(960, 760)
+
+        if h5py is None:
+            self._h5 = None
+        else:
+            self._h5 = h5
+        self._event_names = list(event_names or [])
+        if event_name is not None:
+            self._event_name = event_name
+            if event_name not in self._event_names:
+                self._event_names.append(event_name)
+        elif self._event_names:
+            self._event_name = self._event_names[0]
+        else:
+            self._event_name = None
+        self._on_event_changed = on_event_changed
+        self._event_combo: Optional[QComboBox] = None
+        self._file_label: Optional[QLabel] = None
+        self._current_event_label: Optional[QLabel] = None
 
         (self._rise_table, self._ratio_table, self._yield_table) = load_default_tables()
 
@@ -140,6 +173,10 @@ class DustEstimatorWindow(QMainWindow):
         title_label = QLabel("Impact Parameters")
         title_label.setStyleSheet("font-size: 22px; font-weight: 600;")
         outer_layout.addWidget(title_label)
+
+        event_section = self._build_event_section()
+        if event_section is not None:
+            outer_layout.addWidget(event_section)
 
         description = QLabel(
             "Enter the target high-gain amplitude, ion grid amplitude, and target H rise time. "
@@ -169,8 +206,63 @@ class DustEstimatorWindow(QMainWindow):
         self._update_comboboxes()
         self._update_parameter_sections()
         self._update_estimates()
+        self._load_event_data()
 
     # ---- UI construction -------------------------------------------------
+    def _build_event_section(self) -> Optional[QGroupBox]:
+        if self._h5 is None and not self._event_names and self._event_name is None:
+            return None
+
+        group = QGroupBox("Event data source")
+        layout = QGridLayout(group)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setHorizontalSpacing(14)
+        layout.setVerticalSpacing(10)
+
+        row = 0
+        if self._h5 is not None:
+            filename = getattr(self._h5, "filename", None)
+            display = "—"
+            if isinstance(filename, bytes):
+                try:
+                    filename = filename.decode("utf-8")
+                except Exception:
+                    filename = filename.decode("utf-8", errors="ignore")
+            if isinstance(filename, str) and filename:
+                display = Path(filename).name or filename
+            file_label = QLabel(display)
+            file_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            layout.addWidget(QLabel("File:"), row, 0)
+            layout.addWidget(file_label, row, 1)
+            self._file_label = file_label
+            row += 1
+
+        if self._event_names:
+            combo = QComboBox(group)
+            combo.setEditable(False)
+            self._event_combo = combo
+            for name in self._event_names:
+                combo.addItem(name)
+            if self._event_name and self._event_name in self._event_names:
+                combo.setCurrentIndex(self._event_names.index(self._event_name))
+            combo.currentIndexChanged.connect(self._on_event_combo_changed)
+            layout.addWidget(QLabel("Event:"), row, 0)
+            layout.addWidget(combo, row, 1)
+            row += 1
+        elif self._event_name is not None:
+            event_label = QLabel(self._event_name)
+            event_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            layout.addWidget(QLabel("Event:"), row, 0)
+            layout.addWidget(event_label, row, 1)
+            self._current_event_label = event_label
+            row += 1
+
+        if row == 0:
+            return None
+
+        layout.setColumnStretch(1, 1)
+        return group
+
     def _build_input_group(self) -> QGroupBox:
         group = QGroupBox("Inputs")
         layout = QGridLayout(group)
@@ -284,14 +376,206 @@ class DustEstimatorWindow(QMainWindow):
             layout.addWidget(value, row, 1)
             return value
 
-        self.rise_velocity_value = _add_row(0, "Velocity from rise time:")
-        self.ratio_velocity_value = _add_row(1, "Velocity from collection efficiency:")
-        self.selected_velocity_value = _add_row(2, "Selected velocity (km/s):")
-        self.velocity_source_value = _add_row(3, "Selection source:")
-        self.charge_yield_value = _add_row(4, "Yield Y(v) (C/kg):")
-        self.mass_value = _add_row(5, "Estimated mass (kg):")
+        row = 0
+        self.rise_velocity_value = _add_row(row, "Velocity from rise time:")
+        row += 1
+        self.ratio_velocity_value = _add_row(row, "Velocity from collection efficiency:")
+        row += 1
+        self.selected_velocity_value = _add_row(row, "Selected velocity (km/s):")
+        row += 1
+        self.velocity_source_value = _add_row(row, "Selection source:")
+        row += 1
+        self.charge_yield_value = _add_row(row, "Yield Y(v) (C/kg):")
+        row += 1
+        self.mass_value = _add_row(row, "Estimated mass (kg):")
+        row += 1
+
+        stored_header = QLabel("Stored values from file:")
+        stored_header.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        stored_header.setStyleSheet("font-weight: 600; color: #495057;")
+        layout.addWidget(stored_header, row, 0, 1, 2)
+        row += 1
+
+        self.stored_charge_value = _add_row(row, "Impact charge (pC):")
+        row += 1
+        self.stored_velocity_value = _add_row(row, "Velocity (km/s):")
+        row += 1
+        self.stored_mass_value = _add_row(row, "Dust mass (kg):")
+        row += 1
+        self.stored_yield_value = _add_row(row, "Charge yield (pC/kg):")
+        row += 1
+        self.stored_rise_velocity_value = _add_row(row, "Velocity from rise (km/s):")
+        row += 1
+        self.stored_ratio_velocity_value = _add_row(row, "Velocity from collection efficiency (km/s):")
+        row += 1
+        self.stored_velocity_source_value = _add_row(row, "Velocity source:")
 
         return group
+
+    def _clear_stored_values(self) -> None:
+        for label in (
+            self.stored_charge_value,
+            self.stored_velocity_value,
+            self.stored_mass_value,
+            self.stored_yield_value,
+            self.stored_rise_velocity_value,
+            self.stored_ratio_velocity_value,
+        ):
+            label.setText("—")
+        self.stored_velocity_source_value.setText("—")
+
+    def _set_spin_from_dataset(self, spin: QDoubleSpinBox, value: Optional[float]) -> None:
+        spin.blockSignals(True)
+        if value is None or not math.isfinite(value):
+            spin.setValue(spin.minimum())
+        else:
+            clamped = min(max(value, spin.minimum()), spin.maximum())
+            spin.setValue(clamped)
+        spin.blockSignals(False)
+
+    def _read_scalar_dataset(self, dataset_path: str) -> Optional[float]:
+        if h5py is None or self._h5 is None:
+            return None
+        try:
+            dataset = self._h5[dataset_path]
+        except Exception:
+            return None
+        if not isinstance(dataset, h5py.Dataset):
+            return None
+        try:
+            data = np.asarray(dataset[()], dtype=float).ravel()
+        except Exception:
+            return None
+        if data.size == 0:
+            return None
+        value = float(data[0])
+        if not math.isfinite(value):
+            return None
+        return value
+
+    def _read_string_dataset(self, dataset_path: str) -> Optional[str]:
+        if h5py is None or self._h5 is None:
+            return None
+        try:
+            dataset = self._h5[dataset_path]
+        except Exception:
+            return None
+        if not isinstance(dataset, h5py.Dataset):
+            return None
+        data = dataset[()]
+        if isinstance(data, str):
+            return data or None
+        if isinstance(data, bytes):
+            try:
+                decoded = data.decode("utf-8")
+            except Exception:
+                decoded = data.decode("utf-8", errors="ignore")
+            return decoded or None
+        try:
+            array = np.asarray(data).ravel()
+        except Exception:
+            return None
+        if array.size == 0:
+            return None
+        element = array[0]
+        if isinstance(element, str):
+            return element or None
+        if isinstance(element, bytes):
+            try:
+                decoded = element.decode("utf-8")
+            except Exception:
+                decoded = element.decode("utf-8", errors="ignore")
+            return decoded or None
+        return None
+
+    def _load_event_data(self) -> None:
+        self._clear_stored_values()
+
+        if self._current_event_label is not None and self._event_name is not None:
+            self._current_event_label.setText(self._event_name)
+
+        if h5py is None or self._h5 is None or self._event_name is None:
+            self._set_spin_from_dataset(self.target_charge_spin, None)
+            self._set_spin_from_dataset(self.ion_charge_spin, None)
+            self._set_spin_from_dataset(self.rise_time_spin, None)
+            self._update_estimates()
+            return
+
+        try:
+            self._h5[self._event_name]
+        except Exception:
+            self._set_spin_from_dataset(self.target_charge_spin, None)
+            self._set_spin_from_dataset(self.ion_charge_spin, None)
+            self._set_spin_from_dataset(self.rise_time_spin, None)
+            self._update_estimates()
+            return
+
+        charge_c = self._read_scalar_dataset(f"/{self._event_name}/Analysis/Target H Impact Charge")
+        ion_charge_c = self._read_scalar_dataset(f"/{self._event_name}/Analysis/Ion Grid Impact Charge")
+        rise_time_us = self._read_scalar_dataset(f"/{self._event_name}/Analysis/Target H 10-90 Risetime")
+        velocity = self._read_scalar_dataset(f"/{self._event_name}/Analysis/Target H Velocity Estimate")
+        mass = self._read_scalar_dataset(f"/{self._event_name}/Analysis/Target H Dust Mass Estimate")
+        yield_pc_per_kg = self._read_scalar_dataset(f"/{self._event_name}/Analysis/Target H Charge Yield Estimate")
+        rise_velocity = self._read_scalar_dataset(f"/{self._event_name}/Analysis/Target H Velocity From Rise")
+        ratio_velocity = self._read_scalar_dataset(f"/{self._event_name}/Analysis/Target H Velocity From Ratio")
+        velocity_source = self._read_string_dataset(f"/{self._event_name}/Analysis/Target H Velocity Source")
+
+        self._set_spin_from_dataset(self.target_charge_spin, charge_c)
+        self._set_spin_from_dataset(self.ion_charge_spin, ion_charge_c)
+        self._set_spin_from_dataset(self.rise_time_spin, rise_time_us)
+
+        self._set_value_label(
+            self.stored_charge_value,
+            charge_c * 1.0e12 if charge_c is not None and math.isfinite(charge_c) else None,
+            "pC",
+        )
+        self._set_value_label(self.stored_velocity_value, velocity, "km/s")
+        self._set_value_label(self.stored_mass_value, mass, "kg")
+        self._set_value_label(self.stored_yield_value, yield_pc_per_kg, "pC/kg")
+        self._set_value_label(self.stored_rise_velocity_value, rise_velocity, "km/s")
+        self._set_value_label(self.stored_ratio_velocity_value, ratio_velocity, "km/s")
+        if velocity_source:
+            self.stored_velocity_source_value.setText(velocity_source)
+        else:
+            self.stored_velocity_source_value.setText("—")
+
+        self._update_estimates()
+
+    def _on_event_combo_changed(self, index: int) -> None:  # noqa: ARG002 - required signature
+        if self._event_combo is None or index < 0 or index >= self._event_combo.count():
+            return
+        name = self._event_combo.itemText(index)
+        if not name:
+            return
+        if name == self._event_name:
+            return
+        self._event_name = name
+        self._load_event_data()
+        if self._on_event_changed is not None:
+            try:
+                self._on_event_changed(name)
+            except Exception:
+                pass
+
+    def set_current_event(self, event_name: Optional[str]) -> None:
+        if not event_name:
+            return
+        self._event_name = event_name
+        if self._event_combo is not None:
+            index = self._event_combo.findText(event_name)
+            if index == -1:
+                self._event_combo.addItem(event_name)
+                self._event_names.append(event_name)
+                index = self._event_combo.count() - 1
+            if self._event_combo.currentIndex() != index:
+                self._event_combo.blockSignals(True)
+                self._event_combo.setCurrentIndex(index)
+                self._event_combo.blockSignals(False)
+        elif self._current_event_label is not None:
+            self._current_event_label.setText(event_name)
+        if event_name not in self._event_names:
+            self._event_names.append(event_name)
+        self._load_event_data()
 
     def _build_formula_panel(self) -> QWidget:
         container = QWidget()
@@ -556,10 +840,23 @@ class DustEstimatorWindow(QMainWindow):
             label.setText(f"{value:.6g} {unit}")
 
 
-def launch_dust_estimator_window(*, parent: Optional[QWidget] = None) -> DustEstimatorWindow:
+def launch_dust_estimator_window(
+    *,
+    parent: Optional[QWidget] = None,
+    h5: Optional["h5py.File"] = None,
+    event_name: Optional[str] = None,
+    event_names: Optional[Sequence[str]] = None,
+    on_event_changed: Optional[Callable[[str], None]] = None,
+) -> DustEstimatorWindow:
     """Create a dust estimator window for embedding in other Qt applications."""
 
-    return DustEstimatorWindow(parent=parent)
+    return DustEstimatorWindow(
+        parent=parent,
+        h5=h5,
+        event_name=event_name,
+        event_names=event_names,
+        on_event_changed=on_event_changed,
+    )
 
 
 def main() -> int:
