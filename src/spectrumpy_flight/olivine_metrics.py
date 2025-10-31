@@ -70,6 +70,27 @@ MG_ISOTOPES = {"24Mg", "25Mg", "26Mg"}
 SI_ISOTOPES = {"28Si", "29Si", "30Si"}
 FE_ISOTOPES = {"54Fe", "56Fe", "57Fe", "58Fe"}
 
+ELEMENT_ORDER: tuple[str, ...] = ("Mg", "Si", "Fe")
+SPECIES_TO_ELEMENT: dict[str, str] = {}
+for species in MG_ISOTOPES:
+    SPECIES_TO_ELEMENT[species] = "Mg"
+for species in SI_ISOTOPES:
+    SPECIES_TO_ELEMENT[species] = "Si"
+for species in FE_ISOTOPES:
+    SPECIES_TO_ELEMENT[species] = "Fe"
+
+FO90_TARGET: dict[str, float] = {
+    "Mg": 0.6,
+    "Si": 1.0 / 3.0,
+    "Fe": 0.06666666666666667,
+}
+
+RATIO_DEFINITIONS: Mapping[str, tuple[str, str]] = {
+    "Mg/Fe": ("Mg", "Fe"),
+    "Mg/Si": ("Mg", "Si"),
+    "Fe/Si": ("Fe", "Si"),
+}
+
 MASS_FIT_WINDOW = 0.6
 
 
@@ -207,6 +228,86 @@ def _maybe_log_axis(ax: plt.Axes, axis: str, values: Iterable[float]) -> None:
             ax.set_xscale("log")
         else:
             ax.set_yscale("log")
+
+
+def _binned_statistics(
+    x_values: Sequence[float],
+    y_values: Sequence[float],
+    *,
+    bins: int = 10,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+    x = _finite_values(x_values)
+    y = _finite_values(y_values)
+    if x.size == 0 or y.size == 0:
+        return None
+    mask = np.isfinite(x) & np.isfinite(y)
+    x = x[mask]
+    y = y[mask]
+    if x.size < 5:
+        return None
+    bins = max(3, min(20, bins))
+    if float(np.max(x)) == float(np.min(x)):
+        edges = np.linspace(float(np.min(x)) * 0.95, float(np.max(x)) * 1.05 + 1e-6, bins + 1)
+    else:
+        edges = np.linspace(float(np.min(x)), float(np.max(x)), bins + 1)
+    indices = np.digitize(x, edges, right=False) - 1
+    indices = np.clip(indices, 0, bins - 1)
+    centers: list[float] = []
+    medians: list[float] = []
+    lower: list[float] = []
+    upper: list[float] = []
+    for idx in range(bins):
+        mask = indices == idx
+        if not np.any(mask):
+            continue
+        values = y[mask]
+        if values.size < 3:
+            continue
+        centers.append(float((edges[idx] + edges[idx + 1]) / 2.0))
+        medians.append(float(np.nanmedian(values)))
+        lower.append(float(np.nanpercentile(values, 16)))
+        upper.append(float(np.nanpercentile(values, 84)))
+    if not centers:
+        return None
+    return (
+        np.asarray(centers, dtype=float),
+        np.asarray(medians, dtype=float),
+        np.asarray(lower, dtype=float),
+        np.asarray(upper, dtype=float),
+    )
+
+
+def _plot_trend_with_spread(
+    ax: plt.Axes,
+    x: Sequence[float],
+    y: Sequence[float],
+    *,
+    color: str,
+    label: str,
+    bins: int = 10,
+    scatter_kwargs: Mapping[str, object] | None = None,
+) -> None:
+    x_arr = _finite_values(x)
+    y_arr = _finite_values(y)
+    if x_arr.size == 0 or y_arr.size == 0:
+        ax.text(0.5, 0.5, "Insufficient data", ha="center", va="center")
+        return
+    scatter_defaults = {
+        "s": 26,
+        "alpha": 0.35,
+        "edgecolor": "white",
+        "linewidth": 0.6,
+        "c": color,
+    }
+    if scatter_kwargs:
+        scatter_defaults.update(scatter_kwargs)
+    ax.scatter(x_arr, y_arr, **scatter_defaults)
+    stats = _binned_statistics(x_arr, y_arr, bins=bins)
+    if stats is None:
+        return
+    centers, medians, lower, upper = stats
+    ax.plot(centers, medians, color=color, linewidth=2.0, label=label)
+    ax.fill_between(centers, lower, upper, color=color, alpha=0.18)
 
 
 def _latex_escape(text: str) -> str:
@@ -430,9 +531,73 @@ def _yield_vs_velocity_figure(records: Sequence[ParticleEstimateRecord]) -> plt.
 def _abundance_stack_figure(
     mass_results: Sequence[MassAnalysisResult],
     estimates: Mapping[str, ParticleEstimateRecord],
+    *,
+    calibrated_abundances: Mapping[str, Mapping[str, float]] | None = None,
+    rise_velocities: Mapping[str, float] | None = None,
 ) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(9, 6))
     fig.patch.set_facecolor("white")
+    if calibrated_abundances is not None and rise_velocities is not None:
+        species_order = [name for name, _ in EXPECTED_MASS_LINES]
+        paired: list[tuple[float, Mapping[str, float]]] = []
+        for event_id, abundances in calibrated_abundances.items():
+            velocity = rise_velocities.get(event_id)
+            if velocity is None or not math.isfinite(float(velocity)):
+                continue
+            paired.append((float(velocity), abundances))
+
+        if not paired:
+            ax.axis("off")
+            ax.text(
+                0.5,
+                0.5,
+                "No calibrated abundances with rise-time velocities.",
+                ha="center",
+                va="center",
+            )
+            return fig
+
+        speeds = np.array([item[0] for item in paired], dtype=float)
+        bins = max(4, min(12, int(math.sqrt(len(paired)))))
+        if float(np.max(speeds)) == float(np.min(speeds)):
+            bin_edges = np.linspace(
+                float(np.min(speeds)) * 0.9,
+                float(np.max(speeds)) * 1.1 + 1e-6,
+                bins + 1,
+            )
+        else:
+            bin_edges = np.linspace(float(np.min(speeds)), float(np.max(speeds)), bins + 1)
+        bin_indices = np.digitize(speeds, bin_edges, right=False) - 1
+        bin_indices = np.clip(bin_indices, 0, bins - 1)
+
+        stack_values = {species: [0.0] * bins for species in species_order}
+        counts = [0] * bins
+        for idx, (_, abundances) in zip(bin_indices, paired):
+            counts[idx] += 1
+            for species in species_order:
+                stack_values[species][idx] += float(abundances.get(species, 0.0))
+
+        for idx, count in enumerate(counts):
+            if count > 0:
+                for species in species_order:
+                    stack_values[species][idx] /= count
+
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        y_values = [stack_values[species] for species in species_order]
+        ax.stackplot(bin_centers, y_values, labels=species_order, alpha=0.9)
+        ax.set_ylim(0, 1)
+        ax.set_xlabel("Impact speed (km/s)", fontsize=12)
+        ax.set_ylabel("Calibrated relative abundance", fontsize=12)
+        ax.set_title(
+            "Calibrated olivine line abundances vs. rise-time velocity",
+            fontsize=14,
+        )
+        _maybe_log_axis(ax, "x", bin_centers)
+        ax.legend(loc="upper right", ncol=2, fontsize=8, frameon=False)
+        ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.5)
+        fig.tight_layout()
+        return fig
+
     results_by_event = {result.event_id: result for result in mass_results}
     paired: list[tuple[float, MassAnalysisResult]] = []
     for event_id, estimate in estimates.items():
@@ -485,6 +650,121 @@ def _abundance_stack_figure(
     ax.legend(loc="upper right", ncol=2, fontsize=8, frameon=False)
     ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.5)
     fig.tight_layout()
+    return fig
+
+
+def _elemental_fraction_vs_velocity_figure(
+    elemental_fractions: Mapping[str, Mapping[str, float]],
+    velocities: Mapping[str, float],
+) -> plt.Figure:
+    fig, axes = plt.subplots(len(ELEMENT_ORDER), 1, figsize=(9, 11), sharex=True)
+    fig.patch.set_facecolor("white")
+    colors = {"Mg": "#1f77b4", "Si": "#ff7f0e", "Fe": "#2ca02c"}
+
+    any_data = False
+    for idx, element in enumerate(ELEMENT_ORDER):
+        ax = axes[idx]
+        x: list[float] = []
+        y: list[float] = []
+        for event_id, fractions in elemental_fractions.items():
+            velocity = velocities.get(event_id)
+            if velocity is None:
+                continue
+            value = fractions.get(element)
+            if value is None:
+                continue
+            if not math.isfinite(float(velocity)):
+                continue
+            x.append(float(velocity))
+            y.append(float(value))
+        if x and y:
+            any_data = True
+        _plot_trend_with_spread(
+            ax,
+            x,
+            y,
+            color=colors.get(element, "#555555"),
+            label=f"Median {element}",
+            bins=max(6, int(math.sqrt(max(len(x), 1)))),
+        )
+        ax.set_ylabel(f"{element} fraction", fontsize=12)
+        ax.set_ylim(0.0, 1.0)
+        ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.5)
+        if ax.get_legend_handles_labels()[0]:
+            ax.legend(frameon=False, loc="upper right")
+
+    axes[-1].set_xlabel("Impact speed from rise time (km/s)", fontsize=12)
+    if any_data:
+        _maybe_log_axis(axes[-1], "x", [v for v in velocities.values() if math.isfinite(v)])
+    else:
+        for ax in axes:
+            ax.text(0.5, 0.5, "No rise-time velocity data.", ha="center", va="center")
+            ax.set_axis_off()
+            break
+    fig.suptitle(
+        "Calibrated elemental fractions vs. rise-time-derived impact speed",
+        fontsize=15,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    return fig
+
+
+def _elemental_ratio_vs_velocity_figure(
+    elemental_fractions: Mapping[str, Mapping[str, float]],
+    velocities: Mapping[str, float],
+) -> plt.Figure:
+    ratio_names = list(RATIO_DEFINITIONS.keys())
+    fig, axes = plt.subplots(len(ratio_names), 1, figsize=(9, 11), sharex=True)
+    fig.patch.set_facecolor("white")
+    colors = {"Mg/Fe": "#9467bd", "Mg/Si": "#8c564b", "Fe/Si": "#e377c2"}
+
+    for idx, ratio_name in enumerate(ratio_names):
+        numerator, denominator = RATIO_DEFINITIONS[ratio_name]
+        ax = axes[idx]
+        x: list[float] = []
+        y: list[float] = []
+        for event_id, fractions in elemental_fractions.items():
+            velocity = velocities.get(event_id)
+            if velocity is None:
+                continue
+            num = fractions.get(numerator)
+            denom = fractions.get(denominator)
+            if num is None or denom is None or denom <= 0.0:
+                continue
+            if not (math.isfinite(float(num)) and math.isfinite(float(denom))):
+                continue
+            if not math.isfinite(float(velocity)):
+                continue
+            ratio = float(num) / float(denom)
+            if ratio <= 0.0 or not math.isfinite(ratio):
+                continue
+            x.append(float(velocity))
+            y.append(ratio)
+        if x and y:
+            _plot_trend_with_spread(
+                ax,
+                x,
+                y,
+                color=colors.get(ratio_name, "#555555"),
+                label=f"Median {ratio_name}",
+                bins=max(6, int(math.sqrt(max(len(x), 1)))),
+                scatter_kwargs={"s": 28},
+            )
+            ax.set_yscale("log")
+        else:
+            ax.text(0.5, 0.5, "Insufficient ratio data.", ha="center", va="center")
+        ax.set_ylabel(ratio_name, fontsize=12)
+        ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.5)
+        if ax.get_legend_handles_labels()[0]:
+            ax.legend(frameon=False, loc="upper right")
+
+    axes[-1].set_xlabel("Impact speed from rise time (km/s)", fontsize=12)
+    _maybe_log_axis(axes[-1], "x", [v for v in velocities.values() if math.isfinite(v)])
+    fig.suptitle(
+        "Elemental ratios vs. rise-time-derived impact speed",
+        fontsize=15,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
     return fig
 
 
@@ -745,7 +1025,13 @@ def _ternary_to_cartesian(mg: float, si: float, fe: float) -> tuple[float, float
     return float(coord[0]), float(coord[1])
 
 
-def _ternary_figure(points: Sequence[tuple[float, float, float]]) -> plt.Figure:
+def _ternary_figure(
+    points: Sequence[tuple[float, float, float]],
+    *,
+    target_point: tuple[float, float, float] | None = None,
+    centroid_point: tuple[float, float, float] | None = None,
+    title: str | None = None,
+) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(8, 7))
     ax.set_axis_off()
 
@@ -755,6 +1041,9 @@ def _ternary_figure(points: Sequence[tuple[float, float, float]]) -> plt.Figure:
     ax.text(-0.05, -0.05, "Mg", fontsize=12, fontweight="bold")
     ax.text(1.05, -0.05, "Si", fontsize=12, fontweight="bold", ha="right")
     ax.text(0.5, np.sqrt(3.0) / 2.0 + 0.05, "Fe", fontsize=12, fontweight="bold", ha="center")
+
+    if title:
+        ax.set_title(title, fontsize=14, pad=20)
 
     if points:
         coords = np.array([_ternary_to_cartesian(*p) for p in points])
@@ -774,6 +1063,47 @@ def _ternary_figure(points: Sequence[tuple[float, float, float]]) -> plt.Figure:
             ha="center",
             va="center",
             fontsize=12,
+        )
+
+    if target_point is not None:
+        tx, ty = _ternary_to_cartesian(*target_point)
+        ax.scatter(
+            tx,
+            ty,
+            marker="*",
+            s=220,
+            c="#d62728",
+            edgecolor="black",
+            linewidth=0.8,
+            zorder=6,
+        )
+        ax.text(
+            tx,
+            ty + 0.05,
+            "Fo90 target",
+            fontsize=11,
+            fontweight="bold",
+            ha="center",
+        )
+
+    if centroid_point is not None:
+        cx, cy = _ternary_to_cartesian(*centroid_point)
+        ax.scatter(
+            cx,
+            cy,
+            marker="D",
+            s=90,
+            c="#2ca02c",
+            edgecolor="black",
+            linewidth=0.6,
+            zorder=5,
+        )
+        ax.text(
+            cx,
+            cy - 0.06,
+            "Dataset median",
+            fontsize=10,
+            ha="center",
         )
 
     ax.set_xlim(-0.1, 1.1)
@@ -1149,8 +1479,30 @@ class MetricCollector:
     )
     particle_estimates: list[ParticleEstimateRecord] = field(default_factory=list)
     event_estimates: dict[str, ParticleEstimateRecord] = field(default_factory=dict)
+    event_rise_time_us: dict[str, float] = field(default_factory=dict)
+    calibrated_species_abundances: dict[str, dict[str, float]] = field(
+        default_factory=dict
+    )
+    calibrated_elemental_fractions: dict[str, dict[str, float]] = field(
+        default_factory=dict
+    )
+    calibrated_ternary_points: list[tuple[float, float, float]] = field(
+        default_factory=list
+    )
+    calibration_target: dict[str, float] = field(default_factory=dict)
+    calibration_dataset_fraction: dict[str, float] = field(default_factory=dict)
+    calibration_element_scaling: dict[str, float] = field(default_factory=dict)
+    calibrated_ratios: MutableMapping[str, list[float]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    calibrated_elemental_median: dict[str, float] = field(default_factory=dict)
+    rise_velocity_map: dict[str, float] = field(default_factory=dict)
+    _calibration_ready: bool = field(default=False, init=False, repr=False)
+    _rise_velocity_ready: bool = field(default=False, init=False, repr=False)
 
     def consume_file(self, path: Path) -> None:
+        self._calibration_ready = False
+        self._rise_velocity_ready = False
         with h5py.File(path, "r") as handle:
             self.files_processed += 1
             for event_id in handle.keys():
@@ -1245,6 +1597,9 @@ class MetricCollector:
                 if target_channel is not None:
                     self.target_usage[target_channel] += 1
                     trigger_times["Target"] = trigger_times[target_channel]
+                    target_rise = event_rise_times.get(target_channel)
+                    if target_rise is not None and np.isfinite(target_rise):
+                        self.event_rise_time_us[event_id] = float(target_rise)
 
                 if (
                     target_channel is not None
@@ -1302,10 +1657,161 @@ class MetricCollector:
                     delta = abs(float(value_a) - float(value_b))
                     self.trigger_deltas[pair_name].append(delta)
 
+    def _ensure_calibration(self) -> None:
+        if self._calibration_ready:
+            return
+        self._calibration_ready = True
+        self.calibration_target = dict(FO90_TARGET)
+        self.calibration_element_scaling = {}
+        self.calibration_dataset_fraction = {}
+        self.calibrated_species_abundances.clear()
+        self.calibrated_elemental_fractions.clear()
+        self.calibrated_ternary_points.clear()
+        self.calibrated_elemental_median.clear()
+        self.calibrated_ratios = defaultdict(list)
+
+        totals = {element: 0.0 for element in ELEMENT_ORDER}
+        for result in self.mass_results:
+            for species, area in result.raw_areas.items():
+                element = SPECIES_TO_ELEMENT.get(species)
+                if element is None:
+                    continue
+                totals[element] += float(area)
+
+        if not all(total > 0.0 for total in totals.values()):
+            return
+
+        scaling = {
+            element: self.calibration_target[element] / totals[element]
+            for element in ELEMENT_ORDER
+        }
+        self.calibration_element_scaling = scaling
+
+        scaled_totals = {
+            element: scaling[element] * totals[element] for element in ELEMENT_ORDER
+        }
+        total_scaled_sum = float(sum(scaled_totals.values()))
+        if total_scaled_sum > 0.0:
+            self.calibration_dataset_fraction = {
+                element: value / total_scaled_sum for element, value in scaled_totals.items()
+            }
+
+        species_scaling = {
+            species: scaling.get(SPECIES_TO_ELEMENT.get(species, ""), 1.0)
+            for species, _ in EXPECTED_MASS_LINES
+        }
+
+        element_samples: dict[str, list[float]] = {element: [] for element in ELEMENT_ORDER}
+
+        for result in self.mass_results:
+            scaled_species: dict[str, float] = {}
+            for species, _ in EXPECTED_MASS_LINES:
+                raw_area = float(result.raw_areas.get(species, 0.0))
+                factor = species_scaling.get(species, 1.0)
+                scaled_species[species] = raw_area * factor
+
+            total_scaled = float(sum(scaled_species.values()))
+            if total_scaled <= 0.0:
+                continue
+
+            normalized_species = {
+                species: (
+                    scaled_species.get(species, 0.0) / total_scaled
+                    if total_scaled > 0.0
+                    else 0.0
+                )
+                for species, _ in EXPECTED_MASS_LINES
+            }
+            self.calibrated_species_abundances[result.event_id] = normalized_species
+
+            mg_total = sum(scaled_species.get(species, 0.0) for species in MG_ISOTOPES)
+            si_total = sum(scaled_species.get(species, 0.0) for species in SI_ISOTOPES)
+            fe_total = sum(scaled_species.get(species, 0.0) for species in FE_ISOTOPES)
+            elemental_total = mg_total + si_total + fe_total
+            if elemental_total <= 0.0:
+                continue
+
+            mg_fraction = float(mg_total / elemental_total)
+            si_fraction = float(si_total / elemental_total)
+            fe_fraction = float(fe_total / elemental_total)
+            elemental_map = {
+                "Mg": mg_fraction,
+                "Si": si_fraction,
+                "Fe": fe_fraction,
+            }
+            self.calibrated_elemental_fractions[result.event_id] = elemental_map
+            self.calibrated_ternary_points.append((mg_fraction, si_fraction, fe_fraction))
+
+            for element, value in elemental_map.items():
+                element_samples[element].append(float(value))
+
+            for ratio_name, (numerator, denominator) in RATIO_DEFINITIONS.items():
+                denom_value = elemental_map.get(denominator)
+                num_value = elemental_map.get(numerator)
+                if denom_value is None or denom_value <= 0.0 or num_value is None:
+                    continue
+                ratio = float(num_value) / float(denom_value)
+                if ratio > 0.0 and math.isfinite(ratio):
+                    self.calibrated_ratios[ratio_name].append(ratio)
+
+        for element, values in element_samples.items():
+            arr = _finite_values(values)
+            if arr.size:
+                self.calibrated_elemental_median[element] = float(np.median(arr))
+
+    def _ensure_rise_velocity(self) -> None:
+        if self._rise_velocity_ready:
+            return
+        self._rise_velocity_ready = True
+        self.rise_velocity_map.clear()
+        if _RISE_PARAMS is None:
+            return
+        for event_id, rise_time in self.event_rise_time_us.items():
+            if rise_time is None or not np.isfinite(rise_time):
+                continue
+            try:
+                velocity = _dust_estimator.compute_velocity_from_rise_time(
+                    float(rise_time), _RISE_PARAMS
+                )
+            except Exception:
+                continue
+            if velocity is None or not math.isfinite(velocity):
+                continue
+            self.rise_velocity_map[event_id] = float(velocity)
+
     def _summary_lines(self) -> list[str]:
+        self._ensure_calibration()
+        self._ensure_rise_velocity()
         lines = [
             f"Processed {self.events_processed} events across {self.files_processed} file(s).",
         ]
+
+        if self.calibration_element_scaling:
+            scale_bits = ", ".join(
+                f"{element}: {factor:.3g}"
+                for element, factor in sorted(self.calibration_element_scaling.items())
+            )
+            lines.append("Fo90 sensitivity factors — " + scale_bits)
+
+        if self.calibration_dataset_fraction:
+            comp_bits = ", ".join(
+                f"{element}: {fraction * 100.0:.1f}%"
+                for element, fraction in sorted(self.calibration_dataset_fraction.items())
+            )
+            lines.append("Fo90 calibrated composition — " + comp_bits)
+
+        if self.calibrated_elemental_median:
+            median_bits = ", ".join(
+                f"{element}: {value * 100.0:.1f}%"
+                for element, value in sorted(self.calibrated_elemental_median.items())
+            )
+            lines.append("Median calibrated elemental fractions — " + median_bits)
+
+        if self.rise_velocity_map:
+            lines.append(
+                f"Rise-time velocity coverage — {len(self.rise_velocity_map)} event"
+                f"{'s' if len(self.rise_velocity_map) != 1 else ''}."
+            )
 
         if self.saturation_counts:
             saturation_bits = [
@@ -1364,6 +1870,32 @@ class MetricCollector:
         pdf_path = Path(pdf_path)
         pdf_path.parent.mkdir(parents=True, exist_ok=True)
         summary_lines = self._summary_lines()
+
+        calibration_species = {
+            event_id: dict(values)
+            for event_id, values in self.calibrated_species_abundances.items()
+        }
+        calibration_elemental = {
+            event_id: dict(values)
+            for event_id, values in self.calibrated_elemental_fractions.items()
+        }
+        rise_velocities = dict(self.rise_velocity_map)
+        calibration_points = list(self.calibrated_ternary_points)
+        target_point = tuple(
+            self.calibration_target.get(element, 0.0) for element in ELEMENT_ORDER
+        )
+        median_point = (
+            tuple(
+                self.calibrated_elemental_median.get(element, 0.0)
+                for element in ELEMENT_ORDER
+            )
+            if self.calibrated_elemental_median
+            else None
+        )
+        target_records = list(self.event_estimates.values())
+        target_charges = [record.charge_c for record in target_records]
+        target_yields = [record.yield_c_per_kg for record in target_records]
+        rise_speed_list = [value for value in rise_velocities.values()]
 
         figure_specs: list[FigureSpec] = []
 
@@ -1507,6 +2039,54 @@ class MetricCollector:
                 )
             )
 
+        if target_charges:
+            figure_specs.append(
+                FigureSpec(
+                    stem="target_charge_overview",
+                    caption="Impact charge distribution derived from target-based particle estimates.",
+                    label="fig:target-charge-overview",
+                    builder=lambda data=list(target_charges): _hist_figure(
+                        data,
+                        title="Target-derived impact charge",
+                        xlabel="Charge (C)",
+                        caption="Histogram of impact charges inferred from target fits across all calibrated events.",
+                        requirement_lines=None,
+                    ),
+                )
+            )
+
+        if rise_speed_list:
+            figure_specs.append(
+                FigureSpec(
+                    stem="target_speed_overview",
+                    caption="Impact speed distribution computed from target rise times.",
+                    label="fig:target-speed-overview",
+                    builder=lambda data=list(rise_speed_list): _hist_figure(
+                        data,
+                        title="Impact speed from rise time",
+                        xlabel="Velocity (km/s)",
+                        caption="Histogram of rise-time-derived impact speeds for events with calibrated abundances.",
+                        requirement_lines=None,
+                    ),
+                )
+            )
+
+        if target_yields:
+            figure_specs.append(
+                FigureSpec(
+                    stem="target_yield_overview",
+                    caption="Charge-yield distribution from target-based mass estimates.",
+                    label="fig:target-yield-overview",
+                    builder=lambda data=list(target_yields): _hist_figure(
+                        data,
+                        title="Charge yield (target)",
+                        xlabel="Yield (C/kg)",
+                        caption="Histogram of charge yields computed from target charges and Fo90-calibrated velocities.",
+                        requirement_lines=None,
+                    ),
+                )
+            )
+
         figure_specs.append(
             FigureSpec(
                 stem="mass_abundance",
@@ -1524,6 +2104,21 @@ class MetricCollector:
                 builder=lambda points=list(self._ternary_points): _ternary_figure(points),
             )
         )
+
+        if calibration_points:
+            figure_specs.append(
+                FigureSpec(
+                    stem="ternary_calibrated",
+                    caption="Fo90-calibrated Mg–Si–Fe ternary composition with target overlay.",
+                    label="fig:ternary-calibrated",
+                    builder=lambda points=list(calibration_points), target=target_point, median=median_point: _ternary_figure(
+                        points,
+                        target_point=target if any(target) else None,
+                        centroid_point=median,
+                        title="Fo90-calibrated Mg–Si–Fe ternary diagram",
+                    ),
+                )
+            )
 
         figure_specs.append(
             FigureSpec(
@@ -1548,9 +2143,35 @@ class MetricCollector:
                 stem="abundance_stack",
                 caption="Stacked relative abundances of olivine mass lines vs. impact velocity.",
                 label="fig:abundance-stack",
-                builder=lambda results=list(self.mass_results), estimates=dict(self.event_estimates): _abundance_stack_figure(
+                builder=lambda results=list(self.mass_results), estimates=dict(self.event_estimates), calibrated=calibration_species, velocities=rise_velocities: _abundance_stack_figure(
                     results,
                     estimates,
+                    calibrated_abundances=calibrated,
+                    rise_velocities=velocities,
+                ),
+            )
+        )
+
+        figure_specs.append(
+            FigureSpec(
+                stem="elemental_fractions_vs_speed",
+                caption="Fo90-calibrated Mg, Si, and Fe fractions versus impact speed from target rise times.",
+                label="fig:elemental-fractions",
+                builder=lambda fractions=calibration_elemental, velocities=rise_velocities: _elemental_fraction_vs_velocity_figure(
+                    fractions,
+                    velocities,
+                ),
+            )
+        )
+
+        figure_specs.append(
+            FigureSpec(
+                stem="elemental_ratios_vs_speed",
+                caption="Elemental Mg/Fe, Mg/Si, and Fe/Si ratios across rise-time-derived impact speeds.",
+                label="fig:elemental-ratios",
+                builder=lambda fractions=calibration_elemental, velocities=rise_velocities: _elemental_ratio_vs_velocity_figure(
+                    fractions,
+                    velocities,
                 ),
             )
         )
@@ -1867,6 +2488,9 @@ class MetricCollector:
                     plt.close(fig)
 
     def write_summary_json(self, path: Path) -> None:
+        self._ensure_calibration()
+        self._ensure_rise_velocity()
+
         def stats(values: Iterable[float]) -> Mapping[str, float | int]:
             arr = _finite_values(values)
             if arr.size == 0:
@@ -1879,6 +2503,43 @@ class MetricCollector:
                 "min": float(np.min(arr)),
                 "max": float(np.max(arr)),
             }
+
+        calibrated_stats: dict[str, Mapping[str, float | int | None]] = {}
+        if self.calibrated_species_abundances:
+            for species, _ in EXPECTED_MASS_LINES:
+                values = [
+                    abundances.get(species, 0.0)
+                    for abundances in self.calibrated_species_abundances.values()
+                ]
+                descriptor = _descriptive_stats(_finite_values(values))
+                calibrated_stats[species] = {
+                    "count": descriptor["count"],
+                    "min": None if descriptor["min"] is None else float(descriptor["min"]),
+                    "max": None if descriptor["max"] is None else float(descriptor["max"]),
+                    "mean": None if descriptor["mean"] is None else float(descriptor["mean"]),
+                    "median": None if descriptor["median"] is None else float(descriptor["median"]),
+                    "mode": None if descriptor["mode"] is None else float(descriptor["mode"]),
+                    "std": None if descriptor["std"] is None else float(descriptor["std"]),
+                }
+
+        calibrated_events: list[dict[str, object]] = []
+        for result in self.mass_results:
+            payload = result.to_dict()
+            calibrated = self.calibrated_species_abundances.get(result.event_id)
+            if calibrated:
+                payload["calibrated_relative_abundances"] = {
+                    species: float(value) for species, value in calibrated.items()
+                }
+            elemental = self.calibrated_elemental_fractions.get(result.event_id)
+            if elemental:
+                payload["calibrated_elemental_fractions"] = {
+                    element: float(value) for element, value in elemental.items()
+                }
+            calibrated_events.append(payload)
+
+        target_records = list(self.event_estimates.values())
+        target_charges = [record.charge_c for record in target_records]
+        target_yields = [record.yield_c_per_kg for record in target_records]
 
         summary = {
             "files_processed": self.files_processed,
@@ -1895,8 +2556,39 @@ class MetricCollector:
             },
             "saturation_counts": dict(self.saturation_counts),
             "target_usage": dict(self.target_usage),
+            "rise_velocity_stats": stats(self.rise_velocity_map.values()),
+            "target_charge_stats": stats(target_charges),
+            "target_yield_stats": stats(target_yields),
+            "calibration": {
+                "target": {element: float(value) for element, value in self.calibration_target.items()},
+                "element_scaling": {
+                    element: float(value)
+                    for element, value in self.calibration_element_scaling.items()
+                },
+                "dataset_composition": {
+                    element: float(value)
+                    for element, value in self.calibration_dataset_fraction.items()
+                },
+                "elemental_stats": {
+                    element: stats(
+                        [
+                            fractions.get(element, float("nan"))
+                            for fractions in self.calibrated_elemental_fractions.values()
+                            if element in fractions
+                        ]
+                    )
+                    for element in ELEMENT_ORDER
+                },
+                "ratio_stats": {
+                    name: stats(values) for name, values in self.calibrated_ratios.items()
+                },
+                "elemental_median": {
+                    element: float(value)
+                    for element, value in self.calibrated_elemental_median.items()
+                },
+            },
             "mass_analysis": {
-                "events": [result.to_dict() for result in self.mass_results],
+                "events": calibrated_events,
                 "relative_abundance_stats": {
                     species: {
                         "count": stat_values["count"],
@@ -1906,9 +2598,14 @@ class MetricCollector:
                     }
                     for species, stat_values in _relative_stats(self.mass_results).items()
                 },
+                "calibrated_relative_abundance_stats": calibrated_stats,
                 "ternary_points": [
                     {"Mg": float(mg), "Si": float(si), "Fe": float(fe)}
                     for mg, si, fe in self._ternary_points
+                ],
+                "calibrated_ternary_points": [
+                    {"Mg": float(mg), "Si": float(si), "Fe": float(fe)}
+                    for mg, si, fe in self.calibrated_ternary_points
                 ],
                 "median_elemental_percent": (
                     {

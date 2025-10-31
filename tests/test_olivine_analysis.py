@@ -123,8 +123,14 @@ def test_olivine_analysis_generates_mass_lines_and_flags(tmp_path):
         first_event = mass_analysis["events"][0]
         assert "relative_abundances" in first_event, "Relative abundances missing from mass analysis event."
         assert species_names.issubset(set(first_event["relative_abundances"].keys()))
+        assert "calibrated_relative_abundances" in first_event
     stats = mass_analysis.get("relative_abundance_stats")
     assert isinstance(stats, dict), "Relative abundance statistics missing from mass analysis."
     assert species_names.issubset(set(stats.keys())), "Not all expected species present in abundance statistics."
     ternary_points = mass_analysis.get("ternary_points")
     assert isinstance(ternary_points, list), "Ternary composition points should be recorded as a list."
+    calibrated_points = mass_analysis.get("calibrated_ternary_points")
+    assert isinstance(calibrated_points, list)
+    calibration = summary_data.get("calibration")
+    assert calibration is not None, "Calibration details missing from summary JSON."
+    assert pytest.approx(calibration["target"]["Mg"], rel=1e-3) == 0.6
