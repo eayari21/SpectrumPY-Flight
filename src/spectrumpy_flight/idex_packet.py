@@ -21,10 +21,19 @@ import h5py
 import shutil
 import struct
 import matplotlib.pyplot as plt
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
+
+try:  # Optional dependency for SQL matching
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.pool import QueuePool
+except Exception:  # pragma: no cover - optional dependency
+    create_engine = None
+    text = None
+    QueuePool = None
 
 
 def _float_or_nan(value: Optional[float]) -> float:
@@ -501,6 +510,542 @@ def _resolve_output_path(filename: str) -> Path:
     target_parent.mkdir(parents=True, exist_ok=True)
     return target_parent / f"{stem}.h5"
 
+
+_SQL_DB_URI = os.environ.get("IDEX_SQL_URI")
+_SQL_ENGINE = None
+
+
+def _sql_match_available() -> bool:
+    return bool(_SQL_DB_URI and create_engine is not None and text is not None)
+
+
+def _get_sql_engine():
+    global _SQL_ENGINE
+    if not _sql_match_available():
+        return None
+    if _SQL_ENGINE is None:
+        kwargs: Dict[str, Any] = {}
+        if QueuePool is not None:
+            kwargs.update({'poolclass': QueuePool, 'pool_size': 5, 'max_overflow': 10})
+        try:
+            _SQL_ENGINE = create_engine(_SQL_DB_URI, **kwargs)
+        except Exception as exc:  # pragma: no cover - depends on runtime configuration
+            print(f"Warning: unable to initialise SQL engine: {exc}")
+            _SQL_ENGINE = None
+    return _SQL_ENGINE
+
+
+def _first_finite_scalar(values: Any) -> Optional[float]:
+    if values is None:
+        return None
+    try:
+        arr = np.asarray(values, dtype=float)
+    except Exception:
+        try:
+            arr = np.asarray(values)
+        except Exception:
+            return None
+        arr = arr.ravel()
+        for item in arr:
+            try:
+                candidate = float(item)
+            except Exception:
+                continue
+            if np.isfinite(candidate):
+                return float(candidate)
+        return None
+
+    arr = np.asarray(arr, dtype=float).ravel()
+    if arr.size == 0:
+        return None
+    for value in arr:
+        if np.isfinite(value):
+            return float(value)
+    return None
+
+
+def _coerce_optional_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if np.isnan(numeric) or np.isinf(numeric):
+        return None
+    return numeric
+
+
+def _coerce_optional_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, (float, np.floating)) and (np.isnan(value) or np.isinf(value)):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _coerce_optional_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            value = value.decode('utf-8', errors='ignore')
+        except Exception:
+            value = value.decode('latin1', errors='ignore')
+    text_value = str(value).strip()
+    return text_value or None
+
+
+@dataclass
+class SQLMatchCriteria:
+    time_ms: Optional[float] = None
+    time_window_ms: float = 2000.0
+    velocity_kmps: Optional[float] = None
+    velocity_tolerance_kmps: float = 0.2
+    min_quality: Optional[int] = 0
+    limit: int = 20
+    extra_filter: str = ""
+
+
+@dataclass
+class SQLMatchResult:
+    record_id: Optional[int]
+    estimate_quality: Optional[float]
+    timestamp_ms: Optional[float]
+    velocity_mps: Optional[float]
+    mass_kg: Optional[float]
+    charge_c: Optional[float]
+    radius_m: Optional[float]
+    experiment_settings_id: Optional[int] = None
+    dust_info_id: Optional[int] = None
+    experiment_tag: Optional[str] = None
+    experiment_description: Optional[str] = None
+    experiment_timestamp_ms: Optional[float] = None
+    run_start_ms: Optional[float] = None
+    run_stop_ms: Optional[float] = None
+    dust_type_id: Optional[int] = None
+    dust_source_builder: Optional[int] = None
+    dust_shot_count: Optional[float] = None
+    dust_initial_mass: Optional[float] = None
+    dust_final_mass: Optional[float] = None
+    dust_run_time: Optional[float] = None
+    dust_source_notes: Optional[str] = None
+    source_settings_id: Optional[int] = None
+    source_settings_key: Optional[str] = None
+    source_einzel_voltage: Optional[float] = None
+    source_needle_voltage: Optional[float] = None
+    source_frequency: Optional[float] = None
+    source_width: Optional[float] = None
+    source_amplitude: Optional[float] = None
+    source_x_voltage: Optional[float] = None
+    source_y_voltage: Optional[float] = None
+    psu_velocity_max: Optional[float] = None
+    psu_velocity_min: Optional[float] = None
+    psu_charge_max: Optional[float] = None
+    psu_charge_min: Optional[float] = None
+    psu_mass_max: Optional[float] = None
+    psu_mass_min: Optional[float] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def velocity_kmps(self) -> Optional[float]:
+        if self.velocity_mps is None or not np.isfinite(self.velocity_mps):
+            return None
+        return float(self.velocity_mps) / 1000.0
+
+
+def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult], str, Dict[str, Any]]:
+    engine = _get_sql_engine()
+    if engine is None:
+        raise RuntimeError("SQL matching unavailable")
+
+    where_clauses = ["mass != -1"]
+    params: Dict[str, Any] = {}
+    order_terms: List[str] = []
+
+    if criteria.time_ms is not None and np.isfinite(criteria.time_ms):
+        window = max(criteria.time_window_ms, 0.0)
+        time_lower = float(criteria.time_ms) - window
+        time_upper = float(criteria.time_ms) + window
+        where_clauses.append("integer_timestamp BETWEEN :time_lower AND :time_upper")
+        params['time_lower'] = int(time_lower)
+        params['time_upper'] = int(time_upper)
+        params['time_center'] = int(criteria.time_ms)
+        order_terms.append("ABS(integer_timestamp - :time_center)")
+    else:
+        order_terms.append("integer_timestamp DESC")
+
+    if criteria.velocity_kmps is not None and np.isfinite(criteria.velocity_kmps):
+        target_mps = float(criteria.velocity_kmps) * 1000.0
+        tol = max(criteria.velocity_tolerance_kmps, 0.0) * 1000.0
+        where_clauses.append("velocity BETWEEN :velocity_lower AND :velocity_upper")
+        params['velocity_lower'] = target_mps - tol
+        params['velocity_upper'] = target_mps + tol
+        params['velocity_target'] = target_mps
+        order_terms.append("ABS(velocity - :velocity_target)")
+
+    if criteria.min_quality is not None:
+        where_clauses.append("estimate_quality >= :min_quality")
+        params['min_quality'] = int(criteria.min_quality)
+
+    extra = criteria.extra_filter.strip()
+    if extra:
+        where_clauses.append(f"({extra})")
+
+    where_sql = " AND ".join(where_clauses) if where_clauses else "1"
+    order_sql = ", ".join(order_terms)
+
+    sql = (
+        "SELECT "
+        "de.id_dust_event AS id_dust_event, "
+        "de.estimate_quality AS estimate_quality, "
+        "de.integer_timestamp AS integer_timestamp, "
+        "de.velocity AS velocity, "
+        "de.mass AS mass, "
+        "de.charge AS charge, "
+        "de.radius AS radius, "
+        "de.id_experiment_settings AS id_experiment_settings, "
+        "de.id_dust_info AS id_dust_info, "
+        "es.integer_timestamp AS experiment_integer_timestamp, "
+        "es.tag AS experiment_tag, "
+        "es.description AS experiment_description, "
+        "rt.start_timestamp AS run_start_timestamp, "
+        "rt.stop_timestamp AS run_stop_timestamp, "
+        "di.dust_type AS dust_type, "
+        "di.source_builder AS dust_source_builder, "
+        "di.shot_count AS dust_shot_count, "
+        "di.initial_dust_mass AS dust_initial_mass, "
+        "di.final_dust_mass AS dust_final_mass, "
+        "di.run_time AS dust_run_time, "
+        "di.dust_source_notes AS dust_source_notes, "
+        "ss.id_source_settings AS source_settings_id, "
+        "ss.settings_id AS source_settings_key, "
+        "ss.einzel_voltage AS source_einzel_voltage, "
+        "ss.needle_voltage AS source_needle_voltage, "
+        "ss.frequency AS source_frequency, "
+        "ss.width AS source_width, "
+        "ss.amplitude AS source_amplitude, "
+        "ss.x_voltage AS source_x_voltage, "
+        "ss.y_voltage AS source_y_voltage, "
+        "psu.velocity_max AS psu_velocity_max, "
+        "psu.velocity_min AS psu_velocity_min, "
+        "psu.charge_max AS psu_charge_max, "
+        "psu.charge_min AS psu_charge_min, "
+        "psu.mass_max AS psu_mass_max, "
+        "psu.mass_min AS psu_mass_min "
+        "FROM dust_event AS de "
+        "LEFT JOIN dust_info AS di ON de.id_dust_info = di.id_dust_info "
+        "LEFT JOIN experiment_settings AS es ON de.id_experiment_settings = es.id_experiment_settings "
+        "LEFT JOIN run_times AS rt ON es.id_experiment_settings = rt.id_experiment_settings "
+        "LEFT JOIN source_settings AS ss ON es.integer_timestamp = ss.integer_timestamp "
+        "LEFT JOIN psu ON de.integer_timestamp = psu.integer_timestamp "
+        f"WHERE {where_sql} "
+    )
+
+    if order_sql:
+        sql += f"ORDER BY {order_sql} "
+    if criteria.limit:
+        sql += "LIMIT :limit"
+        params['limit'] = int(criteria.limit)
+
+    with engine.connect() as connection:
+        frame = pd.read_sql_query(text(sql), connection, params=params)
+
+    results: List[SQLMatchResult] = []
+    for row in frame.to_dict(orient='records'):
+        record_id = _coerce_optional_int(row.get('id_dust_event'))
+        estimate_quality = _coerce_optional_float(row.get('estimate_quality'))
+        timestamp_ms = _coerce_optional_float(row.get('integer_timestamp'))
+        velocity = _coerce_optional_float(row.get('velocity'))
+        mass = _coerce_optional_float(row.get('mass'))
+        charge = _coerce_optional_float(row.get('charge'))
+        radius = _coerce_optional_float(row.get('radius'))
+        experiment_settings_id = _coerce_optional_int(row.get('id_experiment_settings'))
+        dust_info_id = _coerce_optional_int(row.get('id_dust_info'))
+        experiment_timestamp = _coerce_optional_float(row.get('experiment_integer_timestamp'))
+        run_start = _coerce_optional_float(row.get('run_start_timestamp'))
+        run_stop = _coerce_optional_float(row.get('run_stop_timestamp'))
+        dust_type_id = _coerce_optional_int(row.get('dust_type'))
+        dust_source_builder = _coerce_optional_int(row.get('dust_source_builder'))
+        dust_shot_count = _coerce_optional_float(row.get('dust_shot_count'))
+        dust_initial_mass = _coerce_optional_float(row.get('dust_initial_mass'))
+        dust_final_mass = _coerce_optional_float(row.get('dust_final_mass'))
+        dust_run_time = _coerce_optional_float(row.get('dust_run_time'))
+        dust_source_notes = _coerce_optional_str(row.get('dust_source_notes'))
+        source_settings_id = _coerce_optional_int(row.get('source_settings_id'))
+        source_settings_key = _coerce_optional_str(row.get('source_settings_key'))
+        source_einzel = _coerce_optional_float(row.get('source_einzel_voltage'))
+        source_needle = _coerce_optional_float(row.get('source_needle_voltage'))
+        source_frequency = _coerce_optional_float(row.get('source_frequency'))
+        source_width = _coerce_optional_float(row.get('source_width'))
+        source_amplitude = _coerce_optional_float(row.get('source_amplitude'))
+        source_x_voltage = _coerce_optional_float(row.get('source_x_voltage'))
+        source_y_voltage = _coerce_optional_float(row.get('source_y_voltage'))
+        psu_velocity_max = _coerce_optional_float(row.get('psu_velocity_max'))
+        psu_velocity_min = _coerce_optional_float(row.get('psu_velocity_min'))
+        psu_charge_max = _coerce_optional_float(row.get('psu_charge_max'))
+        psu_charge_min = _coerce_optional_float(row.get('psu_charge_min'))
+        psu_mass_max = _coerce_optional_float(row.get('psu_mass_max'))
+        psu_mass_min = _coerce_optional_float(row.get('psu_mass_min'))
+
+        match = SQLMatchResult(
+            record_id=record_id,
+            estimate_quality=estimate_quality,
+            timestamp_ms=timestamp_ms,
+            velocity_mps=velocity,
+            mass_kg=mass,
+            charge_c=charge,
+            radius_m=radius,
+            experiment_settings_id=experiment_settings_id,
+            dust_info_id=dust_info_id,
+            experiment_tag=_coerce_optional_str(row.get('experiment_tag')),
+            experiment_description=_coerce_optional_str(row.get('experiment_description')),
+            experiment_timestamp_ms=experiment_timestamp,
+            run_start_ms=run_start,
+            run_stop_ms=run_stop,
+            dust_type_id=dust_type_id,
+            dust_source_builder=dust_source_builder,
+            dust_shot_count=dust_shot_count,
+            dust_initial_mass=dust_initial_mass,
+            dust_final_mass=dust_final_mass,
+            dust_run_time=dust_run_time,
+            dust_source_notes=dust_source_notes,
+            source_settings_id=source_settings_id,
+            source_settings_key=source_settings_key,
+            source_einzel_voltage=source_einzel,
+            source_needle_voltage=source_needle,
+            source_frequency=source_frequency,
+            source_width=source_width,
+            source_amplitude=source_amplitude,
+            source_x_voltage=source_x_voltage,
+            source_y_voltage=source_y_voltage,
+            psu_velocity_max=psu_velocity_max,
+            psu_velocity_min=psu_velocity_min,
+            psu_charge_max=psu_charge_max,
+            psu_charge_min=psu_charge_min,
+            psu_mass_max=psu_mass_max,
+            psu_mass_min=psu_mass_min,
+        )
+
+        metadata: Dict[str, Any] = {
+            'RecordID': record_id,
+            'EstimateQuality': estimate_quality,
+            'IntegerTimestamp': timestamp_ms,
+            'VelocityMetersPerSecond': velocity,
+            'VelocityKilometersPerSecond': match.velocity_kmps,
+            'MassKilograms': mass,
+            'ChargeCoulombs': charge,
+            'RadiusMeters': radius,
+            'ExperimentSettingsID': experiment_settings_id,
+            'DustInfoID': dust_info_id,
+            'ExperimentTimestamp': experiment_timestamp,
+            'ExperimentTag': match.experiment_tag,
+            'ExperimentDescription': match.experiment_description,
+            'RunStartTimestamp': run_start,
+            'RunStopTimestamp': run_stop,
+            'DustTypeID': dust_type_id,
+            'DustSourceBuilder': dust_source_builder,
+            'DustShotCount': dust_shot_count,
+            'DustInitialMass': dust_initial_mass,
+            'DustFinalMass': dust_final_mass,
+            'DustRunTime': dust_run_time,
+            'DustSourceNotes': dust_source_notes,
+            'SourceSettingsID': source_settings_id,
+            'SourceSettingsKey': source_settings_key,
+            'SourceEinzelVoltage': source_einzel,
+            'SourceNeedleVoltage': source_needle,
+            'SourceFrequency': source_frequency,
+            'SourceWidth': source_width,
+            'SourceAmplitude': source_amplitude,
+            'SourceXVoltage': source_x_voltage,
+            'SourceYVoltage': source_y_voltage,
+            'PSUVelocityMax': psu_velocity_max,
+            'PSUVelocityMin': psu_velocity_min,
+            'PSUChargeMax': psu_charge_max,
+            'PSUChargeMin': psu_charge_min,
+            'PSUMassMax': psu_mass_max,
+            'PSUMassMin': psu_mass_min,
+        }
+        match.metadata = metadata
+        results.append(match)
+
+    return results, sql, params
+
+
+def _write_sql_match(h5_handle: h5py.File, event: str, match: SQLMatchResult, criteria: SQLMatchCriteria) -> None:
+    if h5_handle is None:
+        raise RuntimeError("The current file is not writable.")
+
+    analysis_group = h5_handle.require_group(f"{event}/Analysis")
+    match_group = analysis_group.require_group("SQLMatch")
+
+    string_fields = {
+        'ExperimentTag',
+        'ExperimentDescription',
+        'DustSourceNotes',
+        'SourceSettingsKey',
+    }
+
+    def _write_scalar(group: Any, name: str, value: Any) -> None:
+        if group is None:
+            return
+        if name in group:
+            del group[name]
+        if name in string_fields:
+            text_value = value if isinstance(value, str) else "" if value is None else str(value)
+            dtype = h5py.string_dtype(encoding='utf-8')
+            group.create_dataset(name, data=np.array(text_value, dtype=dtype))
+            return
+        coerced = _coerce_optional_float(value)
+        if name == 'RecordID':
+            coerced_int = _coerce_optional_int(value)
+            numeric = float(coerced_int) if coerced_int is not None else -1.0
+        else:
+            numeric = float(coerced) if coerced is not None else np.nan
+        group.create_dataset(name, data=np.array(numeric, dtype=float))
+
+    payload: Dict[str, Any] = {
+        'RecordID': match.record_id if match.record_id is not None else -1,
+        'EstimateQuality': match.estimate_quality if match.estimate_quality is not None else np.nan,
+        'IntegerTimestamp': match.timestamp_ms if match.timestamp_ms is not None else np.nan,
+        'VelocityMetersPerSecond': match.velocity_mps if match.velocity_mps is not None else np.nan,
+        'VelocityKilometersPerSecond': match.velocity_kmps if match.velocity_kmps is not None else np.nan,
+        'MassKilograms': match.mass_kg if match.mass_kg is not None else np.nan,
+        'ChargeCoulombs': match.charge_c if match.charge_c is not None else np.nan,
+        'RadiusMeters': match.radius_m if match.radius_m is not None else np.nan,
+        'QueryCenterTimestamp': criteria.time_ms if criteria.time_ms is not None else np.nan,
+        'QueryWindowMilliseconds': criteria.time_window_ms,
+        'QueryVelocityKilometersPerSecond': criteria.velocity_kmps if criteria.velocity_kmps is not None else np.nan,
+        'QueryVelocityToleranceKilometersPerSecond': criteria.velocity_tolerance_kmps,
+        'MinimumEstimateQuality': criteria.min_quality if criteria.min_quality is not None else np.nan,
+        'ResultLimit': criteria.limit,
+    }
+
+    for name, value in payload.items():
+        _write_scalar(match_group, name, value)
+
+    extra = criteria.extra_filter.strip()
+    if extra:
+        if 'ExtraFilter' in match_group:
+            del match_group['ExtraFilter']
+        match_group.create_dataset('ExtraFilter', data=np.array(extra, dtype=h5py.string_dtype('utf-8')))
+
+    accelerator_group = analysis_group.require_group('AcceleratorMetadata')
+    accelerator_payload = dict(match.metadata or {})
+    accelerator_payload.setdefault('RecordID', match.record_id)
+    accelerator_payload.setdefault('EstimateQuality', match.estimate_quality)
+    accelerator_payload.setdefault('IntegerTimestamp', match.timestamp_ms)
+    accelerator_payload.setdefault('VelocityMetersPerSecond', match.velocity_mps)
+    accelerator_payload.setdefault('VelocityKilometersPerSecond', match.velocity_kmps)
+    accelerator_payload.setdefault('MassKilograms', match.mass_kg)
+    accelerator_payload.setdefault('ChargeCoulombs', match.charge_c)
+    accelerator_payload.setdefault('RadiusMeters', match.radius_m)
+    accelerator_payload.setdefault('ExperimentSettingsID', match.experiment_settings_id)
+    accelerator_payload.setdefault('DustInfoID', match.dust_info_id)
+    accelerator_payload.setdefault('ExperimentTag', match.experiment_tag)
+    accelerator_payload.setdefault('ExperimentDescription', match.experiment_description)
+    accelerator_payload.setdefault('ExperimentTimestamp', match.experiment_timestamp_ms)
+    accelerator_payload.setdefault('RunStartTimestamp', match.run_start_ms)
+    accelerator_payload.setdefault('RunStopTimestamp', match.run_stop_ms)
+    accelerator_payload.setdefault('DustTypeID', match.dust_type_id)
+    accelerator_payload.setdefault('DustSourceBuilder', match.dust_source_builder)
+    accelerator_payload.setdefault('DustShotCount', match.dust_shot_count)
+    accelerator_payload.setdefault('DustInitialMass', match.dust_initial_mass)
+    accelerator_payload.setdefault('DustFinalMass', match.dust_final_mass)
+    accelerator_payload.setdefault('DustRunTime', match.dust_run_time)
+    accelerator_payload.setdefault('DustSourceNotes', match.dust_source_notes)
+    accelerator_payload.setdefault('SourceSettingsID', match.source_settings_id)
+    accelerator_payload.setdefault('SourceSettingsKey', match.source_settings_key)
+    accelerator_payload.setdefault('SourceEinzelVoltage', match.source_einzel_voltage)
+    accelerator_payload.setdefault('SourceNeedleVoltage', match.source_needle_voltage)
+    accelerator_payload.setdefault('SourceFrequency', match.source_frequency)
+    accelerator_payload.setdefault('SourceWidth', match.source_width)
+    accelerator_payload.setdefault('SourceAmplitude', match.source_amplitude)
+    accelerator_payload.setdefault('SourceXVoltage', match.source_x_voltage)
+    accelerator_payload.setdefault('SourceYVoltage', match.source_y_voltage)
+    accelerator_payload.setdefault('PSUVelocityMax', match.psu_velocity_max)
+    accelerator_payload.setdefault('PSUVelocityMin', match.psu_velocity_min)
+    accelerator_payload.setdefault('PSUChargeMax', match.psu_charge_max)
+    accelerator_payload.setdefault('PSUChargeMin', match.psu_charge_min)
+    accelerator_payload.setdefault('PSUMassMax', match.psu_mass_max)
+    accelerator_payload.setdefault('PSUMassMin', match.psu_mass_min)
+
+    for name, value in sorted(accelerator_payload.items()):
+        _write_scalar(accelerator_group, name, value)
+
+    match_group.attrs['MatchedAtUTC'] = datetime.now(timezone.utc).isoformat()
+    try:
+        h5_handle.flush()
+    except Exception:  # pragma: no cover - filesystem edge cases
+        pass
+
+
+def _event_timestamp_ms(header: Dict[Tuple[int, str], Any], event_key: str) -> Optional[float]:
+    try:
+        event_index = int(event_key)
+    except Exception:
+        return None
+    timestamp = header.get((event_index, 'Timestamp'))
+    if timestamp is None:
+        return None
+    try:
+        return float(timestamp) * 1000.0
+    except Exception:
+        return None
+
+
+def _event_velocity_kmps(channels: Dict[str, Dict[str, Any]]) -> Optional[float]:
+    for channel_name in ('Target H', 'Target L', 'Ion Grid', 'TOF H', 'TOF M', 'TOF L'):
+        channel = channels.get(channel_name)
+        if not channel:
+            continue
+        for key in ('velocity_estimate', 'velocity_from_rise', 'velocity_from_ratio'):
+            value = channel.get(key)
+            if value is None:
+                continue
+            try:
+                numeric = float(value)
+            except Exception:
+                continue
+            if np.isfinite(numeric):
+                return numeric
+    return None
+
+
+def _attempt_sql_match(
+    h5_handle: h5py.File,
+    event_key: str,
+    header: Dict[Tuple[int, str], Any],
+    channels: Dict[str, Dict[str, Any]],
+) -> None:
+    if not _sql_match_available():
+        return
+
+    time_ms = _event_timestamp_ms(header, event_key)
+    velocity_kmps = _event_velocity_kmps(channels)
+
+    if time_ms is None and velocity_kmps is None:
+        return
+
+    criteria = SQLMatchCriteria(time_ms=time_ms, velocity_kmps=velocity_kmps, limit=5)
+    try:
+        results, _sql, _params = query_dust_events(criteria)
+    except Exception as exc:
+        print(f"Warning: SQL match failed for event {event_key}: {exc}")
+        return
+
+    if not results:
+        print(f"No SQL match found for event {event_key}")
+        return
+
+    match = results[0]
+    try:
+        _write_sql_match(h5_handle, event_key, match, criteria)
+    except Exception as exc:
+        print(f"Warning: unable to write SQL match for event {event_key}: {exc}")
 
 def _bitstring_to_ints(waveform_raw: str, pad_bits: int, value_bits: int,
                        values_per_block: int, trim_tail: int = 0):
@@ -1768,6 +2313,33 @@ class IDEXEvent:
                         time_data = analysis.get('time_array', self._build_time_array(len(data), high_rate=False))
                         h.create_dataset(f"/{event_key}/Time (low sampling)", data=time_data)
 
+                analysis_group = h.require_group(f"/{event_key}/Analysis")
+                channel_group = analysis_group.require_group(channel)
+                baseline_value = analysis.get('baseline', 0.0)
+                try:
+                    baseline_float = float(baseline_value)
+                except Exception:
+                    baseline_float = 0.0
+                if not np.isfinite(baseline_float):
+                    baseline_float = 0.0
+                channel_group.attrs['Baseline'] = baseline_float
+
+                if channel == 'TOF H':
+                    mass_data = analysis.get('mass')
+                    stretch = float(mass_data.get('stretch', np.nan)) if mass_data else float('nan')
+                    shift = float(mass_data.get('shift', np.nan)) if mass_data else float('nan')
+                    kappa = float(mass_data.get('kappa', np.nan)) if mass_data else float('nan')
+                    channel_group.attrs['MassStretch'] = stretch
+                    channel_group.attrs['MassShift'] = shift
+                    channel_group.attrs['MassKappa'] = kappa
+                    if mass_data and mass_data.get('mass_lines'):
+                        _serialise_mass_lines(channel_group, mass_data.get('mass_lines', []))
+                    else:
+                        if 'MassLines' in channel_group:
+                            del channel_group['MassLines']
+                        if 'Fits' in channel_group:
+                            del channel_group['Fits']
+
                 target_fit = analysis['target_fit']
                 if target_fit is not None:
                     param = target_fit.get('params', np.array([]))
@@ -1906,6 +2478,7 @@ class IDEXEvent:
                         continue
                     charge_c = channel_analysis.get('charge_c')
                     impact_value = float(charge_c) if charge_c is not None and np.isfinite(charge_c) else np.nan
+                    channel_analysis['impact_charge'] = impact_value
                     create_dataset_if_not_exists(
                         h,
                         f"/{event_key}/Analysis/{channel_name} Impact Charge",
@@ -1947,6 +2520,12 @@ class IDEXEvent:
                             rise_velocity = np.nan
                             ratio_velocity = np.nan
                             velocity_source = ''
+                        channel_analysis['mass_estimate'] = mass_value
+                        channel_analysis['velocity_estimate'] = velocity_value
+                        channel_analysis['charge_yield_estimate'] = yield_value
+                        channel_analysis['velocity_from_rise'] = rise_velocity
+                        channel_analysis['velocity_from_ratio'] = ratio_velocity
+                        channel_analysis['velocity_source'] = velocity_source
                         create_dataset_if_not_exists(
                             h,
                             f"/{event_key}/Analysis/{channel_name} Dust Mass Estimate",
@@ -1991,6 +2570,8 @@ class IDEXEvent:
                             f"/{event_key}/Analysis/{channel_name} Velocity Estimate",
                             data=np.array([np.nan], dtype=float),
                         )
+
+                _attempt_sql_match(h, event_key, self.header, channels)
 
 # ||
 # ||
