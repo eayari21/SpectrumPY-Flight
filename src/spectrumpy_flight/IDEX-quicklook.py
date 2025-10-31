@@ -2642,8 +2642,17 @@ class MainWindow(QMainWindow):
         window.destroyed.connect(_cleanup)
 
     def action_open_dust_estimator(self):
+        kwargs = {"parent": self}
+        if self._h5 is not None:
+            kwargs["h5"] = self._h5
+        if self._current_event:
+            kwargs["event_name"] = self._current_event
+        if self._events:
+            kwargs["event_names"] = self._events
+            kwargs["on_event_changed"] = self._handle_child_event_change
+
         try:
-            window = launch_dust_estimator_window(parent=self)
+            window = launch_dust_estimator_window(**kwargs)
         except Exception as exc:
             QMessageBox.critical(
                 self,

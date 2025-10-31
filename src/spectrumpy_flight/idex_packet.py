@@ -2041,9 +2041,23 @@ class IDEXEvent:
                         if estimate is not None:
                             mass_value = float(getattr(estimate, 'mass_kg', np.nan))
                             velocity_value = float(getattr(estimate, 'velocity_kms', np.nan))
+                            yield_value = float(getattr(estimate, 'yield_c_per_kg', np.nan))
+                            velocity_details = getattr(estimate, 'velocity_details', None)
+                            if velocity_details is not None:
+                                rise_velocity = float(getattr(velocity_details, 'rise_time', np.nan))
+                                ratio_velocity = float(getattr(velocity_details, 'collection_efficiency', np.nan))
+                                velocity_source = getattr(velocity_details, 'source', '') or ''
+                            else:
+                                rise_velocity = np.nan
+                                ratio_velocity = np.nan
+                                velocity_source = ''
                         else:
                             mass_value = np.nan
                             velocity_value = np.nan
+                            yield_value = np.nan
+                            rise_velocity = np.nan
+                            ratio_velocity = np.nan
+                            velocity_source = ''
                         create_dataset_if_not_exists(
                             h,
                             f"/{event_key}/Analysis/{channel_name} Dust Mass Estimate",
@@ -2054,6 +2068,29 @@ class IDEXEvent:
                             f"/{event_key}/Analysis/{channel_name} Velocity Estimate",
                             data=np.array([velocity_value], dtype=float),
                         )
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{event_key}/Analysis/{channel_name} Charge Yield Estimate",
+                            data=np.array([yield_value * 1.0e12], dtype=float),
+                        )
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{event_key}/Analysis/{channel_name} Velocity From Rise",
+                            data=np.array([rise_velocity], dtype=float),
+                        )
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{event_key}/Analysis/{channel_name} Velocity From Ratio",
+                            data=np.array([ratio_velocity], dtype=float),
+                        )
+                        if velocity_source:
+                            source_dataset = [velocity_source]
+                            create_dataset_if_not_exists(
+                                h,
+                                f"/{event_key}/Analysis/{channel_name} Velocity Source",
+                                data=source_dataset,
+                                dtype=h5py.string_dtype(encoding='utf-8'),
+                            )
                     else:
                         create_dataset_if_not_exists(
                             h,
