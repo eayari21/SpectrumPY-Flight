@@ -26,6 +26,17 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 
+
+def _float_or_nan(value: Optional[float]) -> float:
+    """Return a floating point value or ``np.nan`` if conversion is not possible."""
+
+    if value is None:
+        return float("nan")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float("nan")
+
 if __package__ is None or __package__ == "":
     _MODULE_DIR = Path(__file__).resolve().parent
     _PACKAGE_ROOT = _MODULE_DIR.parent
@@ -2039,13 +2050,15 @@ class IDEXEvent:
                             yield_params=yield_params,
                         )
                         if estimate is not None:
-                            mass_value = float(getattr(estimate, 'mass_kg', np.nan))
-                            velocity_value = float(getattr(estimate, 'velocity_kms', np.nan))
-                            yield_value = float(getattr(estimate, 'yield_c_per_kg', np.nan))
+                            mass_value = _float_or_nan(getattr(estimate, 'mass_kg', np.nan))
+                            velocity_value = _float_or_nan(getattr(estimate, 'velocity_kms', np.nan))
+                            yield_value = _float_or_nan(getattr(estimate, 'yield_c_per_kg', np.nan))
                             velocity_details = getattr(estimate, 'velocity_details', None)
                             if velocity_details is not None:
-                                rise_velocity = float(getattr(velocity_details, 'rise_time', np.nan))
-                                ratio_velocity = float(getattr(velocity_details, 'collection_efficiency', np.nan))
+                                rise_velocity = _float_or_nan(getattr(velocity_details, 'rise_time', np.nan))
+                                ratio_velocity = _float_or_nan(
+                                    getattr(velocity_details, 'collection_efficiency', np.nan)
+                                )
                                 velocity_source = getattr(velocity_details, 'source', '') or ''
                             else:
                                 rise_velocity = np.nan
