@@ -101,21 +101,22 @@ def IDEXIonGrid(x, P0, P1, P4, P5, P6):
     return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
 
 # Define the EMG function
-def EMG(x, mu, sigma, lam):
-    prefactor = lam / 2
-    exponent = np.exp((lam / 2) * (2 * mu + lam * sigma**2 - 2 * x))
+def EMG(x, mu, sigma, lam, amplitude):
+    prefactor = (lam * amplitude) / 2
+    exponent_arg = (lam / 2) * (2 * mu + lam * sigma**2 - 2 * x)
+    exponent = np.exp(np.clip(exponent_arg, -700, 700))
     erfc_part = erfc((mu + lam * sigma**2 - x) / (np.sqrt(2) * sigma))
     return prefactor * exponent * erfc_part
 
 # Function to calculate the area under the EMG fit curve
 def calculate_area_under_emg(x_slice, param):
-    if(type(param) is not int):
-        # Extract EMG fit parameters: mu, sigma, lam
-        mu, sigma, lam = param
+    if (type(param) is not int) and param is not None and len(param) >= 4:
+        # Extract EMG fit parameters: mu, sigma, lam, amplitude
+        mu, sigma, lam, amplitude = param[:4]
 
         # Perform numerical integration using scipy.integrate.quad
-        area, error = quad(EMG, x_slice[0], x_slice[-1], args=(mu, sigma, lam))
-        
+        area, error = quad(EMG, x_slice[0], x_slice[-1], args=(mu, sigma, lam, amplitude))
+
         return area
     else:
         return 0.0
@@ -428,7 +429,7 @@ def _analyse_mass_lines(signal: np.ndarray, time_axis: np.ndarray) -> Optional[D
             'mu': float(param[0]),
             'sigma': float(param[1]),
             'lam': float(param[2]),
-            'amplitude': float(max(area, 0.0)),
+            'amplitude': float(max(param[3], 0.0)),
             'time_start': float(x_slice[0]),
             'time_end': float(x_slice[-1]),
             'mass_guess': mass_value,
@@ -1279,16 +1280,33 @@ def FitEMG(time, amplitude):
     x = np.asarray(time)
     y = np.asarray(amplitude)
 
-    # || Initial Guess for the parameters of the EMG
-    mu_guess = x[np.argmax(y)]  # Initial guess for the mean
-    sigma_guess = np.std(x) / 10  # Initial guess for standard deviation
-    lam_guess = 1 / (x[-1] - x[0])  # Initial guess for decay rate
+    if x.size == 0 or y.size == 0:
+        return None, None, None, None
 
-    p0 = [mu_guess, sigma_guess, lam_guess]  # Initial parameter guesses
+    # || Initial Guess for the parameters of the EMG
+    mu_guess = x[np.argmax(y)] if y.size else x.mean()  # Initial guess for the mean
+    sigma_guess = np.std(x) / 10 if x.size > 1 else 1.0  # Initial guess for standard deviation
+    span = float(x[-1] - x[0]) if x.size > 1 else 0.0
+    lam_guess = 1 / span if span > 0 else 1.0  # Initial guess for decay rate
+    amplitude_guess = (y.max() - np.median(y)) if y.size else 0.0
+    if amplitude_guess <= 0:
+        amplitude_guess = y.max() if y.size else 1.0
+
+    p0 = [mu_guess, sigma_guess, lam_guess, amplitude_guess]  # Initial parameter guesses
+
+    lower_bounds = [x.min(), 1e-9, 1e-9, 0.0]
+    upper_bounds = [x.max(), np.inf, np.inf, np.inf]
 
     # Fit the data using curve_fit
     try:
-        param, param_cov = curve_fit(EMG, x, y, p0=p0, maxfev=100_000)
+        param, param_cov = curve_fit(
+            EMG,
+            x,
+            y,
+            p0=p0,
+            bounds=(lower_bounds, upper_bounds),
+            maxfev=100_000,
+        )
 
         # Generate the fitted curve
         result = EMG(x, *param)
