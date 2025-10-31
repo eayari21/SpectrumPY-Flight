@@ -2724,7 +2724,7 @@ class TernaryCompositionDialog(QDialog):
     @staticmethod
     def _categorise_scalar_label(label: str) -> str:
         lowered = label.lower()
-        if "accelerator" in lowered:
+        if any(token in lowered for token in ("accelerator", "sqlmatch")):
             return "accelerator"
         if label.startswith("Metadata/"):
             return "instrument"
