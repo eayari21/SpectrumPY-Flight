@@ -260,6 +260,8 @@ def _combine_waveform_channels(
     low: Optional[np.ndarray],
     gain_map: Optional[Dict[str, float]] = None,
 ) -> Optional[np.ndarray]:
+    del gain_map
+
     if time_axis is None:
         return None
 
@@ -267,117 +269,29 @@ def _combine_waveform_channels(
     if times.size == 0:
         return None
 
-    gain_map = gain_map or {
-        "TOF H": 1600.0,
-        "TOF M": 40.0,
-        "TOF L": 1.0,
-    }
+    candidates: List[Tuple[str, np.ndarray, int]] = []
+    for label, channel in (("TOF H", high), ("TOF M", medium), ("TOF L", low)):
+        if channel is None or not getattr(channel, "size", 0):
+            continue
+        arr = np.asarray(channel, dtype=float)
+        length = min(arr.size, times.size)
+        if length <= 0:
+            continue
+        candidates.append((label, arr[:length], length))
 
-    high_gain = float(gain_map.get("TOF H", 1.0))
-    medium_gain = float(gain_map.get("TOF M", 1.0))
-    low_gain = float(gain_map.get("TOF L", 1.0))
-
-    arrays = [
-        arr
-        for arr in (high, medium, low)
-        if arr is not None and getattr(arr, "size", 0)
-    ]
-    if not arrays:
+    if not candidates:
         return None
 
-    lengths = [times.size]
-    lengths.extend(int(arr.size) for arr in arrays)
-    length = min(lengths)
-    if length <= 0:
-        return None
+    for label, array, length in candidates:
+        if label == "TOF H":
+            truncated_times = times[:length]
+            baseline = _first_microsecond_mean(array, truncated_times)
+            return array - baseline
 
-    times = times[:length]
-
-    high_slice = np.asarray(high[:length], dtype=float) if high is not None and getattr(high, "size", 0) else None
-    medium_slice = np.asarray(medium[:length], dtype=float) if medium is not None and getattr(medium, "size", 0) else None
-    low_slice = np.asarray(low[:length], dtype=float) if low is not None and getattr(low, "size", 0) else None
-
-    high_baseline = _first_microsecond_mean(high_slice, times)
-    medium_baseline = _first_microsecond_mean(medium_slice, times)
-    low_baseline = _first_microsecond_mean(low_slice, times)
-
-    combined_corrected = np.zeros(length, dtype=float)
-
-    saturated_high = np.ones(length, dtype=bool)
-    high_corrected: Optional[np.ndarray] = None
-    if high_slice is not None and high_slice.size:
-        high_corrected = high_slice - high_baseline
-        combined_corrected[:] = high_corrected
-        saturated_high = _detect_saturation_segments(high_slice, times)
-
-    medium_scaled: Optional[np.ndarray] = None
-    medium_saturated = np.ones(length, dtype=bool)
-    medium_outperform_mask: Optional[np.ndarray] = None
-    if medium_slice is not None and medium_slice.size:
-        medium_corrected = medium_slice - medium_baseline
-        scale = high_gain / medium_gain if medium_gain else 1.0
-        medium_scaled = medium_corrected * scale
-        medium_saturated = _detect_saturation_segments(medium_slice, times)
-        if high_corrected is not None:
-            high_scale = float(np.nanmax(np.abs(high_corrected))) if high_corrected.size else 0.0
-            medium_scale = float(np.nanmax(np.abs(medium_scaled))) if medium_scaled.size else 0.0
-            scale_reference = max(high_scale, medium_scale)
-            if not np.isfinite(scale_reference) or scale_reference <= 0.0:
-                tolerance = 0.0
-            else:
-                tolerance = 0.015 * scale_reference + 1.0e-9
-            with np.errstate(invalid="ignore"):
-                medium_outperform_mask = np.abs(medium_scaled) > np.abs(high_corrected) + tolerance
-        if high_slice is None:
-            combined_corrected[:] = medium_scaled
-            saturated_high = np.ones(length, dtype=bool)
-
-    low_scaled: Optional[np.ndarray] = None
-    low_saturated = np.ones(length, dtype=bool)
-    low_outperform_mask: Optional[np.ndarray] = None
-    if low_slice is not None and low_slice.size:
-        low_corrected = low_slice - low_baseline
-        scale = high_gain / low_gain if low_gain else 1.0
-        low_scaled = low_corrected * scale
-        low_saturated = _detect_saturation_segments(low_slice, times)
-        if high_corrected is not None:
-            high_scale = float(np.nanmax(np.abs(high_corrected))) if high_corrected.size else 0.0
-            low_scale = float(np.nanmax(np.abs(low_scaled))) if low_scaled.size else 0.0
-            scale_reference = max(high_scale, low_scale)
-            if not np.isfinite(scale_reference) or scale_reference <= 0.0:
-                tolerance = 0.0
-            else:
-                tolerance = 0.02 * scale_reference + 1.0e-9
-            with np.errstate(invalid="ignore"):
-                low_outperform_mask = np.abs(low_scaled) > np.abs(high_corrected) + tolerance
-        if high_slice is None and medium_slice is None:
-            combined_corrected[:] = low_scaled
-            saturated_high = np.ones(length, dtype=bool)
-
-    remaining_mask = saturated_high.copy()
-
-    if medium_scaled is not None:
-        finite_medium = np.isfinite(medium_scaled)
-        replace_mask = remaining_mask & ~medium_saturated & finite_medium
-        if medium_outperform_mask is not None:
-            replace_mask |= medium_outperform_mask & ~medium_saturated & finite_medium
-        combined_corrected[replace_mask] = medium_scaled[replace_mask]
-        if high_slice is None:
-            remaining_mask = medium_saturated.copy()
-        else:
-            remaining_mask &= medium_saturated
-        remaining_mask &= ~replace_mask
-
-    if low_scaled is not None:
-        finite_low = np.isfinite(low_scaled)
-        replace_mask = remaining_mask & ~low_saturated & finite_low
-        if low_outperform_mask is not None:
-            replace_mask |= low_outperform_mask & ~low_saturated & finite_low
-        combined_corrected[replace_mask] = low_scaled[replace_mask]
-        remaining_mask &= low_saturated
-        remaining_mask &= ~replace_mask
-
-    return combined_corrected
+    label, array, length = candidates[0]
+    truncated_times = times[:length]
+    baseline = _first_microsecond_mean(array, truncated_times)
+    return array - baseline
 
 
 def _estimate_baseline(time_array: np.ndarray, signal: np.ndarray) -> float:
@@ -1854,34 +1768,6 @@ class IDEXEvent:
                         time_data = analysis.get('time_array', self._build_time_array(len(data), high_rate=False))
                         h.create_dataset(f"/{event_key}/Time (low sampling)", data=time_data)
 
-                    if channel == 'TOF H' and analysis['mass'] is not None:
-                        mass_data = analysis['mass']
-                        event_group = h.require_group(event_key)
-                        if 'Mass' in event_group:
-                            del event_group['Mass']
-                        event_group.create_dataset('Mass', data=mass_data['mass_scale'])
-                        create_dataset_if_not_exists(
-                            h,
-                            f"/{event_key}/Analysis/TOF H Peak Kappa",
-                            data=np.array([mass_data.get('kappa', np.nan)], dtype=float),
-                        )
-                        create_dataset_if_not_exists(
-                            h,
-                            f"/{event_key}/Analysis/TOF H Peak Area",
-                            data=np.array([mass_data.get('total_area', np.nan)], dtype=float),
-                        )
-                        analysis_group = h.require_group(f"/{event_key}/Analysis/{channel}")
-                        analysis_group.attrs['MassStretch'] = float(mass_data.get('stretch', np.nan))
-                        analysis_group.attrs['MassShift'] = float(mass_data.get('shift', np.nan))
-                        mass_lines = mass_data.get('mass_lines', [])
-                        if mass_lines:
-                            _serialise_mass_lines(analysis_group, mass_lines)
-                        else:
-                            if 'MassLines' in analysis_group:
-                                del analysis_group['MassLines']
-                            if 'Fits' in analysis_group:
-                                del analysis_group['Fits']
-
                 target_fit = analysis['target_fit']
                 if target_fit is not None:
                     param = target_fit.get('params', np.array([]))
@@ -2005,16 +1891,6 @@ class IDEXEvent:
                         if 'Mass' in event_group:
                             del event_group['Mass']
                         event_group.create_dataset('Mass', data=mass_data['mass_scale'])
-                        create_dataset_if_not_exists(
-                            h,
-                            f"/{event_key}/Analysis/TOF H Peak Kappa",
-                            data=np.array([mass_data.get('kappa', np.nan)], dtype=float),
-                        )
-                        create_dataset_if_not_exists(
-                            h,
-                            f"/{event_key}/Analysis/TOF H Peak Area",
-                            data=np.array([mass_data.get('total_area', np.nan)], dtype=float),
-                        )
                     else:
                         dust_group.attrs['MassStretch'] = float('nan')
                         dust_group.attrs['MassShift'] = float('nan')
