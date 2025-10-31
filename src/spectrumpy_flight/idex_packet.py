@@ -308,17 +308,10 @@ def _combine_waveform_channels(
 
     for label, array, length in candidates:
         if label == "TOF H":
-            sample_count = min(length, 50)
-            if sample_count == 0:
-                baseline = 0.0
-            else:
-                baseline = float(np.nanmean(array[:sample_count]))
-            return array - baseline
+            return array[:length].copy()
 
     label, array, length = candidates[0]
-    truncated_times = times[:length]
-    baseline = _first_microsecond_mean(array, truncated_times)
-    return array - baseline
+    return array[:length].copy()
 
 
 def _estimate_baseline(time_array: np.ndarray, signal: np.ndarray) -> float:
@@ -2587,7 +2580,11 @@ class IDEXEvent:
                         baseline_candidate = 0.0
                     dust_group.attrs['Baseline'] = baseline_candidate
 
-                    mass_data = _analyse_mass_lines(combined, combined_time)
+                    if baseline_candidate:
+                        baseline_corrected = combined - baseline_candidate
+                    else:
+                        baseline_corrected = combined
+                    mass_data = _analyse_mass_lines(baseline_corrected, combined_time)
                     if mass_data is not None:
                         dust_group.attrs['MassStretch'] = float(mass_data.get('stretch', np.nan))
                         dust_group.attrs['MassShift'] = float(mass_data.get('shift', np.nan))
