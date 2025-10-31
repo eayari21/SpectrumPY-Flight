@@ -115,6 +115,8 @@ from .line_shapes import (
     voigt as _line_voigt,
 )
 
+from .collapsible_combo import CollapsibleComboBox
+
 
 class ScrollFriendlyFigureCanvas(FigureCanvasQTAgg):
     """Matplotlib canvas that forwards normal wheel events to its parent."""
@@ -1494,44 +1496,22 @@ def _species_display(label: str, mass: float) -> str:
     return f"{label}\u2003\u2003{mass:.3f} amu"
 
 
-def _disable_combo_row(combo: QComboBox, index: int) -> None:
-    model = combo.model()
-    try:
-        model_index = model.index(index, 0)
-    except Exception:
-        model_index = None
-    if model_index is not None:
-        try:
-            model.setData(model_index, 0, Qt.ItemDataRole.UserRole - 1)
-        except Exception:
-            combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
-    else:
-        combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
-
-
-def _add_combo_heading(combo: QComboBox, text: str) -> None:
-    combo.addItem(text)
-    index = combo.count() - 1
-    font = combo.font()
-    font.setBold(True)
-    combo.setItemData(index, font, Qt.ItemDataRole.FontRole)
-    palette = combo.palette()
-    combo.setItemData(index, palette.color(QPalette.ColorRole.Mid), Qt.ItemDataRole.ForegroundRole)
-    _disable_combo_row(combo, index)
-
-
-def _populate_species_combo(combo: QComboBox, *, placeholder: Optional[str] = "Assign selected line…") -> None:
-    combo.clear()
-    if placeholder is not None:
-        combo.addItem(placeholder, userData=None)
+def _populate_species_combo(
+    combo: CollapsibleComboBox,
+    *,
+    placeholder: Optional[str] = "Assign selected line…",
+) -> None:
+    groups: List[Tuple[str, List[Tuple[str, Tuple[str, float]]]]] = []
     for group_label, entries in SPECIES_GROUPS:
         if not entries:
             continue
-        if combo.count() > (1 if placeholder is not None else 0):
-            combo.insertSeparator(combo.count())
-        _add_combo_heading(combo, group_label)
-        for name, mass in entries:
-            combo.addItem(_species_display(name, mass), (name, mass))
+        formatted = [(_species_display(name, mass), (name, mass)) for name, mass in entries]
+        groups.append((group_label, formatted))
+
+    if placeholder is None:
+        combo.set_grouped_items(groups, placeholder=None)
+    else:
+        combo.set_grouped_items(groups, placeholder=placeholder, placeholder_data=None)
 
 
 def _group_samples_by_category() -> List[Tuple[str, List[SampleDefinition]]]:
@@ -1541,16 +1521,15 @@ def _group_samples_by_category() -> List[Tuple[str, List[SampleDefinition]]]:
     return list(grouped.items())
 
 
-def _populate_sample_guess_combo(combo: QComboBox) -> None:
-    combo.clear()
-    combo.addItem("Auto (closest match)", userData=None)
+def _populate_sample_guess_combo(combo: CollapsibleComboBox) -> None:
+    groups: List[Tuple[str, List[Tuple[str, str]]]] = []
     for category, samples in _group_samples_by_category():
         if not samples:
             continue
-        combo.insertSeparator(combo.count())
-        _add_combo_heading(combo, category)
-        for sample in samples:
-            combo.addItem(sample.name, userData=sample.name)
+        entries = [(sample.name, sample.name) for sample in samples]
+        groups.append((category, entries))
+
+    combo.set_grouped_items(groups, placeholder="Auto (closest match)", placeholder_data=None)
 
 
 def _species_for_label(label: str) -> Optional[Tuple[str, float]]:
@@ -1915,7 +1894,7 @@ class InspectMassLineDialog(QDialog):
         form.setContentsMargins(12, 12, 12, 12)
         form.setSpacing(8)
 
-        self.species_combo = QComboBox(parameter_box)
+        self.species_combo = CollapsibleComboBox(parameter_box)
         _populate_species_combo(self.species_combo, placeholder="Custom / manual entry")
         self.species_combo.currentIndexChanged.connect(self._on_species_changed)
         form.addRow("Species:", self.species_combo)
@@ -2464,9 +2443,9 @@ class TernaryAxisSelector(QWidget):
         self._mode_combo = QComboBox(self)
         self._mode_combo.addItems(["Value", "Ratio"])
 
-        self._primary_combo = QComboBox(self)
+        self._primary_combo = CollapsibleComboBox(self)
         self._primary_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self._secondary_combo = QComboBox(self)
+        self._secondary_combo = CollapsibleComboBox(self)
         self._secondary_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
 
         self._divider_label = QLabel("÷", self)
@@ -2505,21 +2484,8 @@ class TernaryAxisSelector(QWidget):
         self._divider_label.setVisible(is_ratio)
 
     # ------------------------------------------------------------------
-    def _apply_items(self, combo: QComboBox, groups: Sequence[Tuple[str, Sequence[str]]]) -> None:
-        current = combo.currentText()
-        combo.blockSignals(True)
-        combo.clear()
-        combo.addItem("— Select —")
-        for heading, labels in groups:
-            combo.insertSeparator(combo.count())
-            _add_combo_heading(combo, heading)
-            for label in labels:
-                combo.addItem(label)
-        if current and combo.findText(current) != -1:
-            combo.setCurrentText(current)
-        else:
-            combo.setCurrentIndex(0)
-        combo.blockSignals(False)
+    def _apply_items(self, combo: CollapsibleComboBox, groups: Sequence[Tuple[str, Sequence[str]]]) -> None:
+        combo.set_grouped_items(groups, placeholder="— Select —")
 
     # ------------------------------------------------------------------
     def set_items(self, groups: Sequence[Tuple[str, Sequence[str]]]) -> None:
@@ -4401,7 +4367,7 @@ class DustCompositionWindow(QMainWindow):
         self.mass_assignment_label.setWordWrap(True)
         self.mass_assignment_label.setStyleSheet("font-weight: 500;")
         layout.addWidget(self.mass_assignment_label)
-        self.mass_species_combo = QComboBox(box)
+        self.mass_species_combo = CollapsibleComboBox(box)
         _populate_species_combo(self.mass_species_combo)
         self.mass_species_combo.currentIndexChanged.connect(self._on_mass_species_chosen)
         layout.addWidget(self.mass_species_combo)
@@ -4469,7 +4435,7 @@ class DustCompositionWindow(QMainWindow):
         self.sample_guess_label = QLabel("Sample guess: –", box)
         self.sample_guess_label.setWordWrap(True)
         layout.addWidget(self.sample_guess_label)
-        self.sample_guess_combo = QComboBox(box)
+        self.sample_guess_combo = CollapsibleComboBox(box)
         self.sample_guess_combo.setEditable(True)
         self.sample_guess_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.sample_guess_combo.setToolTip("Select a material from the reference library or enter your own description.")

@@ -48,6 +48,7 @@ from PyQt6.QtWidgets import (
 
 from .idex_variable_definitions import VariableDefinitionsCatalog, load_variable_definitions
 from .paths import default_hdf5_dir
+from .collapsible_combo import CollapsibleComboBox
 
 # --- Quicklook integration -------------------------------------------------
 
@@ -146,21 +147,6 @@ CATEGORY_ORDER: Tuple[str, ...] = (
     CATEGORY_DUST,
     CATEGORY_OTHER,
 )
-
-
-def _disable_combo_row(combo: QComboBox, index: int) -> None:
-    model = combo.model()
-    try:
-        model_index = model.index(index, 0)
-    except Exception:
-        model_index = None
-    if model_index is not None:
-        try:
-            model.setData(model_index, 0, Qt.ItemDataRole.UserRole - 1)
-        except Exception:
-            combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
-    else:
-        combo.setItemData(index, 0, Qt.ItemDataRole.UserRole - 1)
 
 
 @dataclass
@@ -262,8 +248,8 @@ class AxisSelector(QWidget):
         self._label = QLabel(label)
         self._mode = QComboBox()
         self._mode.addItems(["Value", "Ratio"])
-        self._primary = QComboBox()
-        self._secondary = QComboBox()
+        self._primary = CollapsibleComboBox()
+        self._secondary = CollapsibleComboBox()
 
         self._secondary.setVisible(False)
 
@@ -290,40 +276,14 @@ class AxisSelector(QWidget):
         is_ratio = self._mode.currentText().lower() == "ratio"
         self._secondary.setVisible(is_ratio)
 
-    def _insert_heading(self, combo: QComboBox, text: str) -> None:
-        combo.addItem(text)
-        index = combo.count() - 1
-        font = combo.font()
-        font.setBold(True)
-        combo.setItemData(index, font, Qt.ItemDataRole.FontRole)
-        palette = combo.palette()
-        combo.setItemData(index, palette.color(QPalette.ColorRole.Mid), Qt.ItemDataRole.ForegroundRole)
-        _disable_combo_row(combo, index)
-
     def set_items(self, groups: Sequence[Tuple[str, Sequence[str]]]):
         prepared = [(title, [str(label) for label in labels if str(label).strip()]) for title, labels in groups]
         prepared = [(title, entries) for title, entries in prepared if entries]
         if not prepared:
             prepared = [("Available parameters", ["No scalar data detected"])]
 
-        def _apply(combo: QComboBox):
-            current = combo.currentText()
-            combo.blockSignals(True)
-            combo.clear()
-            combo.addItem("— Select —")
-            for heading, labels in prepared:
-                combo.insertSeparator(combo.count())
-                self._insert_heading(combo, heading)
-                for label in labels:
-                    combo.addItem(label)
-            if current and combo.findText(current) != -1:
-                combo.setCurrentText(current)
-            else:
-                combo.setCurrentIndex(0)
-            combo.blockSignals(False)
-
-        _apply(self._primary)
-        _apply(self._secondary)
+        self._primary.set_grouped_items(prepared, placeholder="— Select —")
+        self._secondary.set_grouped_items(prepared, placeholder="— Select —")
         self._update_visibility()
 
     def current(self) -> AxisSelection:
@@ -810,7 +770,7 @@ class HDFDataExplorer(QWidget):
         timeseries_layout.setHorizontalSpacing(8)
         timeseries_layout.setVerticalSpacing(6)
 
-        self.timeseries_combo = QComboBox()
+        self.timeseries_combo = CollapsibleComboBox()
         self.timeseries_combo.setEditable(False)
         self.timeseries_combo.currentIndexChanged.connect(self.update_timeseries_plot)
 
@@ -878,27 +838,15 @@ class HDFDataExplorer(QWidget):
 
         timeseries_groups = self._group_timeseries_labels()
         has_timeseries = any(labels for _, labels in timeseries_groups)
-        self.timeseries_combo.blockSignals(True)
-        current = self.timeseries_combo.currentText()
-        self.timeseries_combo.clear()
         if has_timeseries:
-            self.timeseries_combo.addItem("Select dataset…")
-            for heading, labels in timeseries_groups:
-                self.timeseries_combo.insertSeparator(self.timeseries_combo.count())
-                self._add_combo_heading(self.timeseries_combo, heading)
-                for label in labels:
-                    self.timeseries_combo.addItem(label)
-            if current and self.timeseries_combo.findText(current) != -1:
-                self.timeseries_combo.setCurrentText(current)
-            else:
-                self.timeseries_combo.setCurrentIndex(0)
+            self.timeseries_combo.set_grouped_items(timeseries_groups, placeholder="Select dataset…")
             self.timeseries_combo.setEnabled(True)
             self.timeseries_button.setEnabled(True)
         else:
+            self.timeseries_combo.clear()
             self.timeseries_combo.addItem("No datasets available")
             self.timeseries_combo.setEnabled(False)
             self.timeseries_button.setEnabled(False)
-        self.timeseries_combo.blockSignals(False)
 
     # ------------------------------------------------------------------
     def open_slicer_viewer(self) -> None:
@@ -1034,17 +982,6 @@ class HDFDataExplorer(QWidget):
             elif isinstance(item, h5py.Group):
                 datasets.update(self._collect_group_datasets(item, file_path, prefix=key))
         return datasets
-
-    @staticmethod
-    def _add_combo_heading(combo: QComboBox, text: str) -> None:
-        combo.addItem(text)
-        index = combo.count() - 1
-        font = combo.font()
-        font.setBold(True)
-        combo.setItemData(index, font, Qt.ItemDataRole.FontRole)
-        palette = combo.palette()
-        combo.setItemData(index, palette.color(QPalette.ColorRole.Mid), Qt.ItemDataRole.ForegroundRole)
-        _disable_combo_row(combo, index)
 
     def _classify_dataset_label(
         self,
