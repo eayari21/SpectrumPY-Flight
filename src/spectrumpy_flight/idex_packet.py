@@ -878,6 +878,77 @@ def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult],
     return results, sql, params
 
 
+def _choose_sql_match(
+    results: List[SQLMatchResult],
+    reference_time_ms: Optional[float],
+    min_quality: float = 3,
+) -> Optional[SQLMatchResult]:
+    """Select the best SQL match prioritising timestamp proximity.
+
+    The accelerator database is queried with coarse tolerances, so use this helper
+    to consistently prefer the closest timestamp with acceptable quality. When a
+    timestamp is unavailable fall back to the highest quality record.
+    """
+
+    if not results:
+        return None
+
+    def _quality(value: Optional[float]) -> float:
+        if value is None:
+            return float("-inf")
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return float("-inf")
+        if not math.isfinite(numeric):
+            return float("-inf")
+        return numeric
+
+    def _time_delta(match: SQLMatchResult) -> float:
+        if reference_time_ms is None:
+            return float("inf")
+        timestamp = match.timestamp_ms
+        if timestamp is None:
+            return float("inf")
+        try:
+            numeric = float(timestamp)
+        except (TypeError, ValueError):
+            return float("inf")
+        if not math.isfinite(numeric):
+            return float("inf")
+        return abs(numeric - float(reference_time_ms))
+
+    timestamped_candidates = [
+        match
+        for match in results
+        if _quality(match.estimate_quality) >= min_quality and _time_delta(match) < float("inf")
+    ]
+    if timestamped_candidates:
+        return min(
+            timestamped_candidates,
+            key=lambda match: (_time_delta(match), -_quality(match.estimate_quality)),
+        )
+
+    quality_candidates = [
+        match for match in results if _quality(match.estimate_quality) >= min_quality
+    ]
+    if quality_candidates:
+        return max(
+            quality_candidates,
+            key=lambda match: (_quality(match.estimate_quality), -_time_delta(match)),
+        )
+
+    if reference_time_ms is not None:
+        timestamped = [match for match in results if _time_delta(match) < float("inf")]
+        if timestamped:
+            return min(
+                timestamped,
+                key=lambda match: (_time_delta(match), -_quality(match.estimate_quality)),
+            )
+
+    return results[0]
+
+
 def _write_sql_match(h5_handle: h5py.File, event: str, match: SQLMatchResult, criteria: SQLMatchCriteria) -> None:
     if h5_handle is None:
         raise RuntimeError("The current file is not writable.")
@@ -1033,20 +1104,64 @@ def _attempt_sql_match(
     if time_ms is None and velocity_kmps is None:
         return
 
-    criteria = SQLMatchCriteria(time_ms=time_ms, velocity_kmps=velocity_kmps, limit=5)
-    try:
-        results, _sql, _params = query_dust_events(criteria)
-    except Exception as exc:
-        print(f"Warning: SQL match failed for event {event_key}: {exc}")
-        return
+    def _run_query(criteria: SQLMatchCriteria) -> List[SQLMatchResult]:
+        try:
+            results, _sql, _params = query_dust_events(criteria)
+        except Exception as exc:
+            print(f"Warning: SQL match failed for event {event_key}: {exc}")
+            return []
+        return results
 
-    if not results:
+    chosen_match: Optional[SQLMatchResult] = None
+    chosen_criteria: Optional[SQLMatchCriteria] = None
+
+    if time_ms is not None:
+        time_first = SQLMatchCriteria(time_ms=time_ms, min_quality=3, limit=10)
+        time_results = _run_query(time_first)
+        if time_results:
+            candidate = _choose_sql_match(time_results, time_ms, min_quality=3)
+            if candidate is not None:
+                chosen_match = candidate
+                chosen_criteria = time_first
+
+    if chosen_match is None:
+        default_criteria = SQLMatchCriteria(
+            time_ms=time_ms,
+            velocity_kmps=velocity_kmps,
+            min_quality=3,
+            limit=5,
+        )
+        combined_results = _run_query(default_criteria)
+        if combined_results:
+            candidate = _choose_sql_match(combined_results, time_ms, min_quality=3)
+            if candidate is not None:
+                chosen_match = candidate
+                chosen_criteria = default_criteria
+
+    if chosen_match is None and velocity_kmps is not None:
+        velocity_only = SQLMatchCriteria(
+            velocity_kmps=velocity_kmps,
+            min_quality=3,
+            limit=5,
+        )
+        velocity_results = _run_query(velocity_only)
+        if velocity_results:
+            candidate = _choose_sql_match(velocity_results, time_ms, min_quality=3)
+            if candidate is not None:
+                chosen_match = candidate
+                chosen_criteria = velocity_only
+
+    if chosen_match is None:
         print(f"No SQL match found for event {event_key}")
         return
 
-    match = results[0]
     try:
-        _write_sql_match(h5_handle, event_key, match, criteria)
+        _write_sql_match(
+            h5_handle,
+            event_key,
+            chosen_match,
+            chosen_criteria if chosen_criteria is not None else SQLMatchCriteria(),
+        )
     except Exception as exc:
         print(f"Warning: unable to write SQL match for event {event_key}: {exc}")
 
