@@ -64,7 +64,16 @@ def _log_system_profile() -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Parallel packet processing driver")
-    parser.add_argument("paths", nargs="*", default=["Data"], help="Input directories or files")
+    parser.add_argument("paths", nargs="*", help="Input directories or files")
+    parser.add_argument(
+        "-f",
+        "--file",
+        "--filename",
+        dest="files",
+        action="append",
+        default=[],
+        help="Explicit raw files to decode (can be repeated)",
+    )
     parser.add_argument("--processor", help="Explicit decoder to invoke per file")
     parser.add_argument("--output", default="HDF5", help="Directory storing the resulting HDF5 files")
     parser.add_argument(
@@ -93,7 +102,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    inputs = [Path(p).resolve() for p in args.paths]
+    inputs: list[Path] = []
+    if args.paths:
+        inputs.extend(Path(p).resolve() for p in args.paths)
+    if args.files:
+        inputs.extend(Path(p).resolve() for p in args.files)
+    if not inputs:
+        inputs.append(Path("Data").resolve())
+
     raw_files = [p for p in _iter_raw_files(inputs) if not _should_skip(output_dir, p)]
 
     if not raw_files:

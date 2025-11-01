@@ -360,7 +360,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description="Estimate dust particle velocity and mass.")
-    parser.add_argument("input", type=Path, help="CSV with target charge, rise time, and ion/target ratio")
+    parser.add_argument(
+        "input",
+        nargs="?",
+        type=Path,
+        help="CSV with target charge, rise time, and ion/target ratio",
+    )
+    parser.add_argument(
+        "-f",
+        "--file",
+        "--filename",
+        dest="input_file",
+        type=Path,
+        help="Explicit CSV containing target charge, rise time, and ion/target ratio",
+    )
     parser.add_argument("output", type=Path, help="Destination CSV with estimates appended")
     parser.add_argument("--rise-coeff", default="combined", help="Coefficient label for the rise-time curve")
     parser.add_argument(
@@ -408,7 +421,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     yield_table = CoefficientTable.from_csv(args.yield_table, default_label="combined")
     yield_params = yield_table.get(args.yield_coeff)
 
-    rows = _load_input_csv(args.input)
+    input_path = args.input_file or args.input
+    if input_path is None:
+        raise SystemExit("An input CSV must be supplied using -f/--file/--filename or as a positional argument.")
+
+    rows = _load_input_csv(input_path)
     estimates = list(
         estimate_from_csv(
             rows,

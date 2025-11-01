@@ -178,7 +178,20 @@ def _format_section(name: str, metadata: dict[str, str], context: list[str]) -> 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("cdf", type=Path, help="Path to the CDF file to inspect")
+    parser.add_argument(
+        "cdf",
+        nargs="?",
+        type=Path,
+        help="Path to the CDF file to inspect",
+    )
+    parser.add_argument(
+        "-f",
+        "--file",
+        "--filename",
+        dest="cdf_file",
+        type=Path,
+        help="Explicit path to the CDF file to inspect",
+    )
     parser.add_argument(
         "--variables",
         nargs="*",
@@ -193,12 +206,15 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if not args.cdf.exists():
-        raise SystemExit(f"CDF file not found: {args.cdf}")
+    cdf_path = args.cdf_file or args.cdf
+    if cdf_path is None:
+        raise SystemExit("A CDF file must be provided with either -f/--file/--filename or as a positional argument.")
+    if not cdf_path.exists():
+        raise SystemExit(f"CDF file not found: {cdf_path}")
 
-    strings_dump = _collect_strings(args.cdf)
+    strings_dump = _collect_strings(cdf_path)
     seen: set[str] = set()
-    print(f"## Metadata summary for {args.cdf.name}\n")
+    print(f"## Metadata summary for {cdf_path.name}\n")
     for variable in args.variables:
         if variable in seen:
             continue
