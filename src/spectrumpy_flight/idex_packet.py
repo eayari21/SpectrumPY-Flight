@@ -139,6 +139,31 @@ def create_dataset_if_not_exists(hdf5_file, dataset_path, data, *, dtype=None):
     return hdf5_file.create_dataset(dataset_path, data=data)
 
 
+def _collection_efficiency_ratio(
+    ion_charge: Optional[float],
+    target_charge: Optional[float],
+) -> Optional[float]:
+    """Return |Ion|/|Target| when both charges are finite and non-zero."""
+
+    if ion_charge is None or target_charge is None:
+        return None
+
+    try:
+        ion = float(ion_charge)
+        target = float(target_charge)
+    except (TypeError, ValueError):
+        return None
+
+    if not (np.isfinite(ion) and np.isfinite(target)):
+        return None
+
+    ion = abs(ion)
+    target = abs(target)
+    if target <= 0.0:
+        return None
+    return ion / target
+
+
 def _contiguous_mask(condition: np.ndarray, min_samples: int) -> np.ndarray:
     condition = np.asarray(condition, dtype=bool)
     if condition.size == 0:
@@ -2653,7 +2678,11 @@ class IDEXEvent:
                     if channel_analysis is None:
                         continue
                     charge_c = channel_analysis.get('charge_c')
-                    impact_value = float(charge_c) if charge_c is not None and np.isfinite(charge_c) else np.nan
+                    impact_value = (
+                        float(abs(charge_c))
+                        if charge_c is not None and np.isfinite(charge_c)
+                        else np.nan
+                    )
                     channel_analysis['impact_charge'] = impact_value
                     create_dataset_if_not_exists(
                         h,
@@ -2663,9 +2692,7 @@ class IDEXEvent:
 
                     if channel_name in {'Target L', 'Target H'}:
                         rise_time = channel_analysis.get('rise_time')
-                        ratio = None
-                        if ion_charge is not None and charge_c is not None and charge_c > 0.0:
-                            ratio = ion_charge / charge_c if charge_c else None
+                        ratio = _collection_efficiency_ratio(ion_charge, charge_c)
                         estimate = _compute_particle_estimate(
                             impact_value if np.isfinite(impact_value) and impact_value > 0.0 else None,
                             rise_time,
@@ -2702,6 +2729,10 @@ class IDEXEvent:
                         channel_analysis['velocity_from_rise'] = rise_velocity
                         channel_analysis['velocity_from_ratio'] = ratio_velocity
                         channel_analysis['velocity_source'] = velocity_source
+                        if ratio is not None and np.isfinite(ratio):
+                            channel_analysis['collection_efficiency'] = float(ratio)
+                        else:
+                            channel_analysis['collection_efficiency'] = np.nan
                         create_dataset_if_not_exists(
                             h,
                             f"/{event_key}/Analysis/{channel_name} Dust Mass Estimate",
@@ -2726,6 +2757,13 @@ class IDEXEvent:
                             h,
                             f"/{event_key}/Analysis/{channel_name} Velocity From Ratio",
                             data=np.array([ratio_velocity], dtype=float),
+                        )
+                        create_dataset_if_not_exists(
+                            h,
+                            f"/{event_key}/Analysis/{channel_name} Collection Efficiency",
+                            data=np.array([
+                                float(ratio) if ratio is not None and np.isfinite(ratio) else np.nan
+                            ], dtype=float),
                         )
                         if velocity_source:
                             source_dataset = [velocity_source]
