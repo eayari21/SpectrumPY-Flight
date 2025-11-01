@@ -517,6 +517,7 @@ def _analyse_mass_lines(signal: np.ndarray, time_axis: np.ndarray) -> Optional[D
         'mass_lines': mass_line_records,
         'assignments': assignments,
         'total_area': float(total_area),
+        'calibration': assignments.get('calibration'),
     }
 
 
@@ -2530,6 +2531,11 @@ class IDEXEvent:
                     channel_group.attrs['MassStretch'] = stretch
                     channel_group.attrs['MassShift'] = shift
                     channel_group.attrs['MassKappa'] = kappa
+                    calibration = mass_data.get('calibration') if mass_data else None
+                    if calibration:
+                        channel_group.attrs['MassCalibration'] = json.dumps(calibration)
+                    elif 'MassCalibration' in channel_group.attrs:
+                        del channel_group.attrs['MassCalibration']
                     if mass_data and mass_data.get('mass_lines'):
                         _serialise_mass_lines(channel_group, mass_data.get('mass_lines', []))
                     else:
@@ -2653,6 +2659,11 @@ class IDEXEvent:
                     if mass_data is not None:
                         dust_group.attrs['MassStretch'] = float(mass_data.get('stretch', np.nan))
                         dust_group.attrs['MassShift'] = float(mass_data.get('shift', np.nan))
+                        calibration = mass_data.get('calibration')
+                        if calibration:
+                            dust_group.attrs['MassCalibration'] = json.dumps(calibration)
+                        elif 'MassCalibration' in dust_group.attrs:
+                            del dust_group.attrs['MassCalibration']
                         mass_lines = mass_data.get('mass_lines', [])
                         if mass_lines:
                             _serialise_mass_lines(dust_group, mass_lines)
