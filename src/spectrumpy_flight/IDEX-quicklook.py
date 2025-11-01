@@ -103,6 +103,7 @@ matplotlib.use("QtAgg")
 
 apply_plot_style()
 
+from matplotlib import patheffects
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
@@ -5026,6 +5027,7 @@ class FitParameterDialog(QDialog):
         super().__init__(parent)
         self.setModal(True)
         self.setMinimumSize(760, 720)
+        self.resize(1120, 860)
 
         self._event_name = event_name
         self._value_getter = value_getter
@@ -5082,6 +5084,19 @@ class FitParameterDialog(QDialog):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
 
+        scroll_area = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.AsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.AsNeeded)
+
+        content = QWidget(scroll_area)
+        scroll_area.setWidget(content)
+
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(12)
+
         header_row = QHBoxLayout()
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setSpacing(12)
@@ -5108,7 +5123,7 @@ class FitParameterDialog(QDialog):
         else:
             self.event_combo = None
 
-        layout.addLayout(header_row)
+        content_layout.addLayout(header_row)
 
         self.formula_label = QLabel("", self)
         self.formula_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -5118,7 +5133,7 @@ class FitParameterDialog(QDialog):
         self.formula_label.setTextFormat(Qt.TextFormat.RichText)
         self._default_formula_text = "Select a dataset to view its fit function."
         self.formula_label.setText(html.escape(self._default_formula_text))
-        layout.addWidget(self.formula_label)
+        content_layout.addWidget(self.formula_label)
 
         chooser_row = QHBoxLayout()
         chooser_row.setSpacing(10)
@@ -5135,10 +5150,11 @@ class FitParameterDialog(QDialog):
         chooser_row.addWidget(QLabel("Dataset:", self))
         chooser_row.addWidget(self.dataset_combo)
         chooser_row.addStretch(1)
-        layout.addLayout(chooser_row)
+        content_layout.addLayout(chooser_row)
 
         preview_group = QGroupBox("Low-rate waveform preview", self)
         preview_group.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        preview_group.setMinimumHeight(240)
         preview_layout = QVBoxLayout(preview_group)
         preview_layout.setContentsMargins(10, 12, 10, 12)
         preview_layout.setSpacing(8)
@@ -5176,6 +5192,7 @@ class FitParameterDialog(QDialog):
 
         preview_box = QGroupBox("Fit preview", self)
         preview_box.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        preview_box.setMinimumHeight(260)
         preview_layout = QVBoxLayout(preview_box)
         preview_layout.setContentsMargins(12, 12, 12, 12)
         preview_layout.setSpacing(6)
@@ -5254,6 +5271,7 @@ class FitParameterDialog(QDialog):
 
         table_panel = QWidget(self)
         table_panel.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        table_panel.setMinimumHeight(220)
         table_layout = QVBoxLayout(table_panel)
         table_layout.setContentsMargins(0, 0, 0, 0)
         table_layout.setSpacing(8)
@@ -5271,7 +5289,15 @@ class FitParameterDialog(QDialog):
         self.content_splitter.setStretchFactor(0, 3)
         self.content_splitter.setStretchFactor(1, 2)
         self.content_splitter.setStretchFactor(2, 3)
-        layout.addWidget(self.content_splitter, stretch=1)
+        self.content_splitter.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        )
+        self.content_splitter.setMinimumHeight(520)
+        content_layout.addWidget(self.content_splitter, stretch=1)
+
+        content_layout.addStretch(1)
+
+        layout.addWidget(scroll_area, stretch=1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
 
@@ -5872,19 +5898,33 @@ class FitParameterDialog(QDialog):
             return
 
         if has_signal:
-            ax.plot(
+            signal_line, = ax.plot(
                 self._preview_signal_time,
                 self._preview_signal_values,
-                color="#adb5bd",
-                linewidth=1.0,
+                color="#495057",
+                linewidth=1.3,
+                alpha=0.9,
                 label="Signal",
+            )
+            signal_line.set_path_effects(
+                [patheffects.Stroke(linewidth=1.8, foreground="#ffffff", alpha=0.65), patheffects.Normal()]
             )
 
         if has_fit:
             order = np.argsort(self._preview_time)
             time_data = self._preview_time[order]
             value_data = self._preview_values[order]
-            ax.plot(time_data, value_data, color="#0c5da5", linewidth=1.8, label="Fit curve")
+            fit_line, = ax.plot(
+                time_data,
+                value_data,
+                color="#0c5da5",
+                linewidth=2.4,
+                label="Fit curve",
+                zorder=5,
+            )
+            fit_line.set_path_effects(
+                [patheffects.Stroke(linewidth=3.4, foreground="#ffffff", alpha=0.8), patheffects.Normal()]
+            )
 
         ax.set_xlabel("Time (µs)")
         channel_label = self._current_channel or ""
@@ -5892,6 +5932,7 @@ class FitParameterDialog(QDialog):
             ax.set_ylabel(y_label_with_units(channel_label))
         else:
             ax.set_ylabel("Value")
+        ax.set_facecolor("#f8f9fb")
         ax.grid(True, alpha=0.35)
         if has_signal or has_fit:
             ax.legend(loc="best")
