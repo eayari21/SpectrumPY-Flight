@@ -172,10 +172,11 @@ class IDEXEvent:
 
                     # self.header[evtnum][f"TimeIntervals"] = pkt.data['IDX__SCI0TIME32'].derived_value  # Store the number of 20 us intervals in the respective CDF "Time" variables
                     self.header[(evtnum, 'Timestamp')] = pkt.data['SHCOARSE'].derived_value + 20*(10**(-6))*pkt.data['SHFINE'].derived_value # Use this as the CDF epoch
-                    print(f"Timestamp = {self.header[(evtnum, 'Timestamp')]} seconds since epoch (Midnight January 1st, 2010)")
+                    print(f"Timestamp = {self.header[(evtnum, 'Timestamp')]} seconds since epoch (Midnight January 1st, 2012)")
 
-                    # Convert to MST (UTC-7)
-                    utc_time = datetime(2010, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=self.header[(evtnum, 'Timestamp')])
+                    # Convert seconds since spacecraft epoch (2012-01-01) to UTC
+                    spacecraft_epoch = datetime(2012, 1, 1, tzinfo=timezone.utc)
+                    utc_time = spacecraft_epoch + timedelta(seconds=self.header[(evtnum, 'Timestamp')])
                     # mst_offset = timedelta(hours=-7)
                     # mst_time = utc_time + mst_offset
                     print(f"Trigger time = {utc_time}")
