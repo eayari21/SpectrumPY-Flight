@@ -85,7 +85,7 @@ IMAP_LOGO_CANDIDATES = (
 )
 
 FIT_PARAM_SUFFIXES = ("fitparams", "fitparameters", "fitparam")
-TIME_KEYWORDS = ("time", "epoch")
+TIME_KEYWORDS = ("time", "epoch", "timestamp")
 
 SCALAR_SENTINEL = math.nan
 
@@ -1057,7 +1057,7 @@ class HDFDataExplorer(QWidget):
 
     # ------------------------------------------------------------------
     def _extract_epoch(self, group: h5py.Group) -> Optional[float]:
-        for name in ("Epoch", "epoch", "EventEpoch"):
+        for name in ("Epoch", "epoch", "EventEpoch", "Timestamp", "timestamp"):
             if name in group:
                 obj = group[name]
                 if isinstance(obj, h5py.Dataset):
@@ -1080,15 +1080,34 @@ class HDFDataExplorer(QWidget):
 
     # ------------------------------------------------------------------
     def _metadata_epoch_from(self, datasets: Dict[str, ArrayPayload]) -> Optional[float]:
-        for key in ("EPOCH", "Epoch", "epoch", "EventEpoch"):
+        for key in ("EPOCH", "Epoch", "epoch", "EventEpoch", "Timestamp", "timestamp"):
             if key in datasets:
                 return self._first_finite_value(datasets[key])
         for name, array in datasets.items():
-            if "epoch" in name.lower():
+            lowered = name.lower()
+            if "epoch" in lowered or "timestamp" in lowered:
                 value = self._first_finite_value(array)
                 if value is not None:
                     return value
         return None
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _parse_iso_datetime(value: str) -> Optional[float]:
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        if cleaned.endswith("Z"):
+            cleaned = f"{cleaned[:-1]}+00:00"
+        try:
+            dt_value = datetime.fromisoformat(cleaned)
+        except ValueError:
+            return None
+        if dt_value.tzinfo is None:
+            dt_value = dt_value.replace(tzinfo=timezone.utc)
+        else:
+            dt_value = dt_value.astimezone(timezone.utc)
+        return dt_value.timestamp()
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -1111,7 +1130,7 @@ class HDFDataExplorer(QWidget):
             try:
                 return float(stripped)
             except ValueError:
-                return None
+                return HDFDataExplorer._parse_iso_datetime(stripped)
         if value is None:
             return None
         try:
@@ -1239,7 +1258,11 @@ class HDFDataExplorer(QWidget):
             if _is_time_dataset(name):
                 time_series[label] = array
                 time_categories[label] = label_category
-                if category == "metadata" and store.metadata_epoch_key is None and "epoch" in lowered:
+                if (
+                    category == "metadata"
+                    and store.metadata_epoch_key is None
+                    and ("epoch" in lowered or "timestamp" in lowered)
+                ):
                     store.metadata_epoch_key = label
             else:
                 value_series[label] = array
@@ -1754,8 +1777,10 @@ class HDFDataExplorer(QWidget):
 
     # ------------------------------------------------------------------
     def _is_epoch_series(self, label: Optional[str], values: np.ndarray) -> bool:
-        if label and "epoch" in label.lower():
-            return True
+        if label:
+            lowered = label.lower()
+            if "epoch" in lowered or "timestamp" in lowered:
+                return True
         arr = np.asarray(values, dtype=float)
         if arr.size == 0:
             return False
