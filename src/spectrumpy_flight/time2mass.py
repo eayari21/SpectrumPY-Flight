@@ -33,8 +33,10 @@ if __package__ is None or __package__ == "":
         if _path_str not in sys.path:
             sys.path.append(_path_str)
     from plot_style import apply_plot_style
+    from mass_calibration import TOFMassCal
 else:
     from .plot_style import apply_plot_style
+    from .mass_calibration import TOFMassCal
 
 from matplotlib import colors
 from scipy.signal import find_peaks
@@ -44,6 +46,7 @@ plt.rcParams['agg.path.chunksize'] = 10_000
 
 MASS_STRETCH_MIN_US = 1.3
 MASS_STRETCH_MAX_US = 1.6
+MAX_CALIBRATION_ORDER = 4
 
 
 @dataclass(frozen=True)
@@ -157,6 +160,7 @@ def _assign_mass_lines(
     shift_us: float,
     mass_scale: np.ndarray,
     references: Sequence[MassReference],
+    calibration: Optional[TOFMassCal] = None,
 ) -> Dict[str, object]:
     if detection_signal.size == 0 or step_us <= 0.0:
         return {
@@ -185,7 +189,10 @@ def _assign_mass_lines(
     mass_lines: List[Dict[str, object]] = []
     line_id = 1
     for reference in references:
-        expected_time_zero = shift_us + stretch_us * math.sqrt(reference.mass_value)
+        if calibration is not None:
+            expected_time_zero = float(calibration.mass_to_tof([reference.mass_value])[0])
+        else:
+            expected_time_zero = shift_us + stretch_us * math.sqrt(reference.mass_value)
         expected_index = int(round(expected_time_zero / step_us)) if step_us > 0 else 0
         if expected_index < 0 or expected_index >= detection_signal.size:
             continue
@@ -299,6 +306,7 @@ def _assign_mass_lines(
         "stretch": float(stretch_us),
         "shift": float(shift_us),
         "step": float(step_us),
+        "calibration": calibration.to_dict() if calibration is not None else None,
     }
 
 
@@ -310,6 +318,7 @@ def get_last_mass_line_assignments() -> Dict[str, object]:
             "stretch": float("nan"),
             "shift": float("nan"),
             "step": float("nan"),
+            "calibration": None,
         }
     # Return a deep copy to prevent callers from mutating cached data.
     result = copy.deepcopy(_LAST_ASSIGNMENTS)
@@ -521,6 +530,7 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
             "stretch": float("nan"),
             "shift": float("nan"),
             "step": float("nan"),
+            "calibration": None,
         }
         return float(MASS_STRETCH_MIN_US), 0.0, mass_scale
 
@@ -534,6 +544,7 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
             "stretch": float("nan"),
             "shift": float("nan"),
             "step": float(step_us),
+            "calibration": None,
         }
         return float(MASS_STRETCH_MIN_US), 0.0, mass_scale
 
@@ -549,6 +560,7 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
             "stretch": float("nan"),
             "shift": float("nan"),
             "step": float(step_us),
+            "calibration": None,
         }
         return float(MASS_STRETCH_MIN_US), 0.0, mass_scale
 
@@ -630,9 +642,6 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
     shift_samples = int(round(best["shift_samples"]))
     shift_us = float(shift_samples * step_us)
     stretch_us = float(best["stretch"])
-    if not allow_out_of_range:
-        stretch_us = float(np.clip(stretch_us, stretch_min, stretch_max))
-
     mass_scale = _compute_mass_axis(time_zero, stretch_us, shift_us)
     assignments = _assign_mass_lines(
         smoothed,
@@ -645,6 +654,60 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
         mass_scale,
         references,
     )
+
+    calibration_model: Optional[TOFMassCal] = None
+    reference_masses: List[float] = []
+    reference_times: List[float] = []
+    if assignments.get("mass_lines"):
+        for line in assignments["mass_lines"]:
+            try:
+                mass_reference = float(line.get("mass_reference", float("nan")))
+            except Exception:
+                mass_reference = float("nan")
+            try:
+                time_offset = float(line.get("time_offset", float("nan")))
+            except Exception:
+                time_offset = float("nan")
+            if not (np.isfinite(mass_reference) and np.isfinite(time_offset)):
+                continue
+            reference_masses.append(mass_reference)
+            reference_times.append(time_offset)
+
+    if len(reference_masses) >= 2:
+        try:
+            calibration_model = TOFMassCal.from_lines(
+                reference_masses,
+                reference_times,
+                max_order=MAX_CALIBRATION_ORDER,
+                mass_range=(0.0, 400.0),
+                enforce_monotonic=True,
+            )
+        except Exception:
+            calibration_model = None
+
+    if calibration_model is not None:
+        shift_us = float(calibration_model.coeffs[0])
+        stretch_us = float(calibration_model.coeffs[1]) if calibration_model.coeffs.size > 1 else stretch_us
+        mass_scale = calibration_model.tof_to_mass(time_zero)
+        assignments = _assign_mass_lines(
+            smoothed,
+            tof,
+            time_axis,
+            time_zero,
+            step_us,
+            stretch_us,
+            shift_us,
+            mass_scale,
+            references,
+            calibration=calibration_model,
+        )
+    else:
+        assignments["calibration"] = None
+
+    if not allow_out_of_range:
+        stretch_us = float(np.clip(stretch_us, stretch_min, stretch_max))
+    assignments["stretch"] = float(stretch_us)
+    assignments["shift"] = float(shift_us)
     _LAST_ASSIGNMENTS = assignments
 
     return stretch_us, shift_us, mass_scale
