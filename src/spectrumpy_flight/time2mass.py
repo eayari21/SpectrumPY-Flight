@@ -167,19 +167,21 @@ def _assign_mass_lines(
             "step": float(step_us),
         }
 
-    prominence = max(np.nanmax(detection_signal) * 0.05, _robust_std(detection_signal) * 4.0, 1e-6)
+    robust_noise = _robust_std(detection_signal)
+    absolute_max = float(np.nanmax(detection_signal)) if detection_signal.size else 0.0
+    prominence = max(absolute_max * 0.015, robust_noise * 4.5, 1e-6)
     distance = max(5, int(round(0.18 / max(step_us, 1e-6))))
     peaks, _ = find_peaks(detection_signal, prominence=prominence, distance=distance)
     peaks = peaks.astype(int, copy=False)
 
     tolerance = max(6, int(round(0.22 / max(step_us, 1e-6))))
-    half_window = max(8, int(round(0.30 / max(step_us, 1e-6))))
+    half_window = max(8, int(round(0.35 / max(step_us, 1e-6))))
 
     available_peaks = list(peaks)
     used_indices = set()
-    absolute_max = float(np.nanmax(detection_signal)) if detection_signal.size else 0.0
-    noise_floor = _robust_std(detection_signal)
-    min_peak_height = max(absolute_max * 0.005, noise_floor * 5.0, 1e-6)
+    noise_floor = robust_noise
+    min_peak_height = max(absolute_max * 0.0025, noise_floor * 3.5, 1e-6)
+    tail_threshold = max(min_peak_height * 0.6, noise_floor * 2.5, 1e-9)
     mass_lines: List[Dict[str, object]] = []
     line_id = 1
     for reference in references:
@@ -221,8 +223,18 @@ def _assign_mass_lines(
         mass_at_peak = float(mass_scale[peak_index])
         if not math.isfinite(mass_at_peak) or abs(mass_at_peak - reference.int_mass) > 1.25:
             continue
-        start_idx = max(0, peak_index - half_window)
-        end_idx = min(detection_signal.size, peak_index + half_window + 1)
+        start_idx = peak_index
+        while start_idx > 0 and detection_signal[start_idx] >= tail_threshold:
+            start_idx -= 1
+        end_idx = peak_index
+        last_index = detection_signal.size - 1
+        while end_idx < last_index and detection_signal[end_idx] >= tail_threshold:
+            end_idx += 1
+        start_idx = max(0, start_idx - 2)
+        end_idx = min(detection_signal.size, end_idx + 3)
+        if end_idx - start_idx < 6:
+            start_idx = max(0, peak_index - half_window)
+            end_idx = min(detection_signal.size, peak_index + half_window + 1)
         mass_lines.append({
             "line_id": line_id,
             "int_mass": reference.int_mass,
@@ -238,6 +250,48 @@ def _assign_mass_lines(
             "mass_scale_value": mass_at_peak,
         })
         line_id += 1
+
+    if available_peaks:
+        remaining = sorted(set(available_peaks) - used_indices)
+        for peak_index in remaining:
+            if peak_index < 0 or peak_index >= detection_signal.size:
+                continue
+            height = float(detection_signal[peak_index])
+            if not np.isfinite(height) or height < min_peak_height:
+                continue
+            if mass_scale.size > peak_index:
+                mass_scale_value = float(mass_scale[peak_index])
+            else:
+                mass_scale_value = float("nan")
+            if not math.isfinite(mass_scale_value):
+                continue
+            start_idx = peak_index
+            while start_idx > 0 and detection_signal[start_idx] >= tail_threshold:
+                start_idx -= 1
+            end_idx = peak_index
+            last_index = detection_signal.size - 1
+            while end_idx < last_index and detection_signal[end_idx] >= tail_threshold:
+                end_idx += 1
+            start_idx = max(0, start_idx - 2)
+            end_idx = min(detection_signal.size, end_idx + 3)
+            if end_idx - start_idx < 6:
+                start_idx = max(0, peak_index - half_window)
+                end_idx = min(detection_signal.size, peak_index + half_window + 1)
+            mass_lines.append({
+                "line_id": line_id,
+                "int_mass": int(round(mass_scale_value)) if math.isfinite(mass_scale_value) else 0,
+                "label": f"Line{line_id}",
+                "species": "",
+                "mass_reference": float("nan"),
+                "peak_index": peak_index,
+                "time": float(time_axis[peak_index]) if time_axis.size > peak_index else float("nan"),
+                "time_offset": float(time_zero[peak_index]) if time_zero.size > peak_index else float("nan"),
+                "expected_time": float(time_axis[peak_index]) if time_axis.size > peak_index else float("nan"),
+                "window": (start_idx, end_idx),
+                "peak_amplitude": float(fit_signal[peak_index]) if fit_signal.size > peak_index else 0.0,
+                "mass_scale_value": mass_scale_value,
+            })
+            line_id += 1
 
     return {
         "peaks": peaks,

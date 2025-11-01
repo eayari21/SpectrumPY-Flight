@@ -421,7 +421,28 @@ def _analyse_mass_lines(signal: np.ndarray, time_axis: np.ndarray) -> Optional[D
             continue
         area = calculate_area_under_emg(x_slice, param)
         chi_sq, red_chi = calculate_chi_squared(y_slice, fitted_curve, len(param))
-        mass_value = float(line_info.get('mass_reference', line_info.get('mass_scale_value', np.nan)))
+        try:
+            mass_reference = float(line_info.get('mass_reference', np.nan))
+        except Exception:
+            mass_reference = float('nan')
+        if not np.isfinite(mass_reference):
+            mass_reference = float('nan')
+        try:
+            mass_scale_value = float(line_info.get('mass_scale_value', mass_reference))
+        except Exception:
+            mass_scale_value = mass_reference
+        if not np.isfinite(mass_scale_value):
+            mass_scale_value = mass_reference
+        try:
+            assigned_mass_value = float(line_info.get('assigned_mass', np.nan))
+        except Exception:
+            assigned_mass_value = float('nan')
+        if not np.isfinite(assigned_mass_value):
+            species_label = str(line_info.get('species', '')).strip()
+            if species_label and np.isfinite(mass_reference):
+                assigned_mass_value = mass_reference
+            else:
+                assigned_mass_value = float('nan')
         record = {
             'line_id': int(line_info.get('line_id', len(mass_line_records) + 1)),
             'label': str(line_info.get('label', f"Line{line_info.get('line_id', len(mass_line_records) + 1)}")),
@@ -432,8 +453,8 @@ def _analyse_mass_lines(signal: np.ndarray, time_axis: np.ndarray) -> Optional[D
             'amplitude': float(max(param[3], 0.0)),
             'time_start': float(x_slice[0]),
             'time_end': float(x_slice[-1]),
-            'mass_guess': mass_value,
-            'assigned_mass': mass_value,
+            'mass_guess': mass_scale_value,
+            'assigned_mass': assigned_mass_value,
             'area': float(max(area, 0.0)),
             'abundance': 0.0,
             'shape': 'emg',
@@ -444,7 +465,7 @@ def _analyse_mass_lines(signal: np.ndarray, time_axis: np.ndarray) -> Optional[D
             'red_chi': float(red_chi),
             'sig_amp': float(sig_amp),
             'peak_index': peak_index,
-            'mass_scale_value': float(line_info.get('mass_scale_value', np.nan)),
+            'mass_scale_value': mass_scale_value,
         }
         total_area += record['area']
         mass_line_records.append(record)
