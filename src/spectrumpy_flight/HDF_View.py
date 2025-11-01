@@ -401,10 +401,21 @@ def _choose_file_dialog(start_dir: Optional[str] = None) -> Optional[str]:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Browse the contents of an HDF5 file.")
-    parser.add_argument("filename", nargs="?", help="Path to the HDF5 file to open.")
+    parser.add_argument(
+        "path",
+        nargs="?",
+        help="Path to the HDF5 file to open.",
+    )
+    parser.add_argument(
+        "-f",
+        "--file",
+        "--filename",
+        dest="filename",
+        help="Explicit path to the HDF5 file to open.",
+    )
     args = parser.parse_args(argv)
 
-    filename = args.filename
+    filename = args.filename or args.path
     if not filename:
         filename = _choose_file_dialog()
         if not filename:
