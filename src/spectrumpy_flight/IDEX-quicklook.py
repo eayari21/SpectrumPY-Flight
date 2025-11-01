@@ -3220,8 +3220,42 @@ class MainWindow(QMainWindow):
         tb = QToolBar("Main", self)
         tb.setIconSize(QSize(22, 22))
         tb.setMovable(False)
+        tb.setFloatable(False)
         tb.setStyleSheet("QToolBar { background-color: #ffffff; border: none; padding: 8px; spacing: 8px; }")
-        self.addToolBar(tb)
+
+        toolbar_container = QWidget(self)
+        toolbar_container.setObjectName("quicklookToolbarContainer")
+        toolbar_container.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        toolbar_container.setStyleSheet(
+            "#quicklookToolbarContainer { background-color: #ffffff; border-radius: 12px; }"
+        )
+
+        toolbar_layout = QHBoxLayout(toolbar_container)
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        toolbar_layout.setSpacing(0)
+        toolbar_layout.addWidget(tb)
+
+        scroll = QScrollArea(self)
+        scroll.setObjectName("quicklookToolbarScrollArea")
+        scroll.setWidget(toolbar_container)
+        scroll.setWidgetResizable(False)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        scroll.setStyleSheet(
+            """
+            QScrollArea#quicklookToolbarScrollArea {
+                border: none;
+                background-color: #ffffff;
+            }
+            QScrollArea#quicklookToolbarScrollArea > QWidget > QWidget {
+                background-color: #ffffff;
+            }
+            """
+        )
+
+        self.vbox.addWidget(scroll)
 
         tb.addAction(self.open_any_action)
         tb.addAction(self.open_hdf5_action)
@@ -3402,6 +3436,9 @@ class MainWindow(QMainWindow):
         self.event_combo.setStyleSheet("font-size: 15px; min-height: 36px;")
         self.event_combo.currentIndexChanged.connect(self.on_event_changed)
         tb.addWidget(self.event_combo)
+
+        toolbar_container.adjustSize()
+        scroll.setMinimumHeight(tb.sizeHint().height() + 16)
 
     def _build_branding_banner(self) -> Optional[QWidget]:
         pixmap = _load_brand_pixmap(max_height=64)
