@@ -162,6 +162,7 @@ class DustEstimatorWindow(QMainWindow):
         self._event_combo: Optional[QComboBox] = None
         self._file_label: Optional[QLabel] = None
         self._current_event_label: Optional[QLabel] = None
+        self._stored_collection_efficiency: Optional[float] = None
 
         (self._rise_table, self._ratio_table, self._yield_table) = load_default_tables()
 
@@ -423,6 +424,7 @@ class DustEstimatorWindow(QMainWindow):
         ):
             label.setText("—")
         self.stored_velocity_source_value.setText("—")
+        self._stored_collection_efficiency = None
 
     def _set_spin_from_dataset(self, spin: QDoubleSpinBox, value: Optional[float]) -> None:
         spin.blockSignals(True)
@@ -605,6 +607,13 @@ class DustEstimatorWindow(QMainWindow):
         rise_velocity = self._read_scalar_dataset(f"/{self._event_name}/Analysis/Target H Velocity From Rise")
         ratio_velocity = self._read_scalar_dataset(f"/{self._event_name}/Analysis/Target H Velocity From Ratio")
         velocity_source = self._read_string_dataset(f"/{self._event_name}/Analysis/Target H Velocity Source")
+        collection_efficiency = self._read_scalar_dataset(
+            f"/{self._event_name}/Analysis/Target H Collection Efficiency"
+        )
+        if collection_efficiency is not None and math.isfinite(collection_efficiency) and collection_efficiency > 0.0:
+            self._stored_collection_efficiency = float(collection_efficiency)
+        else:
+            self._stored_collection_efficiency = None
 
         fit_target_charge_c = self._read_fit_amplitude("Target H")
         fit_ion_charge_c = self._read_fit_amplitude("Ion Grid")
@@ -857,6 +866,10 @@ class DustEstimatorWindow(QMainWindow):
         ratio = math.nan
         if charge > 0.0 and ion_charge > 0.0:
             ratio = ion_charge / charge
+        elif self._stored_collection_efficiency is not None:
+            ratio = self._stored_collection_efficiency
+
+        if math.isfinite(ratio) and ratio > 0.0:
             self.collection_ratio_value.setText(f"{ratio:.6g}")
         else:
             self.collection_ratio_value.setText("—")
