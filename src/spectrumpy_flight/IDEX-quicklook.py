@@ -1868,6 +1868,51 @@ def _get_sql_engine():
     return _SQL_ENGINE
 
 
+def _parse_iso_datetime(value: str) -> Optional[float]:
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if stripped.endswith("Z"):
+        stripped = f"{stripped[:-1]}+00:00"
+    try:
+        dt_value = datetime.fromisoformat(stripped)
+    except ValueError:
+        return None
+    if dt_value.tzinfo is None:
+        dt_value = dt_value.replace(tzinfo=timezone.utc)
+    else:
+        dt_value = dt_value.astimezone(timezone.utc)
+    return dt_value.timestamp()
+
+
+def _coerce_epoch_value(value: Any) -> Optional[float]:
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            value = value.decode("utf-8", errors="ignore")
+        except Exception:
+            return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            numeric = float(stripped)
+        except ValueError:
+            numeric = _parse_iso_datetime(stripped)
+            if numeric is None:
+                return None
+    else:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+    if not np.isfinite(numeric):
+        return None
+    return float(numeric)
+
+
 def _first_finite_scalar(values: Any) -> Optional[float]:
     if values is None:
         return None
@@ -1881,12 +1926,9 @@ def _first_finite_scalar(values: Any) -> Optional[float]:
             return None
         arr = arr.ravel()
         for item in arr:
-            try:
-                candidate = float(item)
-            except Exception:
-                continue
-            if np.isfinite(candidate):
-                return float(candidate)
+            candidate = _coerce_epoch_value(item)
+            if candidate is not None:
+                return candidate
         return None
 
     arr = np.asarray(arr, dtype=float).ravel()
@@ -1908,6 +1950,10 @@ def _get_dataset_scalar(data_source: BaseDataSource, event: str, dataset: str) -
 
 
 _EVENT_TIME_DATASETS: List[Tuple[str, str]] = [
+    ("Metadata/IntegerTimestamp", "milliseconds"),
+    ("Metadata/Timestamp", "seconds"),
+    ("Metadata/Epoch", "seconds"),
+    ("Metadata/EventEpoch", "seconds"),
     ("Analysis/Accelerator Timestamp", "milliseconds"),
     ("Analysis/AcceleratorTimestamp", "milliseconds"),
     ("Analysis/Trigger Time (ms)", "milliseconds"),
@@ -1919,7 +1965,6 @@ _EVENT_TIME_DATASETS: List[Tuple[str, str]] = [
     ("Analysis/QD Trigger Time", "seconds"),
     ("Metadata/Trigger Time (ms)", "milliseconds"),
     ("Metadata/TriggerTime", "milliseconds"),
-    ("Metadata/IntegerTimestamp", "milliseconds"),
 ]
 
 _EVENT_VELOCITY_DATASETS: List[Tuple[str, str]] = [
