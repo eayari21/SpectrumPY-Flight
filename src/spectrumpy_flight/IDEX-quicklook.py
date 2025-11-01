@@ -6411,7 +6411,15 @@ class FitParameterDialog(QDialog):
 # --------- CLI / main ---------
 def main():
     parser = argparse.ArgumentParser(description="Run the IDEX Quicklook (QtAgg + Matplotlib toolbar).")
-    parser.add_argument("--filename", nargs="?", default=None, help="Path to the data file (HDF5 or CDF).")
+    parser.add_argument(
+        "-f",
+        "--file",
+        "--filename",
+        nargs="?",
+        dest="filename",
+        default=None,
+        help="Path to the data file (HDF5 or CDF).",
+    )
     parser.add_argument("--eventnumber", nargs="?", type=int, default=None, help="1-based event index.")
     args = parser.parse_args()
     app = QApplication(sys.argv)
