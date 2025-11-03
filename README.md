@@ -135,6 +135,8 @@ The executable runs without root privileges and extracts its shared libraries on
 * **Fitting reference** – Deep dive into baseline handling, Data Browser correlations, and variable-definition lookups.【F:src/spectrumpy_flight/docs/fitting_reference.md†L1-L115】
 * **Packaging playbook** – Extended release checklists, validation steps, and troubleshooting strategies for desktop builds.【F:src/spectrumpy_flight/docs/packaging_tutorial.md†L1-L198】
 * **Olivine metrics** – Instructions for running the olivine regression and locating the generated SNR, timing, and saturation reports.【F:src/spectrumpy_flight/docs/olivine_metrics.md†L1-L64】
+* **Time-to-mass calibration** – Polynomial fitting, Newton inversion safeguards, and quick recipes for turning TOF traces into calibrated mass axes.【F:src/spectrumpy_flight/docs/time_to_mass_calibration.md†L1-L146】
+* **Feature reference** – Exhaustive catalogue of launchers, CLIs, shell helpers, and their underlying algorithms with LaTeX formulas and usage examples.【F:src/spectrumpy_flight/docs/feature_reference.md†L1-L195】
 
 Launch the in-app documentation center anytime (`F1`) to search and read these guides inside the Quicklook viewer.【F:IDEX-quicklook.py†L1888-L1964】
 
