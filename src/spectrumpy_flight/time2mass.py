@@ -319,6 +319,7 @@ def get_last_mass_line_assignments() -> Dict[str, object]:
             "shift": float("nan"),
             "step": float("nan"),
             "calibration": None,
+            "origin": float("nan"),
         }
     # Return a deep copy to prevent callers from mutating cached data.
     result = copy.deepcopy(_LAST_ASSIGNMENTS)
@@ -521,6 +522,7 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
     references = _load_reference_masses()
     tof = np.asarray(TOF, dtype=float)
     time_axis = np.asarray(time, dtype=float)
+    origin_us = float(time_axis[0]) if time_axis.size else 0.0
 
     if tof.size == 0 or time_axis.size == 0 or tof.size != time_axis.size:
         mass_scale = np.zeros_like(time_axis, dtype=float)
@@ -531,6 +533,7 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
             "shift": float("nan"),
             "step": float("nan"),
             "calibration": None,
+            "origin": origin_us,
         }
         return float(MASS_STRETCH_MIN_US), 0.0, mass_scale
 
@@ -545,6 +548,7 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
             "shift": float("nan"),
             "step": float(step_us),
             "calibration": None,
+            "origin": origin_us,
         }
         return float(MASS_STRETCH_MIN_US), 0.0, mass_scale
 
@@ -561,6 +565,7 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
             "shift": float("nan"),
             "step": float(step_us),
             "calibration": None,
+            "origin": origin_us,
         }
         return float(MASS_STRETCH_MIN_US), 0.0, mass_scale
 
@@ -628,6 +633,7 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
             mass_scale,
             references,
         )
+        _LAST_ASSIGNMENTS["origin"] = origin_us
         return fallback, 0.0, mass_scale
 
     refined_min = best["stretch"] - 0.01
@@ -654,6 +660,7 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
         mass_scale,
         references,
     )
+    assignments["origin"] = origin_us
 
     calibration_model: Optional[TOFMassCal] = None
     reference_masses: List[float] = []
@@ -701,6 +708,7 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
             references,
             calibration=calibration_model,
         )
+        assignments["origin"] = origin_us
     else:
         assignments["calibration"] = None
 
