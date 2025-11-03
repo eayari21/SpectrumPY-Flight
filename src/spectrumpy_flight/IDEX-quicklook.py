@@ -2436,13 +2436,13 @@ def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult],
         window = max(criteria.time_window_ms, 0.0)
         time_lower = float(criteria.time_ms) - window
         time_upper = float(criteria.time_ms) + window
-        where_clauses.append("integer_timestamp BETWEEN :time_lower AND :time_upper")
+        where_clauses.append("de.integer_timestamp BETWEEN :time_lower AND :time_upper")
         params["time_lower"] = int(time_lower)
         params["time_upper"] = int(time_upper)
         params["time_center"] = int(criteria.time_ms)
-        order_terms.append("ABS(integer_timestamp - :time_center)")
+        order_terms.append("ABS(de.integer_timestamp - :time_center)")
     else:
-        order_terms.append("integer_timestamp DESC")
+        order_terms.append("de.integer_timestamp DESC")
 
     if criteria.velocity_kmps is not None and np.isfinite(criteria.velocity_kmps):
         target_mps = float(criteria.velocity_kmps) * 1000.0
