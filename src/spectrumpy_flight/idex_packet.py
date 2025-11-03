@@ -417,13 +417,18 @@ def _serialise_mass_lines(group: h5py.Group, mass_lines: List[Dict[str, object]]
         line_group.create_dataset('values', data=np.asarray(record.get('fit_curve', []), dtype=float))
 
 
-def _analyse_mass_lines(signal: np.ndarray, time_axis: np.ndarray) -> Optional[Dict[str, object]]:
+def _analyse_mass_lines(
+    signal: np.ndarray,
+    time_axis: np.ndarray,
+    *,
+    max_auto_lines: Optional[int] = None,
+) -> Optional[Dict[str, object]]:
     signal = np.asarray(signal, dtype=float)
     time_axis = np.asarray(time_axis, dtype=float)
     if signal.size == 0 or signal.size != time_axis.size:
         return None
 
-    stretch, shift, mass_scale = time2mass(signal, time_axis)
+    stretch, shift, mass_scale = time2mass(signal, time_axis, max_auto_lines=max_auto_lines)
     stretch = float(np.clip(stretch, MASS_STRETCH_MIN, MASS_STRETCH_MAX))
     assignments = get_last_mass_line_assignments() or {}
     peaks = np.asarray(assignments.get('peaks', np.array([], dtype=int)), dtype=int)
@@ -2674,7 +2679,17 @@ class IDEXEvent:
                         baseline_corrected = combined - baseline_candidate
                     else:
                         baseline_corrected = combined
-                    mass_data = _analyse_mass_lines(baseline_corrected, combined_time)
+                    combined_snr = calculate_snr(baseline_corrected, combined_time)
+                    if np.isfinite(combined_snr) and combined_snr <= 3.0:
+                        max_auto_lines = 5
+                    else:
+                        max_auto_lines = None
+                    mass_data = _analyse_mass_lines(
+                        baseline_corrected,
+                        combined_time,
+                        max_auto_lines=max_auto_lines,
+                    )
+                    dust_group.attrs['CombinedSNR'] = float(combined_snr) if np.isfinite(combined_snr) else float('nan')
                     if mass_data is not None:
                         dust_group.attrs['MassStretch'] = float(mass_data.get('stretch', np.nan))
                         dust_group.attrs['MassShift'] = float(mass_data.get('shift', np.nan))
