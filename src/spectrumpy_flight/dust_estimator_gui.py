@@ -166,8 +166,8 @@ class DustEstimatorWindow(QMainWindow):
 
         (self._rise_table, self._ratio_table, self._yield_table) = load_default_tables()
 
-        central = QWidget(self)
-        outer_layout = QVBoxLayout(central)
+        content = QWidget(self)
+        outer_layout = QVBoxLayout(content)
         outer_layout.setContentsMargins(18, 18, 18, 18)
         outer_layout.setSpacing(14)
 
@@ -195,14 +195,20 @@ class DustEstimatorWindow(QMainWindow):
         outer_layout.addWidget(result_group)
 
         formulas_widget = self._build_formula_panel()
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(formulas_widget)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        outer_layout.addWidget(scroll, stretch=1)
+        formulas_scroll = QScrollArea()
+        formulas_scroll.setWidgetResizable(True)
+        formulas_scroll.setWidget(formulas_widget)
+        formulas_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        formulas_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        outer_layout.addWidget(formulas_scroll, stretch=1)
 
-        self.setCentralWidget(central)
+        scroll_area = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setWidget(content)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        self.setCentralWidget(scroll_area)
 
         self._update_comboboxes()
         self._update_parameter_sections()
