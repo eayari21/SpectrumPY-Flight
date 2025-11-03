@@ -14,6 +14,7 @@ import argparse
 import tempfile
 import base64
 import re
+import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -79,6 +80,7 @@ def _erfc(values: np.ndarray) -> np.ndarray:
 from .HDF_View import launch_hdf_viewer
 from .dust_composition import launch_dust_composition_window
 from .dust_estimator_gui import launch_dust_estimator_window
+from .mass_calibration import TOFMassCal
 from .noise_analysis import ChannelMeta, launch_noise_analysis_window
 from .plot_style import apply_plot_style
 try:  # pragma: no cover - optional dependency, loaded lazily
@@ -107,6 +109,7 @@ from matplotlib import patheffects
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.ticker import FuncFormatter
 
 
 class ScrollFriendlyFigureCanvas(FigureCanvas):
@@ -1142,6 +1145,229 @@ def _has_samples(array: Optional[np.ndarray]) -> bool:
 
     return bool(np.isfinite(values).any())
 
+
+@dataclass
+class MassAxisContext:
+    mass: np.ndarray
+    time: np.ndarray
+    calibration: Optional[TOFMassCal] = None
+    origin: float = 0.0
+    stretch: Optional[float] = None
+    shift: Optional[float] = None
+    _time_sorted: Optional[np.ndarray] = field(default=None, init=False, repr=False)
+    _mass_for_time: Optional[np.ndarray] = field(default=None, init=False, repr=False)
+    _mass_sorted: Optional[np.ndarray] = field(default=None, init=False, repr=False)
+    _time_for_mass: Optional[np.ndarray] = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.mass = np.asarray(self.mass, dtype=float).ravel()
+        self.time = np.asarray(self.time, dtype=float).ravel()
+        count = min(self.mass.size, self.time.size)
+        if count > 0:
+            self.mass = self.mass[:count]
+            self.time = self.time[:count]
+        else:
+            self.mass = np.zeros(0, dtype=float)
+            self.time = np.zeros(0, dtype=float)
+        self.origin = float(self.origin or 0.0)
+        if self.stretch is not None:
+            self.stretch = float(self.stretch)
+        if self.shift is not None:
+            self.shift = float(self.shift)
+        self._time_sorted = None
+        self._mass_for_time = None
+        self._mass_sorted = None
+        self._time_for_mass = None
+
+    def trimmed(self, count: int) -> "MassAxisContext":
+        limit = int(max(0, min(count, self.mass.size, self.time.size)))
+        if limit <= 0:
+            return MassAxisContext(
+                mass=np.zeros(0, dtype=float),
+                time=np.zeros(0, dtype=float),
+                calibration=self.calibration,
+                origin=self.origin,
+                stretch=self.stretch,
+                shift=self.shift,
+            )
+        return MassAxisContext(
+            mass=self.mass[:limit],
+            time=self.time[:limit],
+            calibration=self.calibration,
+            origin=self.origin,
+            stretch=self.stretch,
+            shift=self.shift,
+        )
+
+    def _ensure_sorted_by_time(self) -> None:
+        if self._time_sorted is not None:
+            return
+        if self.time.size == 0:
+            self._time_sorted = np.zeros(0, dtype=float)
+            self._mass_for_time = np.zeros(0, dtype=float)
+            return
+        order = np.argsort(self.time)
+        time_sorted = self.time[order]
+        mass_sorted = self.mass[order]
+        mask = np.isfinite(time_sorted) & np.isfinite(mass_sorted)
+        time_sorted = time_sorted[mask]
+        mass_sorted = mass_sorted[mask]
+        if time_sorted.size >= 2:
+            unique_time, indices = np.unique(time_sorted, return_index=True)
+            mass_sorted = mass_sorted[indices]
+            time_sorted = unique_time
+        self._time_sorted = time_sorted
+        self._mass_for_time = mass_sorted
+
+    def _ensure_sorted_by_mass(self) -> None:
+        if self._mass_sorted is not None:
+            return
+        if self.mass.size == 0:
+            self._mass_sorted = np.zeros(0, dtype=float)
+            self._time_for_mass = np.zeros(0, dtype=float)
+            return
+        order = np.argsort(self.mass)
+        mass_sorted = self.mass[order]
+        time_sorted = self.time[order]
+        mask = np.isfinite(mass_sorted) & np.isfinite(time_sorted)
+        mass_sorted = mass_sorted[mask]
+        time_sorted = time_sorted[mask]
+        if mass_sorted.size >= 2:
+            unique_mass, indices = np.unique(mass_sorted, return_index=True)
+            time_sorted = time_sorted[indices]
+            mass_sorted = unique_mass
+        self._mass_sorted = mass_sorted
+        self._time_for_mass = time_sorted
+
+    def time_to_mass(self, times: Sequence[float]) -> np.ndarray:
+        arr = np.asarray(times, dtype=float)
+        if self.calibration is not None:
+            offsets = arr - self.origin
+            try:
+                return np.asarray(self.calibration.tof_to_mass(offsets), dtype=float)
+            except Exception:
+                pass
+        if self.stretch is not None and self.shift is not None and abs(self.stretch) > 1.0e-12:
+            return np.asarray(self.stretch * (arr - self.shift), dtype=float)
+        self._ensure_sorted_by_time()
+        if self._time_sorted is None or self._time_sorted.size == 0:
+            return np.zeros_like(arr, dtype=float)
+        if self._time_sorted.size == 1:
+            return np.full(arr.shape, float(self._mass_for_time[0]), dtype=float)
+        return np.interp(
+            arr,
+            self._time_sorted,
+            self._mass_for_time,
+            left=self._mass_for_time[0],
+            right=self._mass_for_time[-1],
+        )
+
+    def mass_to_time(self, masses: Sequence[float]) -> np.ndarray:
+        arr = np.asarray(masses, dtype=float)
+        if self.calibration is not None:
+            try:
+                tof = np.asarray(self.calibration.mass_to_tof(arr), dtype=float)
+                return tof + self.origin
+            except Exception:
+                pass
+        if self.stretch is not None and self.shift is not None and abs(self.stretch) > 1.0e-12:
+            return np.asarray(arr / self.stretch + self.shift, dtype=float)
+        self._ensure_sorted_by_mass()
+        if self._mass_sorted is None or self._mass_sorted.size == 0:
+            return np.zeros_like(arr, dtype=float)
+        if self._mass_sorted.size == 1:
+            return np.full(arr.shape, float(self._time_for_mass[0]), dtype=float)
+        return np.interp(
+            arr,
+            self._mass_sorted,
+            self._time_for_mass,
+            left=self._time_for_mass[0],
+            right=self._time_for_mass[-1],
+        )
+
+
+def _normalise_attr_value(value: Any) -> Any:
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8")
+        except Exception:
+            return value.decode("latin-1", "ignore")
+    if isinstance(value, np.ndarray):
+        if value.shape == ():
+            return value.item()
+        return np.array(value, copy=True)
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
+def _coerce_float_attr(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float, np.floating)):
+        result = float(value)
+    else:
+        try:
+            arr = np.asarray(value, dtype=float)
+        except Exception:
+            return None
+        if arr.size == 0:
+            return None
+        result = float(arr.reshape(-1)[0])
+    if np.isfinite(result):
+        return result
+    return None
+
+
+def _load_mass_calibration_from_attrs(attrs: Dict[str, Any]) -> Optional[TOFMassCal]:
+    raw = attrs.get("MassCalibration")
+    if raw is None:
+        return None
+    candidate: Any = raw
+    if isinstance(candidate, bytes):
+        try:
+            candidate = candidate.decode("utf-8")
+        except Exception:
+            candidate = candidate.decode("latin-1", "ignore")
+    elif isinstance(candidate, np.ndarray):
+        if candidate.shape == ():
+            candidate = candidate.item()
+        else:
+            try:
+                candidate = candidate.tobytes().decode("utf-8")
+            except Exception:
+                candidate = candidate.tolist()
+    elif isinstance(candidate, np.generic):
+        candidate = candidate.item()
+    if isinstance(candidate, str):
+        try:
+            data = json.loads(candidate)
+        except Exception:
+            return None
+        try:
+            return TOFMassCal.from_dict(data)
+        except Exception:
+            return None
+    if isinstance(candidate, dict):
+        try:
+            return TOFMassCal.from_dict(candidate)
+        except Exception:
+            return None
+    return None
+
+
+def _gather_mass_attributes(data_source: "BaseDataSource", event: str) -> Dict[str, Any]:
+    for group_path in MASS_ATTRIBUTE_GROUPS:
+        attrs = data_source.get_group_attributes(event, group_path)
+        if not attrs:
+            continue
+        if any(
+            key in attrs
+            for key in ("MassStretch", "MassShift", "MassCalibration", "MassCalibrationOrigin")
+        ):
+            return attrs
+    return {}
+
 # --------- Channel & fit metadata ---------
 FAMILY_HIGH = "high"
 FAMILY_LOW = "low"
@@ -1188,6 +1414,13 @@ FAMILY_UNITS = {
 }
 
 TIME_AXIS_LABEL = r"Time [$\mu$s]"
+MASS_AXIS_LABEL = "Mass [amu]"
+MASS_ATTRIBUTE_GROUPS: Tuple[str, ...] = (
+    "Analysis/DustComposition",
+    "Analysis/TOF H",
+    "Analysis/TOF M",
+    "Analysis/TOF L",
+)
 
 
 # Instrument-specific conversion factors. Raw waveform counts are divided by the
@@ -1446,6 +1679,11 @@ class BaseDataSource(ABC):
     def gather_fit_data(self, event: str, channel: str) -> FitData:
         """Collect fit products for ``channel`` within ``event``."""
 
+    def get_group_attributes(self, event: str, group_path: str) -> Dict[str, Any]:
+        """Return attribute mapping for ``/{event}/{group_path}`` (default: empty)."""
+
+        return {}
+
     def describe(self) -> str:
         return os.path.basename(self.filename)
 
@@ -1493,6 +1731,22 @@ class HDF5DataSource(BaseDataSource):
             except Exception:
                 return None
         return None
+
+    def get_group_attributes(self, event: str, group_path: str) -> Dict[str, Any]:
+        cleaned = group_path.strip("/")
+        if not cleaned:
+            return {}
+        path = f"/{event}/{cleaned}"
+        try:
+            obj = self._file[path]
+        except Exception:
+            return {}
+        if not isinstance(obj, h5py.Group):
+            return {}
+        result: Dict[str, Any] = {}
+        for key, value in obj.attrs.items():
+            result[key] = _normalise_attr_value(value)
+        return result
 
     def gather_fit_data(self, event: str, channel: str) -> FitData:
         data = FitData()
@@ -4507,6 +4761,94 @@ class MainWindow(QMainWindow):
         self.canvas.draw_idle()
         self.update_status_text(missing)
 
+    def _compute_combined_mass_axis(self, event_name: str, times: np.ndarray) -> Optional[MassAxisContext]:
+        if not self._data_source:
+            return None
+        time_values = np.asarray(times, dtype=float).ravel()
+        if time_values.size == 0:
+            return None
+
+        context_time = time_values
+        context_mass: Optional[np.ndarray] = None
+
+        dataset = self._get_dataset(event_name, "Mass")
+        if dataset is not None:
+            try:
+                mass_data = _to_1d(dataset)
+            except Exception:
+                mass_data = np.array([], dtype=float)
+            if mass_data.size:
+                m = min(mass_data.size, time_values.size)
+                if m > 0:
+                    context_mass = np.asarray(mass_data[:m], dtype=float)
+                    context_time = time_values[:m]
+
+        attrs = _gather_mass_attributes(self._data_source, event_name)
+        calibration = _load_mass_calibration_from_attrs(attrs) if attrs else None
+        origin = _coerce_float_attr(attrs.get("MassCalibrationOrigin")) if attrs else None
+        if origin is None:
+            origin = 0.0
+        stretch = _coerce_float_attr(attrs.get("MassStretch")) if attrs else None
+        shift = _coerce_float_attr(attrs.get("MassShift")) if attrs else None
+        if stretch is not None and (not np.isfinite(stretch) or abs(stretch) < 1.0e-12):
+            stretch = None
+        if shift is not None and not np.isfinite(shift):
+            shift = None
+
+        if context_mass is None:
+            base_time = context_time
+            if calibration is not None:
+                try:
+                    context_mass = np.asarray(calibration.tof_to_mass(base_time - origin), dtype=float)
+                except Exception:
+                    context_mass = None
+            if context_mass is None and stretch is not None and shift is not None:
+                context_mass = np.asarray(stretch * (base_time - shift), dtype=float)
+            if context_mass is None:
+                return None
+
+        context = MassAxisContext(
+            mass=context_mass,
+            time=context_time,
+            calibration=calibration,
+            origin=origin,
+            stretch=stretch,
+            shift=shift,
+        )
+        if context.mass.size == 0:
+            return None
+        return context
+
+    def _attach_time_axis(self, ax, context: MassAxisContext) -> None:
+        if getattr(ax, "_time_axis", None) is not None:
+            return
+        masses = np.asarray(context.mass, dtype=float)
+        times = np.asarray(context.time, dtype=float)
+        if masses.size < 2 or times.size < 2:
+            return
+        twin = ax.twiny()
+        twin.set_xlim(ax.get_xlim())
+
+        def _format(value: float, _pos: int) -> str:
+            converted = context.mass_to_time([value])
+            try:
+                numeric = float(np.asarray(converted).ravel()[0])
+            except Exception:
+                return ""
+            if not np.isfinite(numeric):
+                return ""
+            return f"{numeric:.2f}"
+
+        twin.xaxis.set_major_formatter(FuncFormatter(_format))
+        twin.set_xlabel(TIME_AXIS_LABEL, fontsize=14)
+        twin.tick_params(axis="x", labelsize=12, width=1.2, length=6)
+        twin.set_navigate(False)
+        twin.patch.set_visible(False)
+        for spine in twin.spines.values():
+            spine.set_visible(False)
+        twin.grid(False)
+        ax._time_axis = twin
+
     def _plot_channel(self, ax, event_name: str, channel: str, overlay_mode: bool, missing_channels: List[str]) -> bool:
         definition = CHANNEL_DEFS[channel]
         time_data = self._get_dataset(event_name, definition.time_dataset)
@@ -4553,9 +4895,26 @@ class MainWindow(QMainWindow):
                 if n == 0:
                     reason = "Empty dataset"
                 else:
-                    values = self._apply_plot_scale(channel, y[:n])
+                    times = np.asarray(t[:n], dtype=float)
+                    values = np.asarray(self._apply_plot_scale(channel, y[:n]), dtype=float)
+                    x_values = times
+                    context: Optional[MassAxisContext] = None
+                    if channel == "TOF Combined" and not overlay_mode:
+                        context = self._compute_combined_mass_axis(event_name, times)
+                        if context is not None and context.mass.size and values.size:
+                            m = min(context.mass.size, values.size)
+                            if m > 0:
+                                context = context.trimmed(m)
+                                values = values[:m]
+                                x_values = context.mass
+                            else:
+                                context = None
+                        else:
+                            context = None
+                    if context is None:
+                        x_values = times
                     ax.plot(
-                        t[:n],
+                        x_values,
                         values,
                         color="#111111",
                         linewidth=1.1,
@@ -4563,6 +4922,10 @@ class MainWindow(QMainWindow):
                         label=None,
                         zorder=2,
                     )
+                    if context is not None:
+                        ax._custom_xlabel = MASS_AXIS_LABEL
+                        ax._mass_axis_context = context
+                        self._attach_time_axis(ax, context)
                     base_plotted = True
 
         fit_plotted = self._plot_fit(ax, event_name, channel, overlay_mode)
@@ -4717,8 +5080,16 @@ class MainWindow(QMainWindow):
             times = np.asarray(time_values[:n], dtype=float)
             values = np.asarray(fit_values[:n], dtype=float)
 
+            x_values = times
+            if channel == "TOF Combined" and not overlay_mode:
+                context = getattr(ax, "_mass_axis_context", None)
+                if isinstance(context, MassAxisContext):
+                    converted = context.time_to_mass(times)
+                    if converted.size:
+                        x_values = np.asarray(converted, dtype=float)
+
             ax.plot(
-                times,
+                x_values,
                 values,
                 color="#c1121f",
                 linewidth=2.4,
@@ -4765,8 +5136,12 @@ class MainWindow(QMainWindow):
         current_family = CHANNEL_DEFS.get(channel)
         family_name = current_family.family if current_family else None
         show_x = bottom or (next_family is not None and next_family != family_name)
+        custom_label = getattr(ax, "_custom_xlabel", None)
         if show_x:
-            ax.set_xlabel(TIME_AXIS_LABEL, fontsize=16)
+            if custom_label:
+                ax.set_xlabel(custom_label, fontsize=16)
+            else:
+                ax.set_xlabel(TIME_AXIS_LABEL, fontsize=16)
         else:
             ax.set_xlabel("")
 
