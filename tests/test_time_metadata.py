@@ -146,6 +146,9 @@ def quicklook_functions(monkeypatch: pytest.MonkeyPatch):
 def hdf_explorer_class(monkeypatch: pytest.MonkeyPatch):
     _install_qt_stubs(monkeypatch)
     _install_quicklook_dependency_stubs(monkeypatch)
+    import matplotlib
+
+    monkeypatch.setattr(matplotlib, "use", lambda *args, **kwargs: None)
     module = importlib.import_module("spectrumpy_flight.HDF_Explorer")
     return module.HDFDataExplorer
 
@@ -186,4 +189,18 @@ def test_metadata_epoch_from_timestamp_string(hdf_explorer_class):
     explorer = object.__new__(hdf_explorer_class)
     expected = _utc_timestamp(2023, 7, 25, 9, 15)
     datasets = {"Timestamp": np.array(["2023-07-25T09:15:00Z"], dtype=object)}
+    assert explorer._metadata_epoch_from(datasets) == pytest.approx(expected)
+
+
+def test_first_finite_value_accepts_numpy_datetime(hdf_explorer_class):
+    explorer = object.__new__(hdf_explorer_class)
+    expected = _utc_timestamp(2023, 7, 25, 10, 45)
+    datasets = np.array([np.datetime64("2023-07-25T10:45:00")])
+    assert explorer._first_finite_value(datasets) == pytest.approx(expected)
+
+
+def test_metadata_epoch_from_numpy_datetime(hdf_explorer_class):
+    explorer = object.__new__(hdf_explorer_class)
+    expected = _utc_timestamp(2023, 7, 25, 11, 30)
+    datasets = {"Timestamp": np.array([np.datetime64("2023-07-25T11:30:00")])}
     assert explorer._metadata_epoch_from(datasets) == pytest.approx(expected)
