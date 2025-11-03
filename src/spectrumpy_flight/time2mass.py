@@ -161,6 +161,8 @@ def _assign_mass_lines(
     mass_scale: np.ndarray,
     references: Sequence[MassReference],
     calibration: Optional[TOFMassCal] = None,
+    *,
+    max_remaining_peaks: Optional[int] = None,
 ) -> Dict[str, object]:
     if detection_signal.size == 0 or step_us <= 0.0:
         return {
@@ -260,6 +262,24 @@ def _assign_mass_lines(
 
     if available_peaks:
         remaining = sorted(set(available_peaks) - used_indices)
+        if max_remaining_peaks is not None and max_remaining_peaks >= 0:
+            if max_remaining_peaks == 0:
+                remaining = []
+            else:
+                heights = []
+                indices = []
+                for peak_index in remaining:
+                    if 0 <= peak_index < detection_signal.size:
+                        height = float(detection_signal[peak_index])
+                        if np.isfinite(height):
+                            heights.append(height)
+                            indices.append(peak_index)
+                if indices:
+                    order = np.argsort(heights)[::-1]
+                    selected = [int(indices[i]) for i in order[:max_remaining_peaks]]
+                    remaining = selected
+                else:
+                    remaining = []
         for peak_index in remaining:
             if peak_index < 0 or peak_index >= detection_signal.size:
                 continue
@@ -514,7 +534,7 @@ def peak_time2mass(TOF, time):
     plt.grid(True)
     plt.show()
 
-def time2mass(TOF, time, *, allow_out_of_range: bool = False):
+def time2mass(TOF, time, *, allow_out_of_range: bool = False, max_auto_lines: Optional[int] = None):
     """Return optimised mass-axis parameters for a TOF waveform."""
 
     global _LAST_ASSIGNMENTS
@@ -632,6 +652,7 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
             0.0,
             mass_scale,
             references,
+            max_remaining_peaks=max_auto_lines,
         )
         _LAST_ASSIGNMENTS["origin"] = origin_us
         return fallback, 0.0, mass_scale
@@ -659,6 +680,7 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
         shift_us,
         mass_scale,
         references,
+        max_remaining_peaks=max_auto_lines,
     )
     assignments["origin"] = origin_us
 
@@ -707,6 +729,7 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False):
             mass_scale,
             references,
             calibration=calibration_model,
+            max_remaining_peaks=max_auto_lines,
         )
         assignments["origin"] = origin_us
     else:
