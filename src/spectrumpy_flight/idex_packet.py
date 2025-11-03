@@ -427,6 +427,19 @@ def _analyse_mass_lines(signal: np.ndarray, time_axis: np.ndarray) -> Optional[D
     stretch = float(np.clip(stretch, MASS_STRETCH_MIN, MASS_STRETCH_MAX))
     assignments = get_last_mass_line_assignments() or {}
     peaks = np.asarray(assignments.get('peaks', np.array([], dtype=int)), dtype=int)
+    origin_value = assignments.get('origin')
+    try:
+        calibration_origin = float(origin_value)
+    except Exception:
+        calibration_origin = float('nan')
+    if not np.isfinite(calibration_origin):
+        if time_axis.size:
+            try:
+                calibration_origin = float(time_axis[0])
+            except Exception:
+                calibration_origin = 0.0
+        else:
+            calibration_origin = 0.0
 
     mass_line_records: List[Dict[str, object]] = []
     total_area = 0.0
@@ -518,6 +531,7 @@ def _analyse_mass_lines(signal: np.ndarray, time_axis: np.ndarray) -> Optional[D
         'assignments': assignments,
         'total_area': float(total_area),
         'calibration': assignments.get('calibration'),
+        'calibration_origin': float(calibration_origin),
     }
 
 
@@ -2532,10 +2546,15 @@ class IDEXEvent:
                     channel_group.attrs['MassShift'] = shift
                     channel_group.attrs['MassKappa'] = kappa
                     calibration = mass_data.get('calibration') if mass_data else None
+                    calibration_origin = mass_data.get('calibration_origin') if mass_data else None
                     if calibration:
                         channel_group.attrs['MassCalibration'] = json.dumps(calibration)
                     elif 'MassCalibration' in channel_group.attrs:
                         del channel_group.attrs['MassCalibration']
+                    if calibration_origin is not None and np.isfinite(calibration_origin):
+                        channel_group.attrs['MassCalibrationOrigin'] = float(calibration_origin)
+                    elif 'MassCalibrationOrigin' in channel_group.attrs:
+                        del channel_group.attrs['MassCalibrationOrigin']
                     if mass_data and mass_data.get('mass_lines'):
                         _serialise_mass_lines(channel_group, mass_data.get('mass_lines', []))
                     else:
@@ -2660,10 +2679,15 @@ class IDEXEvent:
                         dust_group.attrs['MassStretch'] = float(mass_data.get('stretch', np.nan))
                         dust_group.attrs['MassShift'] = float(mass_data.get('shift', np.nan))
                         calibration = mass_data.get('calibration')
+                        calibration_origin = mass_data.get('calibration_origin')
                         if calibration:
                             dust_group.attrs['MassCalibration'] = json.dumps(calibration)
                         elif 'MassCalibration' in dust_group.attrs:
                             del dust_group.attrs['MassCalibration']
+                        if calibration_origin is not None and np.isfinite(calibration_origin):
+                            dust_group.attrs['MassCalibrationOrigin'] = float(calibration_origin)
+                        elif 'MassCalibrationOrigin' in dust_group.attrs:
+                            del dust_group.attrs['MassCalibrationOrigin']
                         mass_lines = mass_data.get('mass_lines', [])
                         if mass_lines:
                             _serialise_mass_lines(dust_group, mass_lines)

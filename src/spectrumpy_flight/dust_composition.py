@@ -104,6 +104,7 @@ from matplotlib.figure import Figure
 from matplotlib.widgets import SpanSelector
 
 from .plot_style import apply_plot_style
+from .mass_calibration import TOFMassCal
 
 from .line_shapes import (
     double_emg as _line_double_emg,
@@ -178,6 +179,8 @@ DEFAULT_MASS_STRETCH = 1.492
 DEFAULT_MASS_SHIFT = -10.0
 MIN_MASS_STRETCH = 1.3
 MAX_MASS_STRETCH = 1.6
+
+CALIBRATION_MAX_ORDER = 4
 
 
 def _clamp_mass_stretch(value: float) -> float:
@@ -3489,6 +3492,8 @@ class DustCompositionWindow(QMainWindow):
         self._combination_channels: Optional[Tuple[str, ...]] = None
         self._baseline = 0.0
         self._mass_params = {"stretch": DEFAULT_MASS_STRETCH, "shift": DEFAULT_MASS_SHIFT}
+        self._mass_calibration: Optional[TOFMassCal] = None
+        self._calibration_origin: float = 0.0
         self._mass_params_loaded = False
         self._mass_axis_lock_level = 0
         self._mass_lines: List[MassLineFit] = []
@@ -3587,6 +3592,8 @@ class DustCompositionWindow(QMainWindow):
         self._combined_cached_mass = None
         self._baseline = 0.0
         self._mass_params = {"stretch": DEFAULT_MASS_STRETCH, "shift": DEFAULT_MASS_SHIFT}
+        self._mass_calibration = None
+        self._calibration_origin = 0.0
         self._mass_params_loaded = False
         self._mass_axis_lock_level = 0
         self._mass_lines = []
@@ -3736,6 +3743,13 @@ class DustCompositionWindow(QMainWindow):
                 self._time_axis = np.asarray(time_ds[()], dtype=float).ravel()
         except Exception:
             self._time_axis = np.zeros(0)
+        if self._time_axis.size:
+            try:
+                self._calibration_origin = float(self._time_axis[0])
+            except Exception:
+                self._calibration_origin = 0.0
+        else:
+            self._calibration_origin = 0.0
         for channel in ("TOF L", "TOF M", "TOF H"):
             try:
                 dataset = self._group.get(channel)
@@ -3782,14 +3796,39 @@ class DustCompositionWindow(QMainWindow):
         except Exception:
             self._baseline = 0.0
 
+        calibration_origin: Optional[float] = None
+        try:
+            origin_attr = group.attrs.get("MassCalibrationOrigin")
+            if origin_attr is not None:
+                calibration_origin = float(origin_attr)
+        except Exception:
+            calibration_origin = None
+
+        calibration_model: Optional[TOFMassCal] = None
+        calibration_raw = group.attrs.get("MassCalibration") if "MassCalibration" in group.attrs else None
+        if calibration_raw is not None:
+            try:
+                if isinstance(calibration_raw, bytes):
+                    calibration_raw = calibration_raw.decode("utf-8")
+                calibration_dict = json.loads(calibration_raw)
+                calibration_model = TOFMassCal.from_dict(calibration_dict)
+            except Exception:
+                calibration_model = None
+
+        if calibration_model is not None:
+            self._apply_mass_calibration(calibration_model, origin=calibration_origin)
+        elif calibration_origin is not None and math.isfinite(calibration_origin):
+            self._apply_mass_calibration(None, origin=calibration_origin)
+
         try:
             stored_stretch = float(group.attrs.get("MassStretch", DEFAULT_MASS_STRETCH))
             if math.isfinite(stored_stretch) and stored_stretch > MAX_MASS_STRETCH * 10:
                 stored_stretch /= 1000.0
-            self._mass_params["stretch"] = stored_stretch
-            self._mass_params["shift"] = float(group.attrs.get("MassShift", DEFAULT_MASS_SHIFT))
-            self._mass_params_loaded = True
-            self._combined_cached_mass = None
+            if calibration_model is None:
+                self._mass_params["stretch"] = stored_stretch
+                self._mass_params["shift"] = float(group.attrs.get("MassShift", DEFAULT_MASS_SHIFT))
+                self._mass_params_loaded = True
+                self._combined_cached_mass = None
         except Exception:
             pass
 
@@ -4062,6 +4101,51 @@ class DustCompositionWindow(QMainWindow):
             if self._load_mass_line_table(table):
                 break
 
+    def _apply_mass_calibration(
+        self,
+        calibration: Optional[TOFMassCal],
+        *,
+        origin: Optional[float] = None,
+    ) -> None:
+        """Apply a calibration model and refresh dependent state."""
+
+        if origin is None or not math.isfinite(origin):
+            if math.isfinite(self._calibration_origin):
+                origin = float(self._calibration_origin)
+            elif self._time_axis.size:
+                try:
+                    origin = float(self._time_axis[0])
+                except Exception:
+                    origin = 0.0
+            else:
+                origin = 0.0
+
+        if calibration is None:
+            self._mass_calibration = None
+            if origin is not None and math.isfinite(origin):
+                self._calibration_origin = float(origin)
+            self._combined_cached_mass = None
+            return
+
+        coeffs = np.asarray(calibration.coeffs, dtype=float)
+        shift = float(coeffs[0]) if coeffs.size else self._mass_params.get("shift", DEFAULT_MASS_SHIFT)
+        stretch = (
+            float(coeffs[1])
+            if coeffs.size > 1
+            else self._mass_params.get("stretch", DEFAULT_MASS_STRETCH)
+        )
+        if not math.isfinite(stretch) or abs(stretch) < 1.0e-12:
+            stretch = self._mass_params.get("stretch", DEFAULT_MASS_STRETCH)
+        self._mass_calibration = calibration
+        if origin is not None and math.isfinite(origin):
+            self._calibration_origin = float(origin)
+        else:
+            self._calibration_origin = 0.0
+        self._mass_params["stretch"] = float(stretch)
+        self._mass_params["shift"] = float(shift)
+        self._mass_params_loaded = True
+        self._combined_cached_mass = None
+
     def _estimate_mass_axis(self, pairs: Iterable[Tuple[float, float]]) -> None:
         mu_values: List[float] = []
         mass_values: List[float] = []
@@ -4073,8 +4157,34 @@ class DustCompositionWindow(QMainWindow):
             return
         mu_arr = np.asarray(mu_values, dtype=float)
         mass_arr = np.asarray(mass_values, dtype=float)
+        origin = float(self._calibration_origin) if math.isfinite(self._calibration_origin) else 0.0
+        if not math.isfinite(origin):
+            origin = 0.0
+        if self._time_axis.size:
+            try:
+                origin = float(self._time_axis[0])
+            except Exception:
+                pass
+        offsets = mu_arr - origin
+        if np.nanmin(offsets) < 0:
+            origin = float(np.nanmin(mu_arr))
+            offsets = mu_arr - origin
+        calibration: Optional[TOFMassCal] = None
         try:
-            A = np.vstack([mu_arr, np.ones_like(mu_arr)]).T
+            calibration = TOFMassCal.from_lines(
+                mass_arr,
+                offsets,
+                max_order=CALIBRATION_MAX_ORDER,
+                mass_range=(0.0, 400.0),
+                enforce_monotonic=True,
+            )
+        except Exception:
+            calibration = None
+        if calibration is not None:
+            self._apply_mass_calibration(calibration, origin=origin)
+            return
+        try:
+            A = np.vstack([offsets, np.ones_like(offsets)]).T
             result, *_ = np.linalg.lstsq(A, mass_arr, rcond=None)
             stretch = float(result[0])
             intercept = float(result[1])
@@ -4084,6 +4194,7 @@ class DustCompositionWindow(QMainWindow):
             return
         stretch = _clamp_mass_stretch(stretch)
         shift = -intercept / stretch
+        self._apply_mass_calibration(None, origin=origin)
         self._mass_params["stretch"] = stretch
         self._mass_params["shift"] = shift
         self._mass_params_loaded = True
@@ -4740,6 +4851,20 @@ class DustCompositionWindow(QMainWindow):
     def _on_mass_params_changed(self) -> None:
         self._mass_params["stretch"] = float(self.mass_stretch_spin.value())
         self._mass_params["shift"] = float(self.mass_shift_spin.value())
+        if self._mass_calibration is not None:
+            coeffs = np.asarray(self._mass_calibration.coeffs, dtype=float)
+            updated = coeffs.copy()
+            if updated.size >= 1:
+                updated[0] = self._mass_params["shift"]
+            if updated.size >= 2:
+                updated[1] = self._mass_params["stretch"]
+            try:
+                self._mass_calibration = TOFMassCal(
+                    updated,
+                    mass_range_u=self._mass_calibration.mass_range_u,
+                )
+            except Exception:
+                self._mass_calibration = TOFMassCal(coeffs, mass_range_u=self._mass_calibration.mass_range_u)
         self._combined_cached_mass = None
         self._refresh_plot()
         self._update_tables()
@@ -5163,16 +5288,26 @@ class DustCompositionWindow(QMainWindow):
         return mass
 
     def _time_to_mass(self, time_values: np.ndarray) -> np.ndarray:
+        values = np.asarray(time_values, dtype=float)
+        if self._mass_calibration is not None:
+            origin = float(self._calibration_origin) if math.isfinite(self._calibration_origin) else 0.0
+            offsets = values - origin
+            return self._mass_calibration.tof_to_mass(offsets)
         stretch = self._mass_params.get("stretch", DEFAULT_MASS_STRETCH)
         shift = self._mass_params.get("shift", DEFAULT_MASS_SHIFT)
-        return stretch * (np.asarray(time_values, dtype=float) - shift)
+        return stretch * (values - shift)
 
     def _mass_to_time(self, mass_values: np.ndarray) -> np.ndarray:
+        values = np.asarray(mass_values, dtype=float)
+        if self._mass_calibration is not None:
+            offsets = self._mass_calibration.mass_to_tof(values)
+            origin = float(self._calibration_origin) if math.isfinite(self._calibration_origin) else 0.0
+            return offsets + origin
         stretch = self._mass_params.get("stretch", DEFAULT_MASS_STRETCH)
         shift = self._mass_params.get("shift", DEFAULT_MASS_SHIFT)
         if stretch == 0:
             stretch = 1.0
-        return np.asarray(mass_values, dtype=float) / stretch + shift
+        return values / stretch + shift
     # ---- Mass line management ------------------------------------------
     def _manual_mass_defaults(self) -> Dict[str, float | str]:
         if self._combined is not None and self._combined.size and self._time_axis.size:
@@ -5627,6 +5762,20 @@ class DustCompositionWindow(QMainWindow):
             dust_group.attrs["Baseline"] = self._baseline
             dust_group.attrs["MassStretch"] = self._mass_params.get("stretch", DEFAULT_MASS_STRETCH)
             dust_group.attrs["MassShift"] = self._mass_params.get("shift", DEFAULT_MASS_SHIFT)
+            if self._mass_calibration is not None:
+                try:
+                    dust_group.attrs["MassCalibration"] = json.dumps(self._mass_calibration.to_dict())
+                except Exception:
+                    pass
+                try:
+                    dust_group.attrs["MassCalibrationOrigin"] = float(self._calibration_origin)
+                except Exception:
+                    dust_group.attrs["MassCalibrationOrigin"] = 0.0
+            else:
+                if "MassCalibration" in dust_group.attrs:
+                    del dust_group.attrs["MassCalibration"]
+                if "MassCalibrationOrigin" in dust_group.attrs:
+                    del dust_group.attrs["MassCalibrationOrigin"]
             if self._mass_lines:
                 str_dtype = h5py.string_dtype(encoding="utf-8", length=120)
                 extras_dtype = h5py.string_dtype(encoding="utf-8", length=2048)
