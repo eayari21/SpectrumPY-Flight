@@ -117,6 +117,7 @@ from .line_shapes import (
 )
 
 from .collapsible_combo import CollapsibleComboBox
+from .ternary_guides import iter_mg_si_fe_series
 
 
 class ScrollFriendlyFigureCanvas(FigureCanvasQTAgg):
@@ -2912,6 +2913,7 @@ class TernaryCompositionDialog(QDialog):
         ax = self.figure.add_subplot(111)
         self._draw_triangle(ax)
         self._draw_grid(ax)
+        self._maybe_draw_mineral_guides(ax, selections)
 
         scatter = ax.scatter(
             xs,
@@ -2977,6 +2979,41 @@ class TernaryCompositionDialog(QDialog):
             p5 = self._barycentric_to_cartesian(frac, 1.0 - frac, 0.0)
             p6 = self._barycentric_to_cartesian(frac, 0.0, 1.0 - frac)
             ax.plot((p5[0], p6[0]), (p5[1], p6[1]), color=color, linewidth=0.8, alpha=alpha)
+
+    # ------------------------------------------------------------------
+    def _maybe_draw_mineral_guides(self, ax, selections: Sequence[TernaryAxisSelection]) -> None:
+        axis_elements = [self._infer_axis_element(sel) for sel in selections]
+        if None in axis_elements or set(axis_elements) != {"Mg", "Si", "Fe"}:
+            return
+        for label, start, end in iter_mg_si_fe_series(axis_elements):
+            sx, sy = self._barycentric_to_cartesian(*start)
+            ex, ey = self._barycentric_to_cartesian(*end)
+            ax.plot(
+                (sx, ex),
+                (sy, ey),
+                color="#6c757d",
+                linewidth=1.2,
+                linestyle="--",
+                zorder=2.5,
+            )
+            mid = tuple((start[i] + end[i]) / 2.0 for i in range(3))
+            mx, my = self._barycentric_to_cartesian(*mid)
+            ax.text(
+                mx,
+                my,
+                label,
+                fontsize=10,
+                ha="center",
+                va="center",
+                color="#212529",
+                bbox={
+                    "boxstyle": "round,pad=0.2",
+                    "fc": "#ffffff",
+                    "ec": "none",
+                    "alpha": 0.85,
+                },
+                zorder=4.5,
+            )
 
     # ------------------------------------------------------------------
     def _label_vertices(self, ax, labels: Sequence[str]) -> None:

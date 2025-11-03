@@ -18,6 +18,8 @@ from matplotlib import pyplot as plt
 from matplotlib.ticker import LogFormatterSciNotation, LogLocator, ScalarFormatter
 from matplotlib.backends.backend_pdf import PdfPages
 
+from .ternary_guides import iter_mg_si_fe_series
+
 from .line_shapes import emg as _emg_profile
 from .time2mass import time2mass as optimise_time2mass
 from .lookup import dust_estimator as _dust_estimator
@@ -1025,6 +1027,38 @@ def _ternary_to_cartesian(mg: float, si: float, fe: float) -> tuple[float, float
     return float(coord[0]), float(coord[1])
 
 
+def _draw_mineral_guides(ax) -> None:
+    for label, start, end in iter_mg_si_fe_series(("Mg", "Si", "Fe")):
+        sx, sy = _ternary_to_cartesian(*start)
+        ex, ey = _ternary_to_cartesian(*end)
+        ax.plot(
+            (sx, ex),
+            (sy, ey),
+            color="#6c757d",
+            linewidth=1.3,
+            linestyle="--",
+            zorder=2.5,
+        )
+        mid = tuple((start[i] + end[i]) / 2.0 for i in range(3))
+        mx, my = _ternary_to_cartesian(*mid)
+        ax.text(
+            mx,
+            my,
+            label,
+            fontsize=10,
+            ha="center",
+            va="center",
+            color="#212529",
+            bbox={
+                "boxstyle": "round,pad=0.2",
+                "fc": "#ffffff",
+                "ec": "none",
+                "alpha": 0.8,
+            },
+            zorder=4.5,
+        )
+
+
 def _ternary_figure(
     points: Sequence[tuple[float, float, float]],
     *,
@@ -1038,6 +1072,7 @@ def _ternary_figure(
     vertices = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, np.sqrt(3.0) / 2.0]])
     loop = np.vstack([vertices, vertices[0]])
     ax.plot(loop[:, 0], loop[:, 1], color="#444444", linewidth=1.5)
+    _draw_mineral_guides(ax)
     ax.text(-0.05, -0.05, "Mg", fontsize=12, fontweight="bold")
     ax.text(1.05, -0.05, "Si", fontsize=12, fontweight="bold", ha="right")
     ax.text(0.5, np.sqrt(3.0) / 2.0 + 0.05, "Fe", fontsize=12, fontweight="bold", ha="center")
@@ -1054,6 +1089,7 @@ def _ternary_figure(
             edgecolor="white",
             linewidth=0.75,
             s=60,
+            zorder=5.0,
         )
     else:
         ax.text(
