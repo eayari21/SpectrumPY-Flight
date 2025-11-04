@@ -150,6 +150,32 @@ def _compute_mass_axis(time_zero_us: np.ndarray, stretch_us: float, shift_us: fl
     return np.clip(masses, 0.0, 400.0)
 
 
+def _select_evenly_spaced_indices(indices: Sequence[int], count: int) -> List[int]:
+    """Return ``count`` indices that are as evenly spaced as possible."""
+
+    unique_sorted = np.array(sorted({int(idx) for idx in indices}), dtype=int)
+    if count <= 0 or unique_sorted.size == 0:
+        return []
+    if count >= unique_sorted.size:
+        return unique_sorted.tolist()
+
+    segments = np.array_split(unique_sorted, count)
+    selected: List[int] = []
+    for segment in segments:
+        if segment.size == 0:
+            continue
+        selected.append(int(segment[segment.size // 2]))
+
+    if len(selected) < count:
+        remaining = [int(idx) for idx in unique_sorted if int(idx) not in selected]
+        for idx in remaining:
+            selected.append(idx)
+            if len(selected) >= count:
+                break
+
+    return selected[:count]
+
+
 def _assign_mass_lines(
     detection_signal: np.ndarray,
     fit_signal: np.ndarray,
@@ -173,12 +199,38 @@ def _assign_mass_lines(
             "step": float(step_us),
         }
 
+    if max_remaining_peaks is None:
+        max_total_lines: Optional[int] = None
+    else:
+        try:
+            max_total_lines = int(max_remaining_peaks)
+        except (TypeError, ValueError):
+            max_total_lines = None
+
     robust_noise = _robust_std(detection_signal)
     absolute_max = float(np.nanmax(detection_signal)) if detection_signal.size else 0.0
     prominence = max(absolute_max * 0.015, robust_noise * 4.5, 1e-6)
     distance = max(5, int(round(0.18 / max(step_us, 1e-6))))
     peaks, _ = find_peaks(detection_signal, prominence=prominence, distance=distance)
     peaks = peaks.astype(int, copy=False)
+
+    if max_total_lines is not None and max_total_lines > 0:
+        desired_peak_count = max(max_total_lines, len(references))
+        adjusted_prominence = prominence
+        for _ in range(5):
+            if peaks.size <= desired_peak_count * 3:
+                break
+            adjusted_prominence *= 1.5
+            new_peaks, _ = find_peaks(
+                detection_signal,
+                prominence=adjusted_prominence,
+                distance=distance,
+            )
+            new_peaks = new_peaks.astype(int, copy=False)
+            if new_peaks.size >= peaks.size:
+                break
+            peaks = new_peaks
+        prominence = adjusted_prominence
 
     tolerance = max(6, int(round(0.22 / max(step_us, 1e-6))))
     half_window = max(8, int(round(0.35 / max(step_us, 1e-6))))
@@ -260,26 +312,22 @@ def _assign_mass_lines(
         })
         line_id += 1
 
+    if max_total_lines is None:
+        remaining_slots: Optional[int] = None
+    else:
+        remaining_slots = max(0, max_total_lines - len(mass_lines))
+
     if available_peaks:
         remaining = sorted(set(available_peaks) - used_indices)
-        if max_remaining_peaks is not None and max_remaining_peaks >= 0:
-            if max_remaining_peaks == 0:
+        if remaining_slots is not None:
+            if remaining_slots == 0:
                 remaining = []
+            elif len(remaining) > remaining_slots:
+                remaining = _select_evenly_spaced_indices(remaining, remaining_slots)
             else:
-                heights = []
-                indices = []
-                for peak_index in remaining:
-                    if 0 <= peak_index < detection_signal.size:
-                        height = float(detection_signal[peak_index])
-                        if np.isfinite(height):
-                            heights.append(height)
-                            indices.append(peak_index)
-                if indices:
-                    order = np.argsort(heights)[::-1]
-                    selected = [int(indices[i]) for i in order[:max_remaining_peaks]]
-                    remaining = selected
-                else:
-                    remaining = []
+                remaining = _select_evenly_spaced_indices(remaining, len(remaining))
+        else:
+            remaining = _select_evenly_spaced_indices(remaining, len(remaining))
         for peak_index in remaining:
             if peak_index < 0 or peak_index >= detection_signal.size:
                 continue
@@ -319,6 +367,10 @@ def _assign_mass_lines(
                 "mass_scale_value": mass_scale_value,
             })
             line_id += 1
+            if remaining_slots is not None:
+                remaining_slots -= 1
+                if remaining_slots <= 0:
+                    break
 
     return {
         "peaks": peaks,
