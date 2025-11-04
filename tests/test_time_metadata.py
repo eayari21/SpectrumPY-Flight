@@ -11,6 +11,13 @@ import pytest
 SRC_DIR = Path(__file__).resolve().parents[1] / "src" / "spectrumpy_flight"
 
 
+sys.path.insert(0, str(SRC_DIR.parent))
+from spectrumpy_flight.spacecraft_clock import (  # type: ignore[import]
+    SPACECRAFT_EPOCH,
+    spacecraft_seconds_to_datetime,
+)
+
+
 def _install_qt_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     if "PyQt6" in sys.modules:
         return
@@ -204,3 +211,13 @@ def test_metadata_epoch_from_numpy_datetime(hdf_explorer_class):
     expected = _utc_timestamp(2023, 7, 25, 11, 30)
     datasets = {"Timestamp": np.array([np.datetime64("2023-07-25T11:30:00")])}
     assert explorer._metadata_epoch_from(datasets) == pytest.approx(expected)
+
+
+def test_spacecraft_epoch_base_year():
+    assert SPACECRAFT_EPOCH == datetime(2010, 1, 1, tzinfo=timezone.utc)
+
+
+def test_spacecraft_seconds_to_datetime_coarse_example():
+    coarse_seconds = 497_031_598
+    expected = datetime(2025, 10, 1, 16, 19, 58, tzinfo=timezone.utc)
+    assert spacecraft_seconds_to_datetime(coarse_seconds) == expected

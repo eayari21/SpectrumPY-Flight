@@ -58,12 +58,22 @@ if __package__ is None or __package__ == "":
     from rice_decode import idex_rice_Decode
     from time2mass import time2mass, get_last_mass_line_assignments
     from lookup.dust_estimator import estimate_particle, load_default_tables
+    from spacecraft_clock import (
+        SPACECRAFT_EPOCH,
+        combine_coarse_fine_seconds,
+        spacecraft_seconds_to_datetime,
+    )
 else:
     from .plot_style import apply_plot_style
     from .idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
     from .rice_decode import idex_rice_Decode
     from .time2mass import time2mass, get_last_mass_line_assignments
     from .lookup.dust_estimator import estimate_particle, load_default_tables
+    from .spacecraft_clock import (
+        SPACECRAFT_EPOCH,
+        combine_coarse_fine_seconds,
+        spacecraft_seconds_to_datetime,
+    )
 
 apply_plot_style()
 import numpy as np
@@ -2082,12 +2092,17 @@ class IDEXEvent:
 
 
                     # self.header[evtnum][f"TimeIntervals"] = pkt.data['IDX__SCI0TIME32'].derived_value  # Store the number of 20 us intervals in the respective CDF "Time" variables
-                    self.header[(evtnum, 'Timestamp')] = pkt.data['SHCOARSE'].derived_value + 20*(10**(-6))*pkt.data['SHFINE'].derived_value # Use this as the CDF epoch
-                    print(f"Timestamp = {self.header[(evtnum, 'Timestamp')]} seconds since epoch (Midnight January 1st, 2012)")
+                    seconds_since_spacecraft_epoch = combine_coarse_fine_seconds(
+                        pkt.data['SHCOARSE'].derived_value,
+                        pkt.data['SHFINE'].derived_value,
+                    )
+                    print(
+                        "Timestamp ="
+                        f" {seconds_since_spacecraft_epoch} seconds since epoch (Midnight January 1st,"
+                        f" {SPACECRAFT_EPOCH.year})"
+                    )
 
-                    # Convert seconds since spacecraft epoch (2012-01-01) to UTC
-                    spacecraft_epoch = datetime(2012, 1, 1, tzinfo=timezone.utc)
-                    utc_time = spacecraft_epoch + timedelta(seconds=self.header[(evtnum, 'Timestamp')])
+                    utc_time = spacecraft_seconds_to_datetime(seconds_since_spacecraft_epoch)
                     # mst_offset = timedelta(hours=-7)
                     # mst_time = utc_time + mst_offset
                     print(f"Trigger time = {utc_time}")
