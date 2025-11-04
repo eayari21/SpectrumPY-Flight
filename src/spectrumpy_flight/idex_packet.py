@@ -80,6 +80,7 @@ import numpy as np
 
 MASS_STRETCH_MIN = 1.3
 MASS_STRETCH_MAX = 1.6
+DEFAULT_MAX_AUTO_MASS_LINES = 15
 
 COMBINED_SIGNAL_DATASET = "CombinedSignal"
 COMBINED_TIME_DATASET = "CombinedTime"
@@ -2403,7 +2404,11 @@ class IDEXEvent:
 
                 if channel == 'TOF H':
                     baseline_corrected = transformed_data - baseline_value
-                    mass_data = _analyse_mass_lines(baseline_corrected, analysis['time_array'])
+                    mass_data = _analyse_mass_lines(
+                        baseline_corrected,
+                        analysis['time_array'],
+                        max_auto_lines=DEFAULT_MAX_AUTO_MASS_LINES,
+                    )
                     if mass_data is not None:
                         assignments = mass_data.get('assignments', {})
                         peaks = np.asarray(assignments.get('peaks', np.array([], dtype=int)), dtype=int)
@@ -2696,9 +2701,9 @@ class IDEXEvent:
                         baseline_corrected = combined
                     combined_snr = calculate_snr(baseline_corrected, combined_time)
                     if np.isfinite(combined_snr) and combined_snr <= 3.0:
-                        max_auto_lines = 5
+                        max_auto_lines = min(DEFAULT_MAX_AUTO_MASS_LINES, 5)
                     else:
-                        max_auto_lines = None
+                        max_auto_lines = DEFAULT_MAX_AUTO_MASS_LINES
                     mass_data = _analyse_mass_lines(
                         baseline_corrected,
                         combined_time,
