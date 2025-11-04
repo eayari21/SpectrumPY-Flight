@@ -14,6 +14,7 @@ import argparse
 import json
 import math
 import os
+import re
 import socket
 import sys
 import bitstring
@@ -148,6 +149,24 @@ def create_dataset_if_not_exists(hdf5_file, dataset_path, data, *, dtype=None):
     if dtype is not None:
         return hdf5_file.create_dataset(dataset_path, data=data, dtype=dtype)
     return hdf5_file.create_dataset(dataset_path, data=data)
+
+
+_FILENAME_EPOCH_PATTERN = re.compile(r"(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})")
+
+
+def _parse_filename_epoch(filename: str) -> Optional[datetime]:
+    """Return a timezone-aware datetime parsed from the capture filename."""
+
+    name = Path(filename).name
+    match = _FILENAME_EPOCH_PATTERN.search(name)
+    if not match:
+        return None
+
+    month, day, year, hour, minute, second = map(int, match.groups())
+    try:
+        return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+    except ValueError:
+        return None
 
 
 def _collection_efficiency_ratio(
@@ -1763,6 +1782,32 @@ class IDEXEvent:
         self.hgdelay = 0
         self.hstime = np.array([], dtype=float)
         self.lstime = np.array([], dtype=float)
+        self._coarse_period = float(1 << 16)
+        self._seconds_offset: Optional[float] = None
+        self._rollover_count = 0
+        self._last_base_seconds: Optional[float] = None
+        self._last_mod_seconds: Optional[float] = None
+        self._filename_epoch = _parse_filename_epoch(filename)
+        if self._filename_epoch is not None:
+            anchor_day_start = datetime(
+                self._filename_epoch.year,
+                self._filename_epoch.month,
+                self._filename_epoch.day,
+                tzinfo=timezone.utc,
+            )
+            self._anchor_day_start_seconds = (
+                anchor_day_start - SPACECRAFT_EPOCH
+            ).total_seconds()
+            self._anchor_seconds = (
+                self._filename_epoch - SPACECRAFT_EPOCH
+            ).total_seconds()
+            self._anchor_seconds_of_day = (
+                self._filename_epoch - anchor_day_start
+            ).total_seconds()
+        else:
+            self._anchor_day_start_seconds = None
+            self._anchor_seconds = None
+            self._anchor_seconds_of_day = None
         evtnum = 0
         for pkt in idex_packet_generator:
             print(evtnum)
@@ -2133,7 +2178,7 @@ class IDEXEvent:
 
 
                     # self.header[evtnum][f"TimeIntervals"] = pkt.data['IDX__SCI0TIME32'].derived_value  # Store the number of 20 us intervals in the respective CDF "Time" variables
-                    seconds_since_spacecraft_epoch = combine_coarse_fine_seconds(
+                    seconds_since_spacecraft_epoch = self._resolve_spacecraft_seconds(
                         pkt.data['SHCOARSE'].derived_value,
                         pkt.data['SHFINE'].derived_value,
                     )
@@ -2148,6 +2193,7 @@ class IDEXEvent:
                     # mst_time = utc_time + mst_offset
                     print(f"Trigger time = {utc_time}")
                     self.header[(evtnum, 'Timestamp')] = utc_time.timestamp()
+                    self.header[(evtnum, 'SpacecraftSeconds')] = seconds_since_spacecraft_epoch
 
 
                 if pkt.data['IDX__SCI0TYPE'].raw_value in [2, 4, 8, 16, 32, 64]:
@@ -2211,6 +2257,47 @@ class IDEXEvent:
     # ||
     # || Gather all of the events
     # || and plot them
+    def _resolve_spacecraft_seconds(self, coarse: float, fine: float) -> float:
+        """Return monotonically increasing spacecraft-clock seconds."""
+
+        coarse_masked = int(coarse) & 0xFFFF
+        seconds_mod = combine_coarse_fine_seconds(coarse_masked, fine)
+        base_seconds = seconds_mod + self._rollover_count * self._coarse_period
+
+        if self._last_base_seconds is not None and base_seconds + 1e-6 < self._last_base_seconds:
+            deficit = self._last_base_seconds - base_seconds
+            rollover_increments = int(math.floor(deficit / self._coarse_period)) + 1
+            self._rollover_count += rollover_increments
+            base_seconds = seconds_mod + self._rollover_count * self._coarse_period
+
+        self._last_mod_seconds = seconds_mod
+        self._last_base_seconds = base_seconds
+
+        if self._seconds_offset is None:
+            if self._anchor_seconds is not None:
+                raw_offset = self._anchor_seconds - base_seconds
+                if self._anchor_seconds_of_day is not None:
+                    candidate_time_of_day = base_seconds % 86400.0
+                    raw_offset += self._anchor_seconds_of_day - candidate_time_of_day
+                adjusted_seconds = base_seconds + raw_offset
+                if self._anchor_day_start_seconds is not None:
+                    day_start = self._anchor_day_start_seconds
+                    day_end = day_start + 86400.0
+                    if adjusted_seconds < day_start or adjusted_seconds >= day_end:
+                        day_span = 86400.0
+                        day_shift = math.floor((day_start - adjusted_seconds) / day_span)
+                        adjusted_seconds += day_shift * day_span
+                        while adjusted_seconds < day_start:
+                            adjusted_seconds += day_span
+                        while adjusted_seconds >= day_end:
+                            adjusted_seconds -= day_span
+                        raw_offset = adjusted_seconds - base_seconds
+                self._seconds_offset = raw_offset
+            else:
+                self._seconds_offset = 0.0
+
+        return base_seconds + self._seconds_offset
+
     def _high_trigger_offset(self) -> float:
         pre_blocks = getattr(self, "lspretrigblocks", 0)
         delay = getattr(self, "hgdelay", 0)
