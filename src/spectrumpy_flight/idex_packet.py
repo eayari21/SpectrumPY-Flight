@@ -1519,6 +1519,46 @@ def FitTargetSignal(time, targetAmp,
     else:
         baseline_mask = _quietest_window_mask(time, signal, win_us=baseline_win_us, prefer_left_of=None)
 
+    # For very small signals the onset detector can fail, causing the "quietest"
+    # window to land on the post-step segment.  That skews the baseline fit and
+    # leaves a large residual offset.  Fall back to a known pre-trigger region
+    # when possible so we still remove the baseline using only pre-event samples.
+    def _select_within(candidate_mask):
+        idx = np.where(candidate_mask)[0]
+        if idx.size == 0:
+            return np.zeros_like(candidate_mask, dtype=bool)
+        local_mask = _quietest_window_mask(time[idx], signal[idx], win_us=baseline_win_us, prefer_left_of=None)
+        result = np.zeros_like(candidate_mask, dtype=bool)
+        result[idx[local_mask]] = True
+        return result
+
+    dt = np.median(np.diff(time)) if time.size > 1 else baseline_win_us * 1e-6
+    if not np.isfinite(dt) or dt <= 0:
+        dt = baseline_win_us * 1e-6 if baseline_win_us > 0 else 1e-6
+    samples_per_window = max(3, int(round(abs((baseline_win_us * 1e-6) / dt)))) if dt > 0 else 3
+
+    fallback_candidates = [time <= -10e-6, time < 0.0]
+    fallback_mask = None
+    for candidate in fallback_candidates:
+        if np.count_nonzero(candidate) >= samples_per_window:
+            fallback_mask = _select_within(candidate)
+            if np.count_nonzero(fallback_mask) >= 2:
+                break
+
+    if fallback_mask is None or np.count_nonzero(fallback_mask) < 2:
+        if time.size:
+            fallback_mask = np.zeros_like(time, dtype=bool)
+            fallback_mask[:min(samples_per_window, time.size)] = True
+        else:
+            fallback_mask = np.zeros_like(time, dtype=bool)
+
+    if not np.isfinite(t_onset) or not np.count_nonzero(baseline_mask):
+        baseline_mask = fallback_mask
+    else:
+        selected_times = time[baseline_mask]
+        if not selected_times.size or np.any(selected_times >= t_onset):
+            baseline_mask = fallback_mask
+
     baselineraw = signal[baseline_mask]
     baselinedomain = time[baseline_mask]
 
