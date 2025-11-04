@@ -11,6 +11,13 @@ import pytest
 SRC_DIR = Path(__file__).resolve().parents[1] / "src" / "spectrumpy_flight"
 
 
+sys.path.insert(0, str(SRC_DIR.parent))
+from spectrumpy_flight.spacecraft_clock import (  # type: ignore[import]
+    SPACECRAFT_EPOCH,
+    spacecraft_seconds_to_datetime,
+)
+
+
 def _install_qt_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     if "PyQt6" in sys.modules:
         return
@@ -146,6 +153,9 @@ def quicklook_functions(monkeypatch: pytest.MonkeyPatch):
 def hdf_explorer_class(monkeypatch: pytest.MonkeyPatch):
     _install_qt_stubs(monkeypatch)
     _install_quicklook_dependency_stubs(monkeypatch)
+    import matplotlib
+
+    monkeypatch.setattr(matplotlib, "use", lambda *args, **kwargs: None)
     module = importlib.import_module("spectrumpy_flight.HDF_Explorer")
     return module.HDFDataExplorer
 
@@ -187,3 +197,27 @@ def test_metadata_epoch_from_timestamp_string(hdf_explorer_class):
     expected = _utc_timestamp(2023, 7, 25, 9, 15)
     datasets = {"Timestamp": np.array(["2023-07-25T09:15:00Z"], dtype=object)}
     assert explorer._metadata_epoch_from(datasets) == pytest.approx(expected)
+
+
+def test_first_finite_value_accepts_numpy_datetime(hdf_explorer_class):
+    explorer = object.__new__(hdf_explorer_class)
+    expected = _utc_timestamp(2023, 7, 25, 10, 45)
+    datasets = np.array([np.datetime64("2023-07-25T10:45:00")])
+    assert explorer._first_finite_value(datasets) == pytest.approx(expected)
+
+
+def test_metadata_epoch_from_numpy_datetime(hdf_explorer_class):
+    explorer = object.__new__(hdf_explorer_class)
+    expected = _utc_timestamp(2023, 7, 25, 11, 30)
+    datasets = {"Timestamp": np.array([np.datetime64("2023-07-25T11:30:00")])}
+    assert explorer._metadata_epoch_from(datasets) == pytest.approx(expected)
+
+
+def test_spacecraft_epoch_base_year():
+    assert SPACECRAFT_EPOCH == datetime(2010, 1, 1, tzinfo=timezone.utc)
+
+
+def test_spacecraft_seconds_to_datetime_coarse_example():
+    coarse_seconds = 497_031_598
+    expected = datetime(2025, 10, 1, 16, 19, 58, tzinfo=timezone.utc)
+    assert spacecraft_seconds_to_datetime(coarse_seconds) == expected

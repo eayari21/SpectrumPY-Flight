@@ -13,7 +13,7 @@ import math
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -1117,6 +1117,11 @@ class HDFDataExplorer(QWidget):
         if np.ma.is_masked(value):
             return None
         if isinstance(value, np.generic):
+            if np.issubdtype(type(value), np.datetime64):
+                if np.isnat(value):
+                    return None
+                value_ns = value.astype("datetime64[ns]").astype(np.int64)
+                return float(value_ns) / 1_000_000_000.0
             value = value.item()
         if isinstance(value, (bytes, bytearray)):
             try:
@@ -1131,6 +1136,14 @@ class HDFDataExplorer(QWidget):
                 return float(stripped)
             except ValueError:
                 return HDFDataExplorer._parse_iso_datetime(stripped)
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            else:
+                value = value.astimezone(timezone.utc)
+            return value.timestamp()
+        if isinstance(value, date):
+            return datetime.combine(value, datetime.min.time(), tzinfo=timezone.utc).timestamp()
         if value is None:
             return None
         try:
