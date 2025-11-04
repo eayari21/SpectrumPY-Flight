@@ -17,6 +17,9 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
+import re
+import traceback
+
 import importlib.util
 
 import h5py  # type: ignore[import]
@@ -25,26 +28,154 @@ import seaborn as sns
 from matplotlib import dates as mdates, pyplot as plt, ticker
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.collections import PathCollection
-from PyQt6.QtCore import Qt
+
+try:  # pragma: no cover - Qt optional in tests
+    from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
+    QT_THREADING_AVAILABLE = True
+except Exception:  # pragma: no cover - fallback for stubbed environments
+    from PyQt6.QtCore import Qt  # type: ignore
+
+    QT_THREADING_AVAILABLE = False
+
+    class QObject:  # type: ignore
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__()
+
+    class _Signal:
+        def __init__(self) -> None:
+            self._callbacks: List[Callable[..., None]] = []
+
+        def connect(self, callback: Callable[..., None]) -> None:
+            self._callbacks.append(callback)
+
+        def emit(self, *args: Any, **kwargs: Any) -> None:
+            for callback in list(self._callbacks):
+                callback(*args, **kwargs)
+
+    def pyqtSignal(*_args: object, **_kwargs: object) -> _Signal:  # type: ignore
+        return _Signal()
+
+    class QThread:  # type: ignore
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            self.started = _Signal()
+            self.finished = _Signal()
+
+        def start(self) -> None:
+            self.started.emit()
+            self.finished.emit()
+
+        def quit(self) -> None:
+            self.finished.emit()
+
+        def deleteLater(self) -> None:
+            return
+
 from PyQt6.QtGui import QIcon, QPalette, QPixmap
-from PyQt6.QtWidgets import (
-    QApplication,
-    QComboBox,
-    QDialog,
-    QFrame,
-    QGridLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QMessageBox,
-    QPushButton,
-    QSizePolicy,
-    QSlider,
-    QSpinBox,
-    QSplitter,
-    QVBoxLayout,
-    QWidget,
-)
+
+try:  # pragma: no cover - Qt optional in tests
+    from PyQt6.QtWidgets import (
+        QApplication,
+        QComboBox,
+        QDialog,
+        QDialogButtonBox,
+        QFrame,
+        QGridLayout,
+        QGroupBox,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QListWidget,
+        QListWidgetItem,
+        QMessageBox,
+        QPlainTextEdit,
+        QPushButton,
+        QSizePolicy,
+        QSlider,
+        QSpinBox,
+        QSplitter,
+        QVBoxLayout,
+        QWidget,
+    )
+except ImportError:  # pragma: no cover - fallback for stubbed environments
+    from PyQt6 import QtWidgets  # type: ignore
+
+    class _Widget:  # type: ignore
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+    class _Layout(_Widget):
+        def addWidget(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def addLayout(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def setContentsMargins(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def setSpacing(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+    class _MessageBox(_Widget):
+        @staticmethod
+        def information(*args: Any, **kwargs: Any) -> None:
+            pass
+
+        @staticmethod
+        def critical(*args: Any, **kwargs: Any) -> None:
+            pass
+
+    class _DialogButtonBox(_Widget):
+        class StandardButton:
+            Ok = object()
+            Cancel = object()
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.accepted = _Signal()
+            self.rejected = _Signal()
+
+    class _SizePolicy:  # pragma: no cover - trivial placeholder
+        class Policy:
+            Expanding = object()
+            Fixed = object()
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+    class _Splitter(_Widget):
+        def setChildrenCollapsible(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def setCollapsible(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def addWidget(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def setSizes(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+    QApplication = getattr(QtWidgets, "QApplication", _Widget)
+    QComboBox = getattr(QtWidgets, "QComboBox", _Widget)
+    QDialog = getattr(QtWidgets, "QDialog", _Widget)
+    QDialogButtonBox = getattr(QtWidgets, "QDialogButtonBox", _DialogButtonBox)
+    QFrame = getattr(QtWidgets, "QFrame", _Widget)
+    QGridLayout = getattr(QtWidgets, "QGridLayout", _Layout)
+    QGroupBox = getattr(QtWidgets, "QGroupBox", _Widget)
+    QHBoxLayout = getattr(QtWidgets, "QHBoxLayout", _Layout)
+    QLabel = getattr(QtWidgets, "QLabel", _Widget)
+    QLineEdit = getattr(QtWidgets, "QLineEdit", _Widget)
+    QListWidget = getattr(QtWidgets, "QListWidget", _Widget)
+    QListWidgetItem = getattr(QtWidgets, "QListWidgetItem", _Widget)
+    QMessageBox = getattr(QtWidgets, "QMessageBox", _MessageBox)
+    QPlainTextEdit = getattr(QtWidgets, "QPlainTextEdit", _Widget)
+    QPushButton = getattr(QtWidgets, "QPushButton", _Widget)
+    QSizePolicy = getattr(QtWidgets, "QSizePolicy", _SizePolicy)
+    QSlider = getattr(QtWidgets, "QSlider", _Widget)
+    QSpinBox = getattr(QtWidgets, "QSpinBox", _Widget)
+    QSplitter = getattr(QtWidgets, "QSplitter", _Splitter)
+    QVBoxLayout = getattr(QtWidgets, "QVBoxLayout", _Layout)
+    QWidget = getattr(QtWidgets, "QWidget", _Widget)
 
 from .idex_variable_definitions import VariableDefinitionsCatalog, load_variable_definitions
 from .paths import default_hdf5_dir
@@ -131,6 +262,7 @@ CATEGORY_ACCELERATOR = "accelerator"
 CATEGORY_DUST = "dust"
 CATEGORY_INSTRUMENT = "instrument"
 CATEGORY_OTHER = "other"
+CATEGORY_EXPRESSION = "expression"
 
 CATEGORY_DISPLAY_NAMES: Dict[str, str] = {
     CATEGORY_WAVEFORM: "Waveform analysis",
@@ -138,6 +270,7 @@ CATEGORY_DISPLAY_NAMES: Dict[str, str] = {
     CATEGORY_DUST: "Dust analysis",
     CATEGORY_INSTRUMENT: "Instrument settings",
     CATEGORY_OTHER: "Other parameters",
+    CATEGORY_EXPRESSION: "Derived expressions",
 }
 
 CATEGORY_ORDER: Tuple[str, ...] = (
@@ -146,6 +279,7 @@ CATEGORY_ORDER: Tuple[str, ...] = (
     CATEGORY_INSTRUMENT,
     CATEGORY_DUST,
     CATEGORY_OTHER,
+    CATEGORY_EXPRESSION,
 )
 
 
@@ -242,7 +376,13 @@ class AxisSelection:
 
 
 class AxisSelector(QWidget):
-    def __init__(self, label: str, parent: Optional[QWidget] = None):
+    def __init__(
+        self,
+        label: str,
+        parent: Optional[QWidget] = None,
+        *,
+        expression_callback: Optional[Callable[["AxisSelector"], None]] = None,
+    ):
         super().__init__(parent)
 
         self._label = QLabel(label)
@@ -250,10 +390,18 @@ class AxisSelector(QWidget):
         self._mode.addItems(["Value", "Ratio"])
         self._primary = CollapsibleComboBox()
         self._secondary = CollapsibleComboBox()
+        self._expression_button = QPushButton("ƒx")
+        self._expression_button.setToolTip("Build a derived expression for this axis")
+        self._expression_button.setFixedWidth(42)
+
+        self._expression_callback = expression_callback
+        if self._expression_callback is None:
+            self._expression_button.setVisible(False)
 
         self._secondary.setVisible(False)
 
         self._mode.currentIndexChanged.connect(self._update_visibility)
+        self._expression_button.clicked.connect(self._handle_expression_request)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -268,6 +416,7 @@ class AxisSelector(QWidget):
 
         self._secondary.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         row.addWidget(self._secondary)
+        row.addWidget(self._expression_button)
 
         layout.addLayout(row)
 
@@ -275,6 +424,10 @@ class AxisSelector(QWidget):
     def _update_visibility(self):
         is_ratio = self._mode.currentText().lower() == "ratio"
         self._secondary.setVisible(is_ratio)
+
+    def _handle_expression_request(self) -> None:
+        if self._expression_callback is not None:
+            self._expression_callback(self)
 
     def set_items(self, groups: Sequence[Tuple[str, Sequence[str]]]):
         prepared = [(title, [str(label) for label in labels if str(label).strip()]) for title, labels in groups]
@@ -285,6 +438,15 @@ class AxisSelector(QWidget):
         self._primary.set_grouped_items(prepared, placeholder="— Select —")
         self._secondary.set_grouped_items(prepared, placeholder="— Select —")
         self._update_visibility()
+
+    def set_primary(self, label: str) -> None:
+        index = self._primary.findText(label)
+        if index != -1:
+            self._primary.setCurrentIndex(index)
+
+    def set_expression_enabled(self, enabled: bool) -> None:
+        if self._expression_button.isVisible():
+            self._expression_button.setEnabled(enabled)
 
     def current(self) -> AxisSelection:
         mode = self._mode.currentText().lower()
@@ -297,6 +459,148 @@ class AxisSelector(QWidget):
         if mode != "ratio":
             secondary = None
         return AxisSelection(mode=mode, primary=primary, secondary=secondary)
+
+
+class ExpressionBuilderDialog(QDialog):
+    """Dialog that helps users build derived scalar expressions."""
+
+    def __init__(
+        self,
+        parent: Optional[QWidget],
+        variables: Sequence[str],
+        *,
+        initial_expression: str = "",
+    ) -> None:
+        super().__init__(parent)
+
+        self.setWindowTitle("Build derived expression")
+        self.setModal(True)
+        self.resize(640, 520)
+
+        self._all_variables = sorted(dict.fromkeys(str(var) for var in variables))
+
+        self._filter_edit = QLineEdit()
+        self._filter_edit.setPlaceholderText("Filter available quantities…")
+        self._filter_edit.textChanged.connect(self._apply_filter)
+
+        self._variables_list = QListWidget()
+        self._variables_list.itemDoubleClicked.connect(self._insert_variable_item)
+        self._populate_variable_list(self._all_variables)
+
+        insert_button = QPushButton("Insert selection")
+        insert_button.clicked.connect(self._insert_selected_variable)
+
+        operations_grid = QGridLayout()
+        operations_grid.setSpacing(6)
+
+        operations: Sequence[Tuple[str, str]] = (
+            ("+", "+"),
+            ("−", "-"),
+            ("×", "*"),
+            ("÷", "/"),
+            ("^", "**"),
+            ("(", "("),
+            (")", ")"),
+            ("log", "np.log("),
+            ("log₁₀", "np.log10("),
+            ("log₂", "np.log2("),
+            ("√", "np.sqrt("),
+            ("exp", "np.exp("),
+            ("abs", "np.abs("),
+            ("sin", "np.sin("),
+            ("cos", "np.cos("),
+            ("tan", "np.tan("),
+        )
+
+        for row, chunk in enumerate((operations[i : i + 4] for i in range(0, len(operations), 4))):
+            for col, (label, token) in enumerate(chunk):
+                button = QPushButton(label)
+                button.clicked.connect(lambda _=False, text=token: self._append_text(text))
+                button.setMinimumWidth(72)
+                operations_grid.addWidget(button, row, col)
+
+        self._expression_edit = QPlainTextEdit()
+        self._expression_edit.setPlaceholderText("Use [[Quantity name]] to reference values.")
+        self._expression_edit.setPlainText(initial_expression)
+
+        clear_button = QPushButton("Clear expression")
+        clear_button.clicked.connect(self._expression_edit.clear)
+
+        helper_label = QLabel(
+            "Double-click a quantity or use the keyboard below to build your expression. "
+            "Quantities are inserted as [[Name]] placeholders and support numpy functions like log, sqrt, and sin."
+        )
+        helper_label.setWordWrap(True)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+
+        layout = QGridLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setHorizontalSpacing(10)
+        layout.setVerticalSpacing(12)
+
+        layout.addWidget(helper_label, 0, 0, 1, 2)
+        layout.addWidget(self._filter_edit, 1, 0)
+        layout.addWidget(insert_button, 1, 1)
+        layout.addWidget(self._variables_list, 2, 0)
+        layout.addLayout(operations_grid, 2, 1)
+        layout.addWidget(self._expression_edit, 3, 0, 1, 2)
+        layout.addWidget(clear_button, 4, 0)
+        layout.addWidget(button_box, 4, 1)
+
+    # ------------------------------------------------------------------
+    def _populate_variable_list(self, variables: Sequence[str]) -> None:
+        self._variables_list.clear()
+        for label in variables:
+            self._variables_list.addItem(QListWidgetItem(label))
+
+    # ------------------------------------------------------------------
+    def _apply_filter(self, text: str) -> None:
+        cleaned = text.strip().lower()
+        if not cleaned:
+            self._populate_variable_list(self._all_variables)
+            return
+        filtered = [label for label in self._all_variables if cleaned in label.lower()]
+        self._populate_variable_list(filtered)
+
+    # ------------------------------------------------------------------
+    def _append_text(self, token: str) -> None:
+        cursor = self._expression_edit.textCursor()
+        cursor.insertText(token)
+        self._expression_edit.setTextCursor(cursor)
+
+    # ------------------------------------------------------------------
+    def _insert_variable_item(self, item: QListWidgetItem) -> None:
+        self._append_text(f"[[{item.text()}]]")
+
+    # ------------------------------------------------------------------
+    def _insert_selected_variable(self) -> None:
+        selected = self._variables_list.currentItem()
+        if selected is not None:
+            self._insert_variable_item(selected)
+
+    # ------------------------------------------------------------------
+    def expression(self) -> str:
+        return self._expression_edit.toPlainText().strip()
+
+
+class _DatasetLoader(QObject):
+    finished = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, loader: Callable[[], DataStore]) -> None:
+        super().__init__()
+        self._loader = loader
+
+    def run(self) -> None:
+        try:
+            result = self._loader()
+        except Exception:
+            self.failed.emit(traceback.format_exc())
+        else:
+            self.finished.emit(result)
 
 
 class Slicer3DViewer(QDialog):
@@ -643,18 +947,16 @@ class HDFDataExplorer(QWidget):
         else:
             self.hdf5_folder = resolved
 
+        path_exists = self.hdf5_folder.exists()
+
         self._variable_catalog: Optional[VariableDefinitionsCatalog] = self._load_variable_catalog()
         self._unit_lookup_cache: Dict[str, Optional[str]] = {}
 
-        if not self.hdf5_folder.exists():
-            QMessageBox.critical(
-                self,
-                "Data location not found",
-                f"The selected data location '{self.hdf5_folder}' does not exist.",
-            )
-            self.data_store = DataStore()
-        else:
-            self.data_store = self._load_datasets()
+        self.data_store = DataStore()
+        self._expression_definitions: Dict[str, str] = {}
+        self._load_thread: Optional[QThread] = None
+        self._loader_worker: Optional[_DatasetLoader] = None
+        self._is_loading = False
 
         self._quicklook_window: Optional[QuicklookWindow] = None
         self._slicer_window: Optional[Slicer3DViewer] = None
@@ -664,6 +966,17 @@ class HDFDataExplorer(QWidget):
         self._selected_marker: Optional[PathCollection] = None
 
         self._build_ui()
+
+        if not path_exists:
+            QMessageBox.critical(
+                self,
+                "Data location not found",
+                f"The selected data location '{self.hdf5_folder}' does not exist.",
+            )
+            self.status_label.setText("Selected data location was not found.")
+            self._set_controls_enabled(False)
+        else:
+            self._start_data_loading()
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -737,15 +1050,24 @@ class HDFDataExplorer(QWidget):
         controls_layout.setContentsMargins(0, 0, 0, 0)
         controls_layout.setSpacing(12)
 
-        self.axis_x1 = AxisSelector("Panel 1 — X axis:")
-        self.axis_y1 = AxisSelector("Panel 1 — Y axis:")
-        self.axis_c1 = AxisSelector("Panel 1 — Color:")
+        self.axis_x1 = AxisSelector("Panel 1 — X axis:", expression_callback=self._open_expression_dialog)
+        self.axis_y1 = AxisSelector("Panel 1 — Y axis:", expression_callback=self._open_expression_dialog)
+        self.axis_c1 = AxisSelector("Panel 1 — Color:", expression_callback=self._open_expression_dialog)
 
-        self.axis_x2 = AxisSelector("Panel 2 — X axis:")
-        self.axis_y2 = AxisSelector("Panel 2 — Y axis:")
-        self.axis_c2 = AxisSelector("Panel 2 — Color:")
+        self.axis_x2 = AxisSelector("Panel 2 — X axis:", expression_callback=self._open_expression_dialog)
+        self.axis_y2 = AxisSelector("Panel 2 — Y axis:", expression_callback=self._open_expression_dialog)
+        self.axis_c2 = AxisSelector("Panel 2 — Color:", expression_callback=self._open_expression_dialog)
 
-        for widget in (self.axis_x1, self.axis_y1, self.axis_c1, self.axis_x2, self.axis_y2, self.axis_c2):
+        self._axis_selectors = (
+            self.axis_x1,
+            self.axis_y1,
+            self.axis_c1,
+            self.axis_x2,
+            self.axis_y2,
+            self.axis_c2,
+        )
+
+        for widget in self._axis_selectors:
             controls_layout.addWidget(widget)
             line = QFrame()
             line.setFrameShape(QFrame.Shape.HLine)
@@ -782,14 +1104,22 @@ class HDFDataExplorer(QWidget):
         self.timeseries_button = QPushButton("Update timeseries")
         self.timeseries_button.clicked.connect(self.update_timeseries_plot)
 
+        self.timeseries_expression_button = QPushButton("Build expression…")
+        self.timeseries_expression_button.clicked.connect(self._open_expression_for_timeseries)
+
         timeseries_layout.addWidget(QLabel("Quantity"), 0, 0)
         timeseries_layout.addWidget(self.timeseries_combo, 0, 1)
         timeseries_layout.addWidget(QLabel("Time zone"), 1, 0)
         timeseries_layout.addWidget(self.timeseries_timezone_combo, 1, 1)
         timeseries_layout.addWidget(self.timeseries_button, 2, 0, 1, 2)
+        timeseries_layout.addWidget(self.timeseries_expression_button, 3, 0, 1, 2)
 
         controls_layout.addWidget(timeseries_group)
         controls_layout.addStretch(1)
+
+        self.status_label = QLabel("Loading data…")
+        self.status_label.setWordWrap(True)
+        controls_layout.addWidget(self.status_label)
 
         splitter.addWidget(controls)
 
@@ -812,6 +1142,284 @@ class HDFDataExplorer(QWidget):
         self.plot_data()
 
     # ------------------------------------------------------------------
+    def _set_controls_enabled(self, enabled: bool) -> None:
+        for selector in self._axis_selectors:
+            selector.setEnabled(enabled)
+        if not enabled:
+            self.plot_button.setEnabled(False)
+            self.slicer_button.setEnabled(False)
+            self.timeseries_combo.setEnabled(False)
+            self.timeseries_button.setEnabled(False)
+            self.timeseries_expression_button.setEnabled(False)
+        else:
+            has_scalars = bool(self.data_store.scalars)
+            has_timeseries = bool(self.data_store.scalars or self.data_store.arrays)
+            self.plot_button.setEnabled(has_scalars)
+            self.slicer_button.setEnabled(has_scalars)
+            self.timeseries_combo.setEnabled(has_timeseries and self.timeseries_combo.count() > 0)
+            self.timeseries_button.setEnabled(self.timeseries_combo.isEnabled())
+            self.timeseries_expression_button.setEnabled(has_scalars)
+
+    # ------------------------------------------------------------------
+    def _start_data_loading(self) -> None:
+        if self._is_loading:
+            return
+        self._is_loading = True
+        self.status_label.setText("Loading data…")
+        self._set_controls_enabled(False)
+
+        if not QT_THREADING_AVAILABLE:
+            try:
+                store = self._load_datasets_sync()
+            except Exception:
+                self._on_data_failed(traceback.format_exc())
+            else:
+                self._on_data_loaded(store)
+            return
+
+        self._load_thread = QThread(self)
+        self._loader_worker = _DatasetLoader(self._load_datasets_sync)
+        self._loader_worker.moveToThread(self._load_thread)
+        self._load_thread.started.connect(self._loader_worker.run)
+        self._loader_worker.finished.connect(self._on_data_loaded)
+        self._loader_worker.failed.connect(self._on_data_failed)
+        self._loader_worker.finished.connect(self._load_thread.quit)
+        self._loader_worker.failed.connect(self._load_thread.quit)
+        self._loader_worker.finished.connect(self._loader_worker.deleteLater)
+        self._load_thread.finished.connect(self._cleanup_loader_thread)
+        self._load_thread.start()
+
+    # ------------------------------------------------------------------
+    def _cleanup_loader_thread(self) -> None:
+        if self._load_thread is not None:
+            self._load_thread.deleteLater()
+        self._load_thread = None
+        self._loader_worker = None
+
+    # ------------------------------------------------------------------
+    def _on_data_loaded(self, store: DataStore) -> None:
+        self.data_store = store
+        self._is_loading = False
+        if self._expression_definitions:
+            for label, expression in list(self._expression_definitions.items()):
+                try:
+                    values = self._evaluate_scalar_expression(expression)
+                    self._register_expression(expression, values)
+                except ValueError:
+                    self._expression_definitions.pop(label, None)
+        event_count = len(store.events)
+        scalar_count = len(store.scalars)
+        self.status_label.setText(
+            f"Loaded {event_count} event{'s' if event_count != 1 else ''} with {scalar_count} scalar quantities."
+        )
+        self._refresh_selectors()
+        self._set_controls_enabled(True)
+        self.plot_data()
+
+    # ------------------------------------------------------------------
+    def _on_data_failed(self, message: str) -> None:
+        self._is_loading = False
+        self.status_label.setText("Failed to load data. See details for more information.")
+        self._set_controls_enabled(False)
+        QMessageBox.critical(self, "Unable to load data", f"An error occurred while loading datasets:\n\n{message}")
+
+    # ------------------------------------------------------------------
+    def _expression_namespace(self) -> Dict[str, Any]:
+        namespace: Dict[str, Any] = {
+            "__builtins__": {},
+            "np": np,
+            "numpy": np,
+            "math": math,
+            "pi": math.pi,
+            "e": math.e,
+            "abs": np.abs,
+            "fabs": np.fabs,
+            "sqrt": np.sqrt,
+            "log": np.log,
+            "log10": np.log10,
+            "log2": np.log2,
+            "exp": np.exp,
+            "sin": np.sin,
+            "cos": np.cos,
+            "tan": np.tan,
+            "arcsin": np.arcsin,
+            "arccos": np.arccos,
+            "arctan": np.arctan,
+            "sinh": np.sinh,
+            "cosh": np.cosh,
+            "tanh": np.tanh,
+            "deg2rad": np.deg2rad,
+            "rad2deg": np.rad2deg,
+            "pow": np.power,
+            "power": np.power,
+            "clip": np.clip,
+            "minimum": np.minimum,
+            "maximum": np.maximum,
+            "where": np.where,
+            "mean": np.mean,
+            "median": np.median,
+            "std": np.std,
+            "var": np.var,
+            "nanmean": np.nanmean,
+            "nanstd": np.nanstd,
+            "nanvar": np.nanvar,
+            "nanmin": np.nanmin,
+            "nanmax": np.nanmax,
+        }
+        return namespace
+
+    # ------------------------------------------------------------------
+    def _evaluate_scalar_expression(self, expression: str) -> np.ndarray:
+        cleaned = expression.strip()
+        if not cleaned:
+            raise ValueError("Enter an expression before applying it.")
+
+        placeholder_pattern = re.compile(r"\[\[(.+?)\]\]")
+        variable_map: Dict[str, str] = {}
+        parts: List[str] = []
+        last_index = 0
+
+        for match in placeholder_pattern.finditer(cleaned):
+            parts.append(cleaned[last_index : match.start()])
+            label = match.group(1).strip()
+            if not label:
+                raise ValueError("Encountered an empty quantity placeholder.")
+            var_name = variable_map.get(label)
+            if var_name is None:
+                var_name = f"_v{len(variable_map)}"
+                variable_map[label] = var_name
+            parts.append(var_name)
+            last_index = match.end()
+
+        parts.append(cleaned[last_index:])
+        sanitized_expression = "".join(parts)
+
+        if not variable_map:
+            raise ValueError("Select at least one quantity to build an expression.")
+
+        event_count = len(self.data_store.events)
+        locals_dict: Dict[str, np.ndarray] = {}
+
+        for label, var_name in variable_map.items():
+            if label not in self.data_store.scalars:
+                raise ValueError(f"Quantity '{label}' is not available in the current dataset.")
+            locals_dict[var_name] = np.asarray(self.data_store.scalars[label], dtype=float)
+
+        try:
+            with np.errstate(all="ignore"):
+                result = eval(sanitized_expression, self._expression_namespace(), locals_dict)
+        except Exception as exc:  # pragma: no cover - user input driven
+            raise ValueError(f"Unable to evaluate expression: {exc}") from exc
+
+        array = np.asarray(result, dtype=float)
+        if array.ndim == 0:
+            if event_count:
+                array = np.full(event_count, float(array))
+            else:
+                array = np.asarray([], dtype=float)
+        array = array.reshape(-1)
+        if event_count and array.size != event_count:
+            raise ValueError(
+                "Derived expression must evaluate to one value per event. "
+                f"Got {array.size} values for {event_count} events."
+            )
+        if not event_count:
+            return np.asarray([], dtype=float)
+        return array
+
+    # ------------------------------------------------------------------
+    def _expression_label(self, expression: str) -> str:
+        readable = re.sub(r"\s+", " ", re.sub(r"\[\[(.+?)\]\]", r"\1", expression)).strip()
+        if not readable:
+            readable = "Expression"
+        if len(readable) > 60:
+            readable = readable[:57].rstrip() + "…"
+        base = f"Expr: {readable}"
+        label = base
+        counter = 2
+        while label in self.data_store.scalars:
+            label = f"{base} ({counter})"
+            counter += 1
+        return label
+
+    # ------------------------------------------------------------------
+    def _register_expression(self, expression: str, values: np.ndarray) -> str:
+        event_count = len(self.data_store.events)
+        normalized = np.asarray(values, dtype=float)
+        if normalized.ndim == 0 and event_count:
+            normalized = np.full(event_count, float(normalized))
+        normalized = normalized.reshape(-1)
+        if event_count and normalized.size != event_count:
+            raise ValueError(
+                f"Derived expression produced {normalized.size} samples for {event_count} events."
+            )
+        if not event_count:
+            normalized = np.asarray([], dtype=float)
+
+        existing = next((label for label, expr in self._expression_definitions.items() if expr == expression), None)
+        label = existing or self._expression_label(expression)
+
+        if event_count and normalized.size == 0:
+            normalized = np.full(event_count, np.nan)
+
+        series = [float(value) if math.isfinite(float(value)) else SCALAR_SENTINEL for value in normalized]
+        if label in self.data_store.scalars:
+            self.data_store.scalars[label] = series
+        else:
+            self.data_store.scalars[label] = series
+        self.data_store.scalar_categories[label] = CATEGORY_EXPRESSION
+        self._expression_definitions[label] = expression
+        return label
+
+    # ------------------------------------------------------------------
+    def _open_expression_dialog(self, selector: AxisSelector) -> None:
+        if self._is_loading:
+            QMessageBox.information(self, "Still loading", "Please wait for the datasets to finish loading.")
+            return
+        variables = sorted(self.data_store.scalars.keys())
+        if not variables:
+            QMessageBox.information(self, "No scalar data", "Load an HDF5 file with scalar quantities first.")
+            return
+        dialog = ExpressionBuilderDialog(self, variables)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        expression = dialog.expression()
+        try:
+            values = self._evaluate_scalar_expression(expression)
+            label = self._register_expression(expression, values)
+        except ValueError as exc:
+            QMessageBox.critical(self, "Invalid expression", str(exc))
+            return
+        self._refresh_selectors()
+        selector.set_primary(label)
+        self.plot_data()
+
+    # ------------------------------------------------------------------
+    def _open_expression_for_timeseries(self) -> None:
+        if self._is_loading:
+            QMessageBox.information(self, "Still loading", "Please wait for the datasets to finish loading.")
+            return
+        variables = sorted(self.data_store.scalars.keys())
+        if not variables:
+            QMessageBox.information(self, "No scalar data", "Load an HDF5 file with scalar quantities first.")
+            return
+        dialog = ExpressionBuilderDialog(self, variables)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        expression = dialog.expression()
+        try:
+            values = self._evaluate_scalar_expression(expression)
+            label = self._register_expression(expression, values)
+        except ValueError as exc:
+            QMessageBox.critical(self, "Invalid expression", str(exc))
+            return
+        self._refresh_selectors()
+        index = self.timeseries_combo.findText(label)
+        if index != -1:
+            self.timeseries_combo.setCurrentIndex(index)
+        self.update_timeseries_plot()
+
+    # ------------------------------------------------------------------
     def _load_logo_pixmap(self, *, max_height: int = 72) -> Optional[QPixmap]:
         logo_path = _find_logo_path()
         if logo_path is None:
@@ -828,9 +1436,10 @@ class HDFDataExplorer(QWidget):
     def _refresh_selectors(self) -> None:
         scalar_groups = self._group_scalar_labels()
         has_scalar_data = bool(self.data_store.scalars)
-        selectors = (self.axis_x1, self.axis_y1, self.axis_c1, self.axis_x2, self.axis_y2, self.axis_c2)
+        selectors = self._axis_selectors
         for selector in selectors:
             selector.set_items(scalar_groups)
+            selector.set_expression_enabled(has_scalar_data)
         self.plot_button.setEnabled(has_scalar_data)
         self.slicer_button.setEnabled(has_scalar_data)
         if self._slicer_window is not None:
@@ -847,6 +1456,7 @@ class HDFDataExplorer(QWidget):
             self.timeseries_combo.addItem("No datasets available")
             self.timeseries_combo.setEnabled(False)
             self.timeseries_button.setEnabled(False)
+        self.timeseries_expression_button.setEnabled(has_scalar_data)
 
     # ------------------------------------------------------------------
     def open_slicer_viewer(self) -> None:
@@ -866,7 +1476,7 @@ class HDFDataExplorer(QWidget):
         self._slicer_window.activateWindow()
 
     # ------------------------------------------------------------------
-    def _load_datasets(self) -> DataStore:
+    def _load_datasets_sync(self) -> DataStore:
         store = DataStore()
 
         for filename in sorted(os.listdir(self.hdf5_folder)):
