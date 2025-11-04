@@ -298,9 +298,11 @@ class ImpactEvent():
             slopeguess = 0
             linparam, lin_cov = curve_fit(LinearFit, baselinedomain, baselineraw, p0=[slopeguess,0], maxfev=5_000)
             linearbase = LinearFit(self.Waveforms["Time"], linparam[0], linparam[1])
-            # self.y -= linearbase
-            self.y = detrend(self.y)
-        except:
+            # Subtract the fitted baseline directly instead of calling scipy.signal.detrend.
+            # Detrend uses the full waveform, which allows ion-step structure to bias the fit
+            # and skew small signals when the pre-trigger region contains steps.
+            self.y = self.y - linearbase
+        except Exception:
             print(f"Linear background not found for trace number {self.TraceNumber}.")
             linearbase = None
 
