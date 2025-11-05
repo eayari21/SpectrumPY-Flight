@@ -48,6 +48,9 @@ MASS_STRETCH_MIN_US = 1.3
 MASS_STRETCH_MAX_US = 1.6
 MAX_CALIBRATION_ORDER = 4
 
+MIN_EXTRA_MASS_AMU = 0.75
+MIN_MASS_LINE_SEPARATION_AMU = 0.2
+
 
 @dataclass(frozen=True)
 class MassReference:
@@ -241,6 +244,7 @@ def _assign_mass_lines(
     min_peak_height = max(absolute_max * 0.0025, noise_floor * 3.5, 1e-6)
     tail_threshold = max(min_peak_height * 0.6, noise_floor * 2.5, 1e-9)
     mass_lines: List[Dict[str, object]] = []
+    accepted_masses: List[float] = []
     line_id = 1
     for reference in references:
         if calibration is not None:
@@ -311,6 +315,8 @@ def _assign_mass_lines(
             "mass_scale_value": mass_at_peak,
         })
         line_id += 1
+        if math.isfinite(mass_at_peak):
+            accepted_masses.append(float(mass_at_peak))
 
     if max_total_lines is None:
         remaining_slots: Optional[int] = None
@@ -340,6 +346,10 @@ def _assign_mass_lines(
                 mass_scale_value = float("nan")
             if not math.isfinite(mass_scale_value):
                 continue
+            if mass_scale_value < MIN_EXTRA_MASS_AMU:
+                continue
+            if any(abs(mass_scale_value - existing) < MIN_MASS_LINE_SEPARATION_AMU for existing in accepted_masses):
+                continue
             start_idx = peak_index
             while start_idx > 0 and detection_signal[start_idx] >= tail_threshold:
                 start_idx -= 1
@@ -367,6 +377,7 @@ def _assign_mass_lines(
                 "mass_scale_value": mass_scale_value,
             })
             line_id += 1
+            accepted_masses.append(float(mass_scale_value))
             if remaining_slots is not None:
                 remaining_slots -= 1
                 if remaining_slots <= 0:
@@ -735,6 +746,42 @@ def time2mass(TOF, time, *, allow_out_of_range: bool = False, max_auto_lines: Op
         max_remaining_peaks=max_auto_lines,
     )
     assignments["origin"] = origin_us
+
+    if assignments.get("mass_lines"):
+        shift_candidates: List[float] = []
+        for line in assignments["mass_lines"]:
+            mass_reference = line.get("mass_reference")
+            time_offset = line.get("time_offset")
+            if mass_reference is None or time_offset is None:
+                continue
+            try:
+                mass_reference_value = float(mass_reference)
+                time_offset_value = float(time_offset)
+            except Exception:
+                continue
+            if not (math.isfinite(mass_reference_value) and math.isfinite(time_offset_value)):
+                continue
+            if mass_reference_value <= 0.0:
+                continue
+            shift_candidates.append(time_offset_value - stretch_us * math.sqrt(mass_reference_value))
+        if shift_candidates:
+            refined_shift = float(np.median(shift_candidates))
+            if math.isfinite(refined_shift):
+                shift_us = refined_shift
+                mass_scale = _compute_mass_axis(time_zero, stretch_us, shift_us)
+                assignments = _assign_mass_lines(
+                    smoothed,
+                    tof,
+                    time_axis,
+                    time_zero,
+                    step_us,
+                    stretch_us,
+                    shift_us,
+                    mass_scale,
+                    references,
+                    max_remaining_peaks=max_auto_lines,
+                )
+                assignments["origin"] = origin_us
 
     calibration_model: Optional[TOFMassCal] = None
     reference_masses: List[float] = []
