@@ -4,7 +4,7 @@
 
 > Ground-system decoding, fitting, and visualization tools for the LASP/IMPACT IDEX campaign.
 
-![SpectrumPY overview](src/spectrumpy_flight/docs/media/quicklook_overview.svg)
+![SpectrumPY overview](https://raw.githubusercontent.com/eayari21/4_Flight/main/src/spectrumpy_flight/docs/media/quicklook_overview.svg)
 
 ---
 
@@ -29,6 +29,17 @@ macOS-specific preparation steps are covered in
 [`src/spectrumpy_flight/docs/macos_pip_install.md`](src/spectrumpy_flight/docs/macos_pip_install.md). The document explains
 how to prepare Homebrew Python environments, optional extras, and Qt security
 prompts for first-time launches on Ventura and newer systems.【F:src/spectrumpy_flight/docs/macos_pip_install.md†L1-L83】
+
+Optional extras match the bundled feature sets declared in `pyproject.toml`.
+For example, request the PyQt GUI backend or GPU acceleration support with:
+
+```
+python -m pip install "spectrumpy-flight[pyqt]"
+python -m pip install "spectrumpy-flight[gpu]"
+```
+
+Combine extras when needed (`spectrumpy-flight[pyqt,gpu,database]`) to pull in
+all secondary dependencies listed in the metadata.【F:pyproject.toml†L32-L43】
 
 ---
 

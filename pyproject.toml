@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "spectrumpy-flight"
 version = "1.0.0"
 description = "Ground-system decoding, fitting, and visualization tools for the LASP/IMPACT IDEX campaign."
-readme = "README.md"
+readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [
@@ -47,6 +47,8 @@ database = ["mysql-connector-python>=8.0"]
 [project.urls]
 Homepage = "https://github.com/eayari21/4_Flight"
 Documentation = "https://github.com/eayari21/4_Flight/tree/main/src/spectrumpy_flight/docs"
+Source = "https://github.com/eayari21/4_Flight"
+Issues = "https://github.com/eayari21/4_Flight/issues"
 
 [project.scripts]
 spectrumpy-gui = "spectrumpy_flight.imfpy.gui.main:main"
