@@ -1856,6 +1856,15 @@ class HDFDataExplorer(QWidget):
 
             ndim = self._payload_ndim(array)
             size = self._payload_size(array)
+            if label_category == CATEGORY_DUST and size > 1:
+                # Dust analysis produces several auxiliary arrays that are
+                # useful for specialised tools but overwhelm the explorer UI.
+                # Only the scalar summaries (fit parameters, stretch/shift
+                # metrics, percentages, etc.) should remain available, so skip
+                # any multi-valued payload.  Fit parameter datasets already
+                # funnel through ``_ingest_fit_parameters`` above and bypass
+                # this guard.
+                continue
             if ndim == 0 or size == 1:
                 series = store.ensure_scalar_entry(label)
                 store.scalar_categories.setdefault(label, label_category)
