@@ -2763,13 +2763,27 @@ class IDEXEvent:
                 )
 
             string_dtype = h5py.string_dtype(encoding='utf-8')
-            for event_key, flag_values in flags_by_event.items():
+            # Ensure every event written to the file exposes the standard flag
+            # datasets, even when no flags were recorded.  Some of the bundled
+            # regression fixtures were produced with an older pipeline that did
+            # not populate the flag metadata which caused the tests to fail when
+            # the datasets were missing.  By iterating over both the recorded
+            # flag entries and the events already present in the output file we
+            # backfill the expected empty datasets in a single place.
+            all_events = set(flags_by_event)
+            all_events.update(str(event) for event in h.keys())
+
+            for event_key in sorted(all_events):
+                if not isinstance(h.get(event_key, None), h5py.Group):
+                    continue
+
+                flag_values = flags_by_event.get(event_key, {})
+                failed = sorted(set(flag_values.get('failed_fits', [])))
+                saturated = sorted(set(flag_values.get('saturated_channels', [])))
+                notes = sorted(set(flag_values.get('notes', [])))
+
                 flag_base = f"/{event_key}/Analysis/Flags"
                 flag_group = h.require_group(flag_base)
-
-                failed = sorted(set(flag_values['failed_fits']))
-                saturated = sorted(set(flag_values['saturated_channels']))
-                notes = sorted(set(flag_values['notes']))
 
                 datasets = {
                     'FailedFits': failed,
@@ -2778,9 +2792,8 @@ class IDEXEvent:
                 }
 
                 for name, entries in datasets.items():
-                    dataset_path = f"{flag_base}/{name}"
-                    if dataset_path in h:
-                        del h[dataset_path]
+                    if name in flag_group:
+                        del flag_group[name]
                     if entries:
                         data = np.array(entries, dtype=object)
                         flag_group.create_dataset(name, data=data, dtype=string_dtype)
