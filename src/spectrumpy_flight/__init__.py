@@ -6,7 +6,7 @@ from pathlib import Path
 
 __all__ = ["__version__", "package_path", "default_hdf5_dir", "hdf5_search_paths"]
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent
 

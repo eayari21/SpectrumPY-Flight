@@ -8,7 +8,7 @@ authors:
     orcid: "https://orcid.org/0000-0000-0000-0000"
 repository-code: "https://github.com/eayari21/4_Flight"
 license: "LicenseRef-APND-1.0"
-version: "1.0.0"
+version: "1.1.0"
 doi: "10.5281/zenodo.14948734"
 preferred-citation:
   type: software

@@ -3,8 +3,8 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "spectrumpy-flight"
-version = "1.0.0"
+name = "spectrumpy"
+version = "1.1.0"
 description = "Ground-system decoding, fitting, and visualization tools for the LASP/IMPACT IDEX campaign."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
@@ -53,6 +53,11 @@ Issues = "https://github.com/eayari21/4_Flight/issues"
 [project.scripts]
 spectrumpy-gui = "spectrumpy_flight.imfpy.gui.main:main"
 spectrumpy-start = "spectrumpy_flight.start:main"
+idex-packet = "spectrumpy_flight.idex_packet:main"
+drive-idex-packet = "spectrumpy_flight.drive_idex_packet:main"
+idex-quicklook = "spectrumpy_flight._entry_points:quicklook"
+scope-idex-quicklook = "spectrumpy_flight._entry_points:scope_quicklook"
+
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -60,4 +65,4 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["spectrumpy_flight*"]
+include = ["spectrumpy*"]

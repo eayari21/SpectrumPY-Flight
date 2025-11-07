@@ -45,7 +45,7 @@ Install the published package from PyPI when you want to run SpectrumPY outside
 the repository checkout:
 
 ```
-python -m pip install spectrumpy-flight
+python -m pip install spectrumpy
 ```
 
 macOS-specific preparation steps are covered in
@@ -57,12 +57,29 @@ Optional extras match the bundled feature sets declared in `pyproject.toml`.
 For example, request the PyQt GUI backend or GPU acceleration support with:
 
 ```
-python -m pip install "spectrumpy-flight[pyqt]"
-python -m pip install "spectrumpy-flight[gpu]"
+python -m pip install "spectrumpy[pyqt]"
+python -m pip install "spectrumpy[gpu]"
 ```
 
-Combine extras when needed (`spectrumpy-flight[pyqt,gpu,database]`) to pull in
+Combine extras when needed (`spectrumpy[pyqt,gpu,database]`) to pull in
 all secondary dependencies listed in the metadata.【F:pyproject.toml†L32-L43】
+
+SpectrumPY ships lean wheels so `pip install spectrumpy` stays well under
+PyPI's size limits. Sample telemetry captures and pre-generated CDF products
+remain available in the source repository; download them separately when you
+need tutorial data.
+
+### Command-line entry points
+
+The PyPI package exposes convenience launchers so the most common workflows
+require no manual path management after installation:
+
+* `idex-packet` – decode raw packets and emit HDF5 analysis products.
+* `drive-idex-packet` – orchestrate parallel conversions across directories of
+  captures.
+* `idex-quicklook` – open the Qt quicklook viewer directly.
+* `spectrumpy-start` – launch the SpectrumPY welcome screen with automatic
+  oscilloscope ingestion.
 
 ---
 
@@ -210,7 +227,7 @@ If you use this software in research or a product, please **cite it**. We archiv
 releases on **Zenodo** to mint a DOI. You can also download machine-readable metadata from [`CITATION.cff`](./CITATION.cff).
 
 **How to cite (example):**
-> Ayari, E. (2025). SpectrumPY-Flight (v1.0.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.14948734
+> Ayari, E. (2025). SpectrumPY-Flight (v1.1.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.14948734
 
 For convenience, you can embed the DOI badge anywhere documentation is published:
 

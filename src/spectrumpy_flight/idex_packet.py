@@ -24,7 +24,7 @@ import struct
 import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 
@@ -3117,17 +3117,24 @@ def write_to_cdf(packets):
     cdf_file.close()
 
 # || Test code: Import file and write the relevant data to an hdf5 file
-if __name__ == "__main__":
-    # Initalize parsing object to pass filename
-    aparser = argparse.ArgumentParser()
-    aparser.add_argument("--file", "-f", type=str, required=True)
-    args = aparser.parse_args()
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Decode raw IDEX packets into analysis products.")
+    parser.add_argument("--file", "-f", type=str, required=True, help="Path to the packet capture to decode.")
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = _build_arg_parser()
+    args = parser.parse_args(argv)
 
     packets = IDEXEvent(args.file)
-    # print(packets.data.keys())
     try:
         packets.plot_all_data(packets.data, args.file)
-    except Exception as e:
-        print(e)
+    except Exception as exc:  # pragma: no cover - plotting is optional in tests
+        print(exc)
     packets.write_to_hdf5(packets.data, args.file)
-    # write_to_cdf(packets)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

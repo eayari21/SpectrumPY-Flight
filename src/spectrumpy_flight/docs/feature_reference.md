@@ -262,7 +262,7 @@ Each helper preserves the original exit codes of the underlying Python modules, 
 
 ## Data resources
 
-The `src/spectrumpy_flight/Data/` and `src/spectrumpy_flight/HDF5/` directories hold sample packets and decoded outputs.  Analysts can replicate tutorials by opening these references inside the quicklook GUIs.  The `CDF/` tree contains mission-specific variable definitions used by `CDF_View.py` and the NASA CDF export path in `idex_packet.py`.
+The `src/spectrumpy_flight/Data/` and `src/spectrumpy_flight/HDF5/` directories hold sample packets and decoded outputs.  Analysts can replicate tutorials by opening these references inside the quicklook GUIs.  These assets live only in the source repository to keep the PyPI wheels lightweight—fetch them from GitHub when you need practice data.  The `CDF/` tree contains mission-specific variable definitions used by `CDF_View.py` and the NASA CDF export path in `idex_packet.py`.
 
 ---
 

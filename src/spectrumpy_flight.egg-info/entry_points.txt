@@ -1,3 +1,0 @@
-[console_scripts]
-spectrumpy-gui = spectrumpy_flight.imfpy.gui.main:main
-spectrumpy-start = spectrumpy_flight.start:main
