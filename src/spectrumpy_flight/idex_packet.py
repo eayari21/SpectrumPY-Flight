@@ -2747,6 +2747,21 @@ class IDEXEvent:
                     data=np.array([int(saturated)], dtype=np.int8),
                 )
 
+            # Ensure every event that was processed records a flags group even if
+            # no individual flags were generated.  Some downstream tooling (and
+            # the regression tests) expect the FailedFits, SaturatedChannels and
+            # Notes datasets to exist for every analysed event, regardless of
+            # whether any entries are present.
+            for event_key in event_results.keys():
+                flags_by_event.setdefault(
+                    event_key,
+                    {
+                        'failed_fits': [],
+                        'saturated_channels': [],
+                        'notes': [],
+                    },
+                )
+
             string_dtype = h5py.string_dtype(encoding='utf-8')
             for event_key, flag_values in flags_by_event.items():
                 flag_base = f"/{event_key}/Analysis/Flags"
