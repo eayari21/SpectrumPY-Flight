@@ -4,7 +4,30 @@
 
 > Ground-system decoding, fitting, and visualization tools for the LASP/IMPACT IDEX campaign.
 
-![SpectrumPY overview](https://raw.githubusercontent.com/eayari21/4_Flight/main/src/spectrumpy_flight/docs/media/quicklook_overview.svg)
+![SpectrumPY overview](src/spectrumpy_flight/docs/media/quicklook_overview.svg)
+
+---
+
+## Overview
+
+SpectrumPY-Flight wraps packet decoding, fitting, and visualization into a
+single workflow that covers the full time-of-flight (TOF) dust analysis loop:
+
+* **Automatic TOF mass spectrometry** – Load raw telemetry or oscilloscope
+  captures and generate calibrated mass axes with the Newton-stabilized series
+  expansion implemented in `mass_calibration.py` and `time2mass.py`.
+  Interactive stretch-and-shift bootstrapping keeps solutions stable even on
+  faint spectra.【F:src/spectrumpy_flight/docs/time_to_mass_calibration.md†L1-L111】
+* **Batch processing** – Launch the provided shell helpers to ingest new
+  downlinks or laboratory campaigns without touching the GUI, then hand the
+  derived products back to the quicklook tools for inspection.【F:process_packets.sh†L1-L27】【F:process_EM_Data.sh†L1-L37】
+* **Fit adjustments on demand** – Recompute exponential-modified Gaussian
+  (EMG) overlays, tweak lmfit parameters, and persist manual overrides directly
+  inside the Dust Composition workspace.【F:IDEX-quicklook.py†L1056-L1349】【F:dust_composition.py†L1129-L1478】
+* **Composition identification** – Compare detected species to reference
+  libraries, apply relative sensitivity factors, and summarise abundances with
+  ternary diagrams that highlight cometary dust classes and olivine content in
+  real time.【F:dust_composition.py†L3008-L3484】【F:dust_composition.py†L3526-L4023】
 
 ---
 
@@ -51,6 +74,29 @@ all secondary dependencies listed in the metadata.【F:pyproject.toml†L32-L43�
 * **Noise diagnostics** – Launch the dedicated analysis window for Gaussian histograms, FFT spectra, and autocorrelation studies per channel.【F:IDEX-quicklook.py†L2027-L2188】【F:noise_analysis.py†L260-L429】
 * **Parallel decoding** – Scale packet processing across CPU cores with automatic worker discovery, per-job memory limits, and live progress reporting.【F:tools/process_packets_parallel.py†L1-L120】【F:tools/resource_utils.py†L1-L75】
 * **TOF mass spectrometry** – Quantify dust populations with the composition workspace, apply relative sensitivity factors, match library samples, and inspect EMG mass lines in detail.【F:dust_composition.py†L3008-L3484】【F:dust_composition.py†L3526-L4023】
+
+### Time-to-mass conversion details
+
+The calibration workflow models the arrival-time series as a polynomial in the
+reduced coordinate \(s = \sqrt{m}\):
+
+\[
+  t(s) = t_0 + a_1 s + a_2 s^2 + \cdots + a_K s^K.
+\]
+
+Least-squares fitting recovers the coefficients \(a_k\) from calibration lines
+and the safeguarded Newton inversion maps measured times back to masses while
+clipping to the instrument range.【F:src/spectrumpy_flight/docs/time_to_mass_calibration.md†L13-L91】
+
+After convergence the squared coordinate yields the final mass axis:
+
+\[
+  m = \left(s^{(n)}\right)^2.
+\]
+
+These steps are exposed through `TOFMassCal` and the `time2mass.py` CLI so that
+both automated batch runs and interactive GUI sessions share the same
+well-conditioned calibration pipeline.【F:src/spectrumpy_flight/docs/time_to_mass_calibration.md†L1-L146】
 
 ---
 
