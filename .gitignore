@@ -6,6 +6,10 @@ __pycache__/
 build/
 dist/
 .DS_Store
+*.egg-info/
+
+# setuptools metadata
+src/spectrumpy_flight.egg-info/
 
 # data & outputs
 HDF5/

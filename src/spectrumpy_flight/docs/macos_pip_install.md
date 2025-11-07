@@ -52,22 +52,22 @@ installation pulls in PySide6 for the Qt GUI bindings. If you prefer the PyQt6
 bindings, use the optional extra shown below.
 
 ```bash
-python -m pip install spectrumpy-flight
+python -m pip install spectrumpy
 # or, to install with the PyQt6 bindings instead of PySide6
-python -m pip install "spectrumpy-flight[pyqt]"
+python -m pip install "spectrumpy[pyqt]"
 ```
 
 ### Optional dependencies
 
 * GPU acceleration for packet processing:
   ```bash
-  python -m pip install "spectrumpy-flight[gpu]"
+  python -m pip install "spectrumpy[gpu]"
   ```
   Choose the CuPy build that matches your CUDA toolkit if you install it
   separately.
 * MySQL-compatible database connectors for legacy telemetry archives:
   ```bash
-  python -m pip install "spectrumpy-flight[database]"
+  python -m pip install "spectrumpy[database]"
   ```
 
 ## 4. Verify Qt integration
@@ -97,7 +97,7 @@ Periodically update the package and its dependencies to pick up bug fixes and
 feature improvements:
 
 ```bash
-python -m pip install --upgrade spectrumpy-flight
+python -m pip install --upgrade spectrumpy
 ```
 
 When you are done working, deactivate the environment:
