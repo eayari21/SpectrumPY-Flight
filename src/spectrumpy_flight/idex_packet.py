@@ -707,6 +707,9 @@ def _coerce_optional_str(value: Any) -> Optional[str]:
     return text_value or None
 
 
+DEFAULT_RESULT_LIMIT = 5
+
+
 @dataclass
 class SQLMatchCriteria:
     time_ms: Optional[float] = None
@@ -714,8 +717,19 @@ class SQLMatchCriteria:
     velocity_kmps: Optional[float] = None
     velocity_tolerance_kmps: float = 0.2
     min_quality: Optional[int] = 0
-    limit: int = 20
+    limit: Optional[int] = None
     extra_filter: str = ""
+    restrict_time: bool = False
+    restrict_velocity: bool = False
+
+    def effective_limit(self) -> int:
+        if self.limit is None:
+            return DEFAULT_RESULT_LIMIT
+        try:
+            value = int(self.limit)
+        except (TypeError, ValueError):
+            return DEFAULT_RESULT_LIMIT
+        return max(1, value)
 
 
 @dataclass
@@ -773,27 +787,28 @@ def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult],
     where_clauses = ["mass != -1"]
     params: Dict[str, Any] = {}
     order_terms: List[str] = []
+    fallback_order = "de.integer_timestamp DESC"
 
     if criteria.time_ms is not None and np.isfinite(criteria.time_ms):
-        window = max(criteria.time_window_ms, 0.0)
-        time_lower = float(criteria.time_ms) - window
-        time_upper = float(criteria.time_ms) + window
-        where_clauses.append("de.integer_timestamp BETWEEN :time_lower AND :time_upper")
-        params['time_lower'] = int(time_lower)
-        params['time_upper'] = int(time_upper)
         params['time_center'] = int(criteria.time_ms)
         order_terms.append("ABS(de.integer_timestamp - :time_center)")
-    else:
-        order_terms.append("de.integer_timestamp DESC")
+        if criteria.restrict_time:
+            window = max(criteria.time_window_ms, 0.0)
+            time_lower = float(criteria.time_ms) - window
+            time_upper = float(criteria.time_ms) + window
+            where_clauses.append("de.integer_timestamp BETWEEN :time_lower AND :time_upper")
+            params['time_lower'] = int(time_lower)
+            params['time_upper'] = int(time_upper)
 
     if criteria.velocity_kmps is not None and np.isfinite(criteria.velocity_kmps):
         target_mps = float(criteria.velocity_kmps) * 1000.0
-        tol = max(criteria.velocity_tolerance_kmps, 0.0) * 1000.0
-        where_clauses.append("velocity BETWEEN :velocity_lower AND :velocity_upper")
-        params['velocity_lower'] = target_mps - tol
-        params['velocity_upper'] = target_mps + tol
         params['velocity_target'] = target_mps
         order_terms.append("ABS(velocity - :velocity_target)")
+        if criteria.restrict_velocity:
+            tol = max(criteria.velocity_tolerance_kmps, 0.0) * 1000.0
+            where_clauses.append("velocity BETWEEN :velocity_lower AND :velocity_upper")
+            params['velocity_lower'] = target_mps - tol
+            params['velocity_upper'] = target_mps + tol
 
     if criteria.min_quality is not None:
         where_clauses.append("estimate_quality >= :min_quality")
@@ -802,6 +817,9 @@ def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult],
     extra = criteria.extra_filter.strip()
     if extra:
         where_clauses.append(f"({extra})")
+
+    if fallback_order not in order_terms:
+        order_terms.append(fallback_order)
 
     where_sql = " AND ".join(where_clauses) if where_clauses else "1"
     order_sql = ", ".join(order_terms)
@@ -855,9 +873,10 @@ def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult],
 
     if order_sql:
         sql += f"ORDER BY {order_sql} "
-    if criteria.limit:
+    limit_value = criteria.effective_limit()
+    if limit_value:
         sql += "LIMIT :limit"
-        params['limit'] = int(criteria.limit)
+        params['limit'] = int(limit_value)
 
     with engine.connect() as connection:
         frame = pd.read_sql_query(text(sql), connection, params=params)
@@ -1100,7 +1119,10 @@ def _write_sql_match(h5_handle: h5py.File, event: str, match: SQLMatchResult, cr
         'QueryVelocityKilometersPerSecond': criteria.velocity_kmps if criteria.velocity_kmps is not None else np.nan,
         'QueryVelocityToleranceKilometersPerSecond': criteria.velocity_tolerance_kmps,
         'MinimumEstimateQuality': criteria.min_quality if criteria.min_quality is not None else np.nan,
-        'ResultLimit': criteria.limit,
+        'ResultLimit': criteria.effective_limit(),
+        'CustomResultLimit': 1 if criteria.limit is not None else 0,
+        'RestrictTimeWindow': 1 if criteria.restrict_time else 0,
+        'RestrictVelocity': 1 if criteria.restrict_velocity else 0,
     }
 
     for name, value in payload.items():
@@ -1221,7 +1243,7 @@ def _attempt_sql_match(
     chosen_criteria: Optional[SQLMatchCriteria] = None
 
     if time_ms is not None:
-        time_first = SQLMatchCriteria(time_ms=time_ms, min_quality=3, limit=10)
+        time_first = SQLMatchCriteria(time_ms=time_ms, min_quality=3, limit=10, restrict_time=True)
         time_results = _run_query(time_first)
         if time_results:
             candidate = _choose_sql_match(time_results, time_ms, min_quality=3)
@@ -1235,6 +1257,8 @@ def _attempt_sql_match(
             velocity_kmps=velocity_kmps,
             min_quality=3,
             limit=5,
+            restrict_time=True,
+            restrict_velocity=True,
         )
         combined_results = _run_query(default_criteria)
         if combined_results:
@@ -1248,6 +1272,7 @@ def _attempt_sql_match(
             velocity_kmps=velocity_kmps,
             min_quality=3,
             limit=5,
+            restrict_velocity=True,
         )
         velocity_results = _run_query(velocity_only)
         if velocity_results:
