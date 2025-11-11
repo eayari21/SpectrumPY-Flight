@@ -41,7 +41,7 @@ To convert a measured TOF sample back to a mass coordinate we must invert \(t(s)
 the iteration refines the solution using
 
 \[
-  s^{(n+1)} = \operatorname{clip}\left(s^{(n)} - \frac{f\big(s^{(n)}\big)}{f'\big(s^{(n)}\big)},\; 0,\; s_{\max}\right)
+  s^{(n+1)} = \min\!\left(\max\!\left(s^{(n)} - \frac{f\big(s^{(n)}\big)}{f'\big(s^{(n)}\big)},\; 0\right),\; s_{\max}\right)
 \]
 
 with
