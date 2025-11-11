@@ -2328,6 +2328,9 @@ def _format_charge(value: Optional[float]) -> str:
     return _format_float(value, precision=3)
 
 
+DEFAULT_RESULT_LIMIT = 5
+
+
 @dataclass
 class SQLMatchCriteria:
     time_ms: Optional[float] = None
@@ -2335,8 +2338,19 @@ class SQLMatchCriteria:
     velocity_kmps: Optional[float] = None
     velocity_tolerance_kmps: float = 0.2
     min_quality: Optional[int] = 0
-    limit: int = 20
+    limit: Optional[int] = None
     extra_filter: str = ""
+    restrict_time: bool = False
+    restrict_velocity: bool = False
+
+    def effective_limit(self) -> int:
+        if self.limit is None:
+            return DEFAULT_RESULT_LIMIT
+        try:
+            value = int(self.limit)
+        except (TypeError, ValueError):
+            return DEFAULT_RESULT_LIMIT
+        return max(1, value)
 
 
 @dataclass
@@ -2439,27 +2453,28 @@ def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult],
     where_clauses = ["mass != -1"]
     params: Dict[str, Any] = {}
     order_terms: List[str] = []
+    fallback_order = "de.integer_timestamp DESC"
 
     if criteria.time_ms is not None and np.isfinite(criteria.time_ms):
-        window = max(criteria.time_window_ms, 0.0)
-        time_lower = float(criteria.time_ms) - window
-        time_upper = float(criteria.time_ms) + window
-        where_clauses.append("de.integer_timestamp BETWEEN :time_lower AND :time_upper")
-        params["time_lower"] = int(time_lower)
-        params["time_upper"] = int(time_upper)
         params["time_center"] = int(criteria.time_ms)
         order_terms.append("ABS(de.integer_timestamp - :time_center)")
-    else:
-        order_terms.append("de.integer_timestamp DESC")
+        if criteria.restrict_time:
+            window = max(criteria.time_window_ms, 0.0)
+            time_lower = float(criteria.time_ms) - window
+            time_upper = float(criteria.time_ms) + window
+            where_clauses.append("de.integer_timestamp BETWEEN :time_lower AND :time_upper")
+            params["time_lower"] = int(time_lower)
+            params["time_upper"] = int(time_upper)
 
     if criteria.velocity_kmps is not None and np.isfinite(criteria.velocity_kmps):
         target_mps = float(criteria.velocity_kmps) * 1000.0
-        tol = max(criteria.velocity_tolerance_kmps, 0.0) * 1000.0
-        where_clauses.append("velocity BETWEEN :velocity_lower AND :velocity_upper")
-        params["velocity_lower"] = target_mps - tol
-        params["velocity_upper"] = target_mps + tol
         params["velocity_target"] = target_mps
         order_terms.append("ABS(velocity - :velocity_target)")
+        if criteria.restrict_velocity:
+            tol = max(criteria.velocity_tolerance_kmps, 0.0) * 1000.0
+            where_clauses.append("velocity BETWEEN :velocity_lower AND :velocity_upper")
+            params["velocity_lower"] = target_mps - tol
+            params["velocity_upper"] = target_mps + tol
 
     if criteria.min_quality is not None:
         where_clauses.append("estimate_quality >= :min_quality")
@@ -2468,6 +2483,9 @@ def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult],
     extra = criteria.extra_filter.strip()
     if extra:
         where_clauses.append(f"({extra})")
+
+    if fallback_order not in order_terms:
+        order_terms.append(fallback_order)
 
     where_sql = " AND ".join(where_clauses) if where_clauses else "1"
     order_sql = ", ".join(order_terms)
@@ -2520,9 +2538,10 @@ def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult],
     )
     if order_sql:
         sql += f"ORDER BY {order_sql} "
-    if criteria.limit:
+    limit_value = criteria.effective_limit()
+    if limit_value:
         sql += "LIMIT :limit"
-        params["limit"] = int(criteria.limit)
+        params["limit"] = int(limit_value)
 
     with engine.connect() as connection:
         frame = pd.read_sql_query(text(sql), connection, params=params)
@@ -2703,7 +2722,10 @@ def _write_sql_match(
         "QueryVelocityKilometersPerSecond": criteria.velocity_kmps if criteria.velocity_kmps is not None else np.nan,
         "QueryVelocityToleranceKilometersPerSecond": criteria.velocity_tolerance_kmps,
         "MinimumEstimateQuality": criteria.min_quality if criteria.min_quality is not None else np.nan,
-        "ResultLimit": criteria.limit,
+        "ResultLimit": criteria.effective_limit(),
+        "CustomResultLimit": 1 if criteria.limit is not None else 0,
+        "RestrictTimeWindow": 1 if criteria.restrict_time else 0,
+        "RestrictVelocity": 1 if criteria.restrict_velocity else 0,
     }
 
     for name, value in payload.items():
@@ -2806,6 +2828,7 @@ class SQLMatchDialog(QDialog):
         self._last_query_sql: str = ""
         self._last_query_params: Dict[str, Any] = {}
         self._reference_time_ms: Optional[float] = None
+        self._custom_limit_value: int = DEFAULT_RESULT_LIMIT
 
         self._build_ui()
         self._populate_event_combo()
@@ -2841,6 +2864,9 @@ class SQLMatchDialog(QDialog):
         self.time_window_spin.setSingleStep(250.0)
         criteria_layout.addWidget(QLabel("± Window (ms)"), 0, 2)
         criteria_layout.addWidget(self.time_window_spin, 0, 3)
+        self.restrict_time_check = QCheckBox("Restrict by time", self)
+        self.restrict_time_check.setToolTip("Limit matches to the specified time window.")
+        criteria_layout.addWidget(self.restrict_time_check, 0, 4)
 
         self.velocity_edit = QLineEdit(self)
         self.velocity_edit.setPlaceholderText("Velocity in km/s (optional)")
@@ -2853,6 +2879,9 @@ class SQLMatchDialog(QDialog):
         self.velocity_tol_spin.setSingleStep(0.05)
         criteria_layout.addWidget(QLabel("± Velocity tol. (km/s)"), 1, 2)
         criteria_layout.addWidget(self.velocity_tol_spin, 1, 3)
+        self.restrict_velocity_check = QCheckBox("Restrict by velocity", self)
+        self.restrict_velocity_check.setToolTip("Limit matches to the specified velocity tolerance.")
+        criteria_layout.addWidget(self.restrict_velocity_check, 1, 4)
 
         self.quality_spin = QSpinBox(self)
         self.quality_spin.setRange(-100, 100)
@@ -2862,14 +2891,18 @@ class SQLMatchDialog(QDialog):
 
         self.limit_spin = QSpinBox(self)
         self.limit_spin.setRange(1, 200)
-        self.limit_spin.setValue(20)
+        self.limit_spin.setValue(DEFAULT_RESULT_LIMIT)
+        self.limit_spin.setEnabled(False)
         criteria_layout.addWidget(QLabel("Result limit"), 2, 2)
         criteria_layout.addWidget(self.limit_spin, 2, 3)
+        self.custom_limit_check = QCheckBox("Specify result limit", self)
+        self.custom_limit_check.toggled.connect(self._toggle_custom_limit)
+        criteria_layout.addWidget(self.custom_limit_check, 2, 4)
 
         self.extra_filter_edit = QLineEdit(self)
         self.extra_filter_edit.setPlaceholderText("Additional SQL filter (advanced)")
         criteria_layout.addWidget(QLabel("Extra filter"), 3, 0)
-        criteria_layout.addWidget(self.extra_filter_edit, 3, 1, 1, 3)
+        criteria_layout.addWidget(self.extra_filter_edit, 3, 1, 1, 4)
 
         layout.addWidget(criteria_group)
 
@@ -2956,7 +2989,21 @@ class SQLMatchDialog(QDialog):
             self.velocity_edit.setText(f"{criteria.velocity_kmps:.4f}")
         self.velocity_tol_spin.setValue(criteria.velocity_tolerance_kmps)
         self.quality_spin.setValue(criteria.min_quality or 0)
-        self.limit_spin.setValue(criteria.limit)
+        with QSignalBlocker(self.restrict_time_check):
+            self.restrict_time_check.setChecked(criteria.restrict_time)
+        with QSignalBlocker(self.restrict_velocity_check):
+            self.restrict_velocity_check.setChecked(criteria.restrict_velocity)
+
+        custom_limit_enabled = criteria.limit is not None
+        with QSignalBlocker(self.custom_limit_check):
+            self.custom_limit_check.setChecked(custom_limit_enabled)
+        self.limit_spin.setEnabled(custom_limit_enabled)
+        if custom_limit_enabled and criteria.limit is not None:
+            limit_value = criteria.effective_limit()
+            self.limit_spin.setValue(limit_value)
+            self._custom_limit_value = limit_value
+        else:
+            self.limit_spin.setValue(DEFAULT_RESULT_LIMIT)
         self.extra_filter_edit.setText(criteria.extra_filter)
 
     def _collect_criteria(self) -> Optional[SQLMatchCriteria]:
@@ -2989,10 +3036,23 @@ class SQLMatchDialog(QDialog):
             velocity_kmps=velocity_kmps,
             velocity_tolerance_kmps=float(self.velocity_tol_spin.value()),
             min_quality=int(self.quality_spin.value()),
-            limit=int(self.limit_spin.value()),
+            limit=int(self.limit_spin.value()) if self.custom_limit_check.isChecked() else None,
             extra_filter=self.extra_filter_edit.text().strip(),
+            restrict_time=self.restrict_time_check.isChecked(),
+            restrict_velocity=self.restrict_velocity_check.isChecked(),
         )
+        if self.custom_limit_check.isChecked():
+            self._custom_limit_value = criteria.effective_limit()
         return criteria
+
+    def _toggle_custom_limit(self, checked: bool) -> None:
+        if checked:
+            self.limit_spin.setEnabled(True)
+            self.limit_spin.setValue(self._custom_limit_value)
+        else:
+            self._custom_limit_value = int(self.limit_spin.value())
+            self.limit_spin.setEnabled(False)
+            self.limit_spin.setValue(DEFAULT_RESULT_LIMIT)
 
     def run_search(self) -> None:
         criteria = self._collect_criteria()
