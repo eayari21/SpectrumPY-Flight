@@ -12,6 +12,7 @@ os.environ.pop("QT_DEBUG_PLUGINS", None)
 import sys
 import argparse
 import tempfile
+import io
 import base64
 import re
 import json
@@ -653,7 +654,6 @@ class DocumentationCenter(QDialog):
             self._display_entry(entry, line_no=line_no, highlight=highlight)
 
 
-_MATH_TEXT_PARSER = mathtext.MathTextParser("agg")
 _LATEX_CACHE: Dict[str, Optional[QPixmap]] = {}
 
 _LATEX_GREEK_HTML = {
@@ -952,16 +952,24 @@ def _latex_to_pixmap(latex: str) -> Optional[QPixmap]:
         _LATEX_CACHE[latex] = None
         return None
     try:
-        ftimage, _ = _MATH_TEXT_PARSER.to_rgba(f"${normalized}$", dpi=200)
+        buffer = io.BytesIO()
+        mathtext.math_to_image(normalized, buffer, dpi=200, format="png")
     except Exception as exc:
         print(f"[warn] Failed to render LaTeX '{latex}': {exc}")
         _LATEX_CACHE[latex] = None
         return None
 
-    buffer = np.ascontiguousarray(np.clip(ftimage * 255.0, 0, 255).astype(np.uint8))
-    height, width, _channels = buffer.shape
-    image = QImage(buffer.data, width, height, 4 * width, QImage.Format_RGBA8888)
-    pixmap = QPixmap.fromImage(image.copy())
+    data = buffer.getvalue()
+    if not data:
+        _LATEX_CACHE[latex] = None
+        return None
+
+    image = QImage.fromData(data, "PNG")
+    if image.isNull():
+        _LATEX_CACHE[latex] = None
+        return None
+
+    pixmap = QPixmap.fromImage(image)
     _LATEX_CACHE[latex] = pixmap
     return pixmap
 
