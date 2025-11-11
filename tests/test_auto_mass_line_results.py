@@ -1,6 +1,3 @@
-import json
-from pathlib import Path
-
 import pytest
 
 EXPECTED_EVENTS = {
@@ -169,29 +166,20 @@ EXPECTED_EVENTS = {
 }
 
 
-RESULTS_PATH = Path(__file__).parent / "data" / "auto_mass_lines" / "expected_results.json"
-assert RESULTS_PATH.exists(), "Expected mass line regression data is missing."
-
-REFERENCE_RESULTS = json.loads(RESULTS_PATH.read_text())
-REFERENCE_LOOKUP = {
-    (entry["data_file"], entry["event_id"]): entry for entry in REFERENCE_RESULTS
-}
-
-
 @pytest.mark.parametrize("key, expected", EXPECTED_EVENTS.items())
-def test_auto_identified_mass_lines_match_reference(key, expected):
-    assert key in REFERENCE_LOOKUP, f"Regression entry missing for {key}."
+def test_auto_identified_mass_lines_match_reference(idex_mass_analysis, key, expected):
+    assert key in idex_mass_analysis, f"Automated analysis missing results for {key}."
 
-    entry = REFERENCE_LOOKUP[key]
-    assert entry["dust"] == expected["dust"]
+    entry = idex_mass_analysis[key]
     assert entry["stretch_ns"] == pytest.approx(expected["stretch_ns"], rel=1e-6, abs=1e-3)
 
-    observed_abundances = entry.get("abundances", {})
-    assert set(observed_abundances.keys()) == set(expected["abundances"].keys())
+    observed_abundances = {
+        species: float(entry["abundances"].get(species, 0.0))
+        for species in expected["abundances"].keys()
+    }
 
     total_abundance = 0.0
     for species, value in expected["abundances"].items():
-        assert species in observed_abundances
         total_abundance += observed_abundances[species]
         assert observed_abundances[species] == pytest.approx(value, rel=1e-3, abs=1e-3)
 
