@@ -306,6 +306,8 @@ class FlightCalibrationAnalyzer:
     events: list[EventRecord] = field(default_factory=list)
     skipped_files: list[Path] = field(default_factory=list)
     missing_hdf: list[Path] = field(default_factory=list)
+    applied_timezone_offset_ms: float = 0.0
+    _active_timezone_offset_ms: float = field(init=False, default=0.0, repr=False)
 
     def __post_init__(self) -> None:
         if self.material_filter:
@@ -324,39 +326,84 @@ class FlightCalibrationAnalyzer:
 
     def collect(self, data_root: Path) -> None:
         files = _discover_data_files(data_root)
-        for path in files:
-            timestamp = _parse_filename_timestamp(path)
-            if timestamp is None:
-                continue
-            schedule_entry = self.classify_timestamp(timestamp)
-            if self.material_filter is not None:
-                if schedule_entry is None:
+
+        base_events, base_skipped, base_missing = self._collect_with_offset(
+            files, 0.0
+        )
+
+        best_events = base_events
+        best_skipped = base_skipped
+        best_missing = base_missing
+        best_offset = 0.0
+        best_count = len(base_events)
+
+        if best_count < 100:
+            timezone_offsets_ms = []
+            for hours in (6, 7):
+                delta = float(hours * 3_600_000)
+                timezone_offsets_ms.extend((delta, -delta))
+
+            for offset_ms in timezone_offsets_ms:
+                events, skipped, missing = self._collect_with_offset(files, offset_ms)
+                if len(events) > best_count:
+                    best_events = events
+                    best_skipped = skipped
+                    best_missing = missing
+                    best_count = len(events)
+                    best_offset = offset_ms
+
+        self.events = best_events
+        self.skipped_files = best_skipped
+        self.missing_hdf = best_missing
+        self.applied_timezone_offset_ms = best_offset
+
+    def _collect_with_offset(
+        self, files: Sequence[Path], offset_ms: float
+    ) -> tuple[list[EventRecord], list[Path], list[Path]]:
+        events: list[EventRecord] = []
+        skipped_files: list[Path] = []
+        missing_hdf: list[Path] = []
+        previous_offset = self._active_timezone_offset_ms
+        self._active_timezone_offset_ms = offset_ms
+        try:
+            for path in files:
+                timestamp = _parse_filename_timestamp(path)
+                if timestamp is None:
                     continue
-                material_key = schedule_entry.material.strip().lower()
-                if material_key not in self.material_filter:
-                    continue
-            hdf_path: Path | None
-            if path.suffix.lower() == ".h5":
-                hdf_path = path
-                if not hdf_path.exists():
-                    self.missing_hdf.append(hdf_path)
-                    continue
-            else:
-                hdf_path = self._derive_hdf_path(path)
-                if not hdf_path.exists():
-                    if not self._decode_raw_file(path, hdf_path):
-                        self.missing_hdf.append(hdf_path)
+                schedule_entry = self.classify_timestamp(timestamp)
+                if self.material_filter is not None:
+                    if schedule_entry is None:
                         continue
-            try:
-                self._process_file(
-                    hdf_path,
-                    path,
-                    timestamp,
-                    schedule_entry.material if schedule_entry else "Unknown",
-                    schedule_entry.instrument_model if schedule_entry else "Unknown",
-                )
-            except Exception:
-                self.skipped_files.append(hdf_path)
+                    material_key = schedule_entry.material.strip().lower()
+                    if material_key not in self.material_filter:
+                        continue
+                hdf_path: Path | None
+                if path.suffix.lower() == ".h5":
+                    hdf_path = path
+                    if not hdf_path.exists():
+                        missing_hdf.append(hdf_path)
+                        continue
+                else:
+                    hdf_path = self._derive_hdf_path(path)
+                    if not hdf_path.exists():
+                        if not self._decode_raw_file(path, hdf_path):
+                            missing_hdf.append(hdf_path)
+                            continue
+                try:
+                    self._process_file(
+                        hdf_path,
+                        path,
+                        timestamp,
+                        schedule_entry.material if schedule_entry else "Unknown",
+                        schedule_entry.instrument_model if schedule_entry else "Unknown",
+                        events,
+                    )
+                except Exception:
+                    skipped_files.append(hdf_path)
+        finally:
+            self._active_timezone_offset_ms = previous_offset
+
+        return events, skipped_files, missing_hdf
 
     def _derive_hdf_path(self, raw_path: Path) -> Path:
         parts = list(raw_path.parts)
@@ -397,6 +444,7 @@ class FlightCalibrationAnalyzer:
         timestamp: datetime,
         material: str,
         instrument_model: str,
+        collector: list[EventRecord],
     ) -> None:
         import h5py
 
@@ -414,7 +462,7 @@ class FlightCalibrationAnalyzer:
                     instrument_model,
                 )
                 if record is not None:
-                    self.events.append(record)
+                    collector.append(record)
 
     def _process_event(
         self,
@@ -462,7 +510,8 @@ class FlightCalibrationAnalyzer:
 
         if instrument_timestamp_ms is None:
             return None
-        if abs(accel_timestamp_ms - instrument_timestamp_ms) > self.timestamp_tolerance_ms:
+        adjusted_timestamp_ms = instrument_timestamp_ms + self._active_timezone_offset_ms
+        if abs(accel_timestamp_ms - adjusted_timestamp_ms) > self.timestamp_tolerance_ms:
             return None
 
         channel_names = ("Ion Grid", "Target L", "Target H")
@@ -641,6 +690,7 @@ class FlightCalibrationAnalyzer:
             },
             "skipped_files": [str(path) for path in self.skipped_files],
             "missing_hdf": [str(path) for path in self.missing_hdf],
+            "applied_timezone_offset_ms": self.applied_timezone_offset_ms,
         }
         return summary
 
