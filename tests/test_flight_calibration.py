@@ -45,11 +45,10 @@ def _create_mass_lines() -> np.ndarray:
     return table
 
 
-def _write_test_hdf(path: Path) -> None:
+def _write_test_hdf(path: Path, epoch_ms: float = 1701777600123.0) -> None:
     with h5py.File(path, "w") as handle:
         event_group = handle.require_group("1")
         metadata = event_group.require_group("Metadata")
-        epoch_ms = 1701777600123.0
         metadata.create_dataset("Epoch", data=np.array([epoch_ms]))
 
         analysis = event_group.require_group("Analysis")
@@ -139,6 +138,31 @@ def test_generate_flight_calibration_report(tmp_path):
     assert resolution_stats["count"] == 3
     assert resolution_stats["median"] > 0
     assert summary["best_mass_resolution"]["material"] == "Olivine"
+
+
+def test_material_filter_limits_data(tmp_path):
+    data_root = tmp_path / "Data"
+    data_root.mkdir()
+
+    olivine_path = data_root / "ois_output_20231205_120000.h5"
+    aluminum_path = data_root / "ois_output_20231218_120000.h5"
+
+    _write_test_hdf(olivine_path, epoch_ms=1701777600123.0)
+    _write_test_hdf(aluminum_path, epoch_ms=1702900800000.0)
+
+    output_dir = _resolve_reports_dir(tmp_path)
+    results = generate_flight_calibration_report(
+        data_root,
+        output_dir,
+        material_filter=("Olivine",),
+    )
+
+    summary_path: Path = results["summary"]
+    summary = json.loads(summary_path.read_text())
+
+    assert summary["total_events"] == 1
+    assert list(summary["materials"].keys()) == ["Olivine"]
+    assert results["events"][0].file.name == "ois_output_20231205_120000.h5"
 
 
 def test_schedule_loader_defaults(tmp_path):
