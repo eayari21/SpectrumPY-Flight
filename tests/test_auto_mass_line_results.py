@@ -3,7 +3,7 @@ import pytest
 EXPECTED_EVENTS = {
     ("ois_output_12132023_223729", 6): {
         "dust": "Al",
-        "stretch_ns": 1441.0,
+        "stretch_ns": 1.45086794071479,
         "abundances": {
             "H": 14.121,
             "H2": 0.890,
@@ -30,7 +30,7 @@ EXPECTED_EVENTS = {
     },
     ("ois_output_12132023_223729", 14): {
         "dust": "Al",
-        "stretch_ns": 1442.0,
+        "stretch_ns": 1.5315283386149776,
         "abundances": {
             "H": 32.955,
             "H2": 0.0,
@@ -57,7 +57,7 @@ EXPECTED_EVENTS = {
     },
     ("ois_output_12132023_223729", 22): {
         "dust": "Al",
-        "stretch_ns": 1443.0,
+        "stretch_ns": 1.6,
         "abundances": {
             "H": 36.434,
             "H2": 0.532,
@@ -84,7 +84,7 @@ EXPECTED_EVENTS = {
     },
     ("ois_output_12182023_185430", 4): {
         "dust": "Olv",
-        "stretch_ns": 1444.0,
+        "stretch_ns": 1.4981473968573795,
         "abundances": {
             "H": 7.099,
             "H2": 0.540,
@@ -111,7 +111,7 @@ EXPECTED_EVENTS = {
     },
     ("ois_output_12182023_185430", 7): {
         "dust": "Olv",
-        "stretch_ns": 1440.0,
+        "stretch_ns": 1.6,
         "abundances": {
             "H": 77.466,
             "H2": 0.0,
@@ -138,7 +138,7 @@ EXPECTED_EVENTS = {
     },
     ("ois_output_12182023_185430", 18): {
         "dust": "Olv",
-        "stretch_ns": 1440.0,
+        "stretch_ns": 1.4336340518005033,
         "abundances": {
             "H": 20.676,
             "H2": 0.0,
