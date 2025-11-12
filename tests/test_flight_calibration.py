@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -83,13 +84,44 @@ def _write_test_hdf(path: Path) -> None:
         analysis.create_dataset("Target L Collection Efficiency", data=np.array([0.42]))
 
 
+def _resolve_reports_dir(tmp_path: Path) -> Path:
+    """Return a persistent directory for calibration reports.
+
+    Preference order:
+    1. Directory provided via the SPECTRUMPY_FLIGHT_REPORT_DIR environment variable.
+    2. A ``reports`` directory at the repository root.
+    3. The temporary path provided by pytest (per-test sandbox).
+    """
+
+    env_path = os.getenv("SPECTRUMPY_FLIGHT_REPORT_DIR")
+    candidates = []
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+
+    # Repository root is one level above the tests/ directory.
+    repo_root = Path(__file__).resolve().parents[1]
+    candidates.append(repo_root / "reports")
+
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            continue
+        else:
+            return candidate
+
+    output_dir = tmp_path / "reports"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
 def test_generate_flight_calibration_report(tmp_path):
     data_root = tmp_path / "Data"
     data_root.mkdir()
     hdf_path = data_root / "ois_output_20231205_120000.h5"
     _write_test_hdf(hdf_path)
 
-    output_dir = tmp_path / "reports"
+    output_dir = _resolve_reports_dir(tmp_path)
     results = generate_flight_calibration_report(data_root, output_dir)
 
     pdf_path = results["pdf"]
