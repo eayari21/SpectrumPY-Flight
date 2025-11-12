@@ -19,6 +19,10 @@ images/*.pdf
 *.hdf5
 *.ipynb_checkpoints/
 
+# test artifacts
+reports/*
+!reports/.gitkeep
+
 # node / misc
 node_modules/
 
