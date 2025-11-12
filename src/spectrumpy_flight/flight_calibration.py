@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -33,19 +34,46 @@ __all__ = [
 ]
 
 
-@dataclass(slots=True)
-class DustScheduleEntry:
-    """Describe a dust accelerator campaign window."""
+if sys.version_info >= (3, 10):
 
-    label: str
-    start: datetime
-    end: datetime
-    instrument_model: str
-    material: str
-    count: int
+    @dataclass(slots=True)
+    class DustScheduleEntry:
+        """Describe a dust accelerator campaign window."""
 
-    def contains(self, timestamp: datetime) -> bool:
-        return self.start <= timestamp <= self.end
+        label: str
+        start: datetime
+        end: datetime
+        instrument_model: str
+        material: str
+        count: int
+
+        def contains(self, timestamp: datetime) -> bool:
+            return self.start <= timestamp <= self.end
+
+else:
+
+    @dataclass
+    class DustScheduleEntry:
+        """Describe a dust accelerator campaign window."""
+
+        __slots__ = (
+            "label",
+            "start",
+            "end",
+            "instrument_model",
+            "material",
+            "count",
+        )
+
+        label: str
+        start: datetime
+        end: datetime
+        instrument_model: str
+        material: str
+        count: int
+
+        def contains(self, timestamp: datetime) -> bool:
+            return self.start <= timestamp <= self.end
 
 
 def _parse_day(text: str) -> int:
