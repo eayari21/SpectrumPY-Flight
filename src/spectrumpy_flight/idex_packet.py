@@ -2055,7 +2055,10 @@ class IDEXEvent:
                     reverse_mapping_dict = {value: key for key, value in mapping_dict.items()}
 
                     # Read in Scott K's instrument settings conversions
-                    settings_df = pd.read_excel("IDEX CDF Variable Definitions.xlsx")
+                    from . import package_path
+
+                    settings_path = package_path("IDEX CDF Variable Definitions.xlsx")
+                    settings_df = pd.read_excel(settings_path)
                     # Normalize Var_notes by converting curly quotes to straight quotes and removing NaN values
                     # settings_df['Var_notes'] = settings_df['Var_notes'].replace(np.nan, '', regex=True)  # Replace NaN with empty strings
                     # settings_df['Var_notes'] = settings_df['Var_notes'].str.replace('“', '"').str.replace('”', '"')  # Replace curly quotes with straight quotes
