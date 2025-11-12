@@ -154,7 +154,13 @@ _RISE_PARAMS, _RATIO_PARAMS, _YIELD_PARAMS = _resolve_default_coefficients()
 
 
 def _finite_values(values: Iterable[float] | np.ndarray | float) -> np.ndarray:
-    arr = np.asarray(values, dtype=float).ravel()
+    if np.isscalar(values):
+        arr = np.asarray([values], dtype=float)
+    elif isinstance(values, np.ndarray):
+        arr = values.astype(float, copy=False)
+    else:
+        arr = np.asarray(list(values), dtype=float)
+    arr = arr.ravel()
     if arr.size == 0:
         return arr
     mask = np.isfinite(arr)
