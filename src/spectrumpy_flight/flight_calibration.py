@@ -335,10 +335,18 @@ class FlightCalibrationAnalyzer:
                 material_key = schedule_entry.material.strip().lower()
                 if material_key not in self.material_filter:
                     continue
-            hdf_path = path if path.suffix.lower() == ".h5" else self._derive_hdf_path(path)
-            if not hdf_path.exists():
-                self.missing_hdf.append(hdf_path)
-                continue
+            hdf_path: Path | None
+            if path.suffix.lower() == ".h5":
+                hdf_path = path
+                if not hdf_path.exists():
+                    self.missing_hdf.append(hdf_path)
+                    continue
+            else:
+                hdf_path = self._derive_hdf_path(path)
+                if not hdf_path.exists():
+                    if not self._decode_raw_file(path, hdf_path):
+                        self.missing_hdf.append(hdf_path)
+                        continue
             try:
                 self._process_file(
                     hdf_path,
@@ -361,6 +369,26 @@ class FlightCalibrationAnalyzer:
         if candidate.suffix.lower() != ".h5":
             candidate = candidate.with_suffix(".h5")
         return candidate
+
+    def _decode_raw_file(self, raw_path: Path, target_hdf: Path) -> bool:
+        """Decode a raw ``ois_output`` capture into an HDF5 analysis file."""
+
+        try:
+            from .idex_packet import IDEXEvent  # type: ignore[import]
+        except Exception:
+            return False
+
+        try:
+            packets = IDEXEvent(str(raw_path))
+        except Exception:
+            return False
+
+        try:
+            packets.write_to_hdf5(packets.data, str(raw_path))
+        except Exception:
+            return False
+
+        return target_hdf.exists()
 
     def _process_file(
         self,
