@@ -178,3 +178,27 @@ def test_schedule_loader_defaults(tmp_path):
     entry = analyzer.classify_timestamp(timestamp)
     assert entry is not None
     assert entry.material == "Olivine"
+
+
+def test_collect_decodes_missing_hdf(tmp_path, monkeypatch):
+    data_root = tmp_path / "Data"
+    data_root.mkdir()
+
+    raw_path = data_root / "ois_output_20231205_120000"
+    raw_path.write_bytes(b"raw test data")
+
+    def fake_decode(self, raw_file: Path, target_hdf: Path) -> bool:  # type: ignore[override]
+        target_hdf.parent.mkdir(parents=True, exist_ok=True)
+        _write_test_hdf(target_hdf)
+        return True
+
+    monkeypatch.setattr(FlightCalibrationAnalyzer, "_decode_raw_file", fake_decode)
+
+    analyzer = FlightCalibrationAnalyzer(load_dust_schedule())
+    analyzer.collect(data_root)
+
+    assert analyzer.events, "Expected decoded event to be recorded."
+    record = analyzer.events[0]
+    assert record.file == raw_path
+    assert record.dust_type == "Olivine"
+    assert analyzer.missing_hdf == []
