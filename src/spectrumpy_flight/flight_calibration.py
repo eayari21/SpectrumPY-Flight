@@ -302,9 +302,19 @@ def _format_stats(values: Sequence[float]) -> dict[str, float | int]:
 class FlightCalibrationAnalyzer:
     schedule: Sequence[DustScheduleEntry]
     timestamp_tolerance_ms: float = 2_000.0
+    material_filter: frozenset[str] | None = None
     events: list[EventRecord] = field(default_factory=list)
     skipped_files: list[Path] = field(default_factory=list)
     missing_hdf: list[Path] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.material_filter:
+            normalised = frozenset(
+                material.strip().lower()
+                for material in self.material_filter
+                if material and material.strip()
+            )
+            self.material_filter = normalised or None
 
     def classify_timestamp(self, timestamp: datetime) -> DustScheduleEntry | None:
         for entry in self.schedule:
@@ -319,6 +329,12 @@ class FlightCalibrationAnalyzer:
             if timestamp is None:
                 continue
             schedule_entry = self.classify_timestamp(timestamp)
+            if self.material_filter is not None:
+                if schedule_entry is None:
+                    continue
+                material_key = schedule_entry.material.strip().lower()
+                if material_key not in self.material_filter:
+                    continue
             hdf_path = path if path.suffix.lower() == ".h5" else self._derive_hdf_path(path)
             if not hdf_path.exists():
                 self.missing_hdf.append(hdf_path)
@@ -991,11 +1007,12 @@ def generate_flight_calibration_report(
     output_dir: Path | str,
     report_name: str = "flight_calibration_report.pdf",
     schedule_path: Path | None = None,
+    material_filter: Sequence[str] | None = None,
 ) -> Mapping[str, Path]:
     """Process IDEX flight data and produce a detailed calibration report."""
 
     schedule = load_dust_schedule(schedule_path)
-    analyzer = FlightCalibrationAnalyzer(schedule)
+    analyzer = FlightCalibrationAnalyzer(schedule, material_filter=material_filter)
     analyzer.collect(Path(data_root))
 
     output = Path(output_dir)
@@ -1038,6 +1055,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=None,
         help="Optional path to a custom dust testing schedule CSV file.",
     )
+    parser.add_argument(
+        "--material",
+        dest="materials",
+        action="append",
+        help=(
+            "Restrict analysis to schedule windows for the specified material. "
+            "May be provided multiple times."
+        ),
+    )
     args = parser.parse_args(argv)
 
     schedule_path = Path(args.schedule) if args.schedule else None
@@ -1046,6 +1072,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         Path(args.output_dir),
         report_name=args.report_name,
         schedule_path=schedule_path,
+        material_filter=tuple(args.materials) if args.materials else None,
     )
     pdf_path: Path = results["pdf"]
     summary_path: Path = results["summary"]
