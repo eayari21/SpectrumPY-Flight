@@ -6,6 +6,7 @@ import csv
 import json
 import math
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -233,6 +234,7 @@ class EventRecord:
     chi_sq_by_channel: dict[str, float]
     reduced_chi_sq_by_channel: dict[str, float]
     ternary_point: tuple[float, float, float] | None
+    mass_line_species: tuple[str, ...]
 
 
 def _mass_resolution(mass: float, sigma: float) -> float | None:
@@ -428,20 +430,33 @@ class FlightCalibrationAnalyzer:
         ternary_point: tuple[float, float, float] | None = None
 
         tof_group = analysis.get("TOF H")
+        mass_line_species: set[str] = set()
         if tof_group is not None:
             mass_lines = tof_group.get("MassLines")
             if mass_lines is not None:
-                table = np.asarray(mass_lines[()])
-                for row in table:
-                    assigned_mass = float(row["assigned_mass"])
-                    if not np.isfinite(assigned_mass) or assigned_mass <= 0.0:
-                        continue
-                    sigma = float(row["sigma"])
-                    resolution = _mass_resolution(assigned_mass, sigma)
-                    if resolution is not None:
-                        mass_resolutions.append(resolution)
-                areas = _mass_lines_to_areas(table)
-                ternary_point = _ternary_from_areas(areas)
+                try:
+                    table = np.asarray(mass_lines[()])
+                except Exception:
+                    table = None
+                if table is not None:
+                    dtype_names = getattr(table, "dtype", None)
+                    dtype_names = getattr(dtype_names, "names", None)
+                    for row in table:
+                        species = _decode_species(row["assigned_species"])
+                        if not species and dtype_names and "label" in dtype_names:
+                            species = _decode_species(row["label"])
+                        if species:
+                            mass_line_species.add(species)
+
+                        assigned_mass = float(row["assigned_mass"])
+                        if not np.isfinite(assigned_mass) or assigned_mass <= 0.0:
+                            continue
+                        sigma = float(row["sigma"])
+                        resolution = _mass_resolution(assigned_mass, sigma)
+                        if resolution is not None:
+                            mass_resolutions.append(resolution)
+                    areas = _mass_lines_to_areas(table)
+                    ternary_point = _ternary_from_areas(areas)
 
         instrument_mass: float | None = None
         instrument_velocity: float | None = None
@@ -499,6 +514,7 @@ class FlightCalibrationAnalyzer:
             chi_sq_by_channel=chi_sq_by_channel,
             reduced_chi_sq_by_channel=reduced_chi_sq_by_channel,
             ternary_point=ternary_point,
+            mass_line_species=tuple(sorted(mass_line_species)),
         )
 
     def build_summary(self) -> dict[str, object]:
@@ -625,6 +641,10 @@ class FlightCalibrationAnalyzer:
                 self._plot_collection_efficiency(pdf, material, records)
                 self._plot_mass_velocity(pdf, material, records)
                 self._plot_ternary(pdf, material, records)
+                try:
+                    self._plot_mass_line_probabilities(pdf, material, records)
+                except Exception:
+                    continue
 
     def _plot_histogram(
         self,
@@ -783,6 +803,115 @@ class FlightCalibrationAnalyzer:
         ax.text(0.5, math.sqrt(3) / 2 + 0.03, "Fe", ha="center")
         ax.set_xlim(-0.05, 1.05)
         ax.set_ylim(-0.05, math.sqrt(3) / 2 + 0.05)
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _plot_mass_line_probabilities(
+        self, pdf: PdfPages, material: str, records: Sequence[EventRecord]
+    ) -> None:
+        assert plt is not None
+
+        events: list[tuple[float, set[str]]] = []
+        for record in records:
+            velocity = record.accelerator_velocity_mps
+            if velocity is None or not np.isfinite(velocity):
+                continue
+            species = set(record.mass_line_species)
+            events.append((float(velocity), species))
+
+        if not events:
+            return
+
+        species_counts: Counter[str] = Counter()
+        for _, species in events:
+            species_counts.update(species)
+
+        eligible_species = [name for name, count in species_counts.items() if count >= 10]
+        if not eligible_species:
+            return
+
+        velocities = np.array([velocity for velocity, _ in events], dtype=float)
+        if velocities.size == 0:
+            return
+
+        finite_mask = np.isfinite(velocities)
+        if not np.any(finite_mask):
+            return
+        velocities = velocities[finite_mask]
+        if velocities.size == 0:
+            return
+
+        min_velocity = float(np.min(velocities))
+        max_velocity = float(np.max(velocities))
+
+        if not np.isfinite(min_velocity) or not np.isfinite(max_velocity):
+            return
+
+        if math.isclose(min_velocity, max_velocity):
+            bin_edges = np.array([min_velocity - 0.5, max_velocity + 0.5])
+        else:
+            base_bins = int(math.sqrt(len(events)))
+            if base_bins < 1:
+                base_bins = 1
+            bin_count = min(20, max(1, base_bins))
+            bin_edges = np.linspace(min_velocity, max_velocity, bin_count + 1)
+            if np.unique(bin_edges).size <= 1:
+                bin_edges = np.array([min_velocity - 0.5, max_velocity + 0.5])
+        bin_count = max(1, len(bin_edges) - 1)
+
+        counts_total = np.zeros(bin_count, dtype=float)
+        counts_by_species: dict[str, np.ndarray] = {
+            name: np.zeros(bin_count, dtype=float) for name in eligible_species
+        }
+
+        for velocity, species in events:
+            idx = np.searchsorted(bin_edges, velocity, side="right") - 1
+            if idx < 0:
+                idx = 0
+            elif idx >= bin_count:
+                idx = bin_count - 1
+            counts_total[idx] += 1.0
+            for name in species:
+                if name in counts_by_species:
+                    counts_by_species[name][idx] += 1.0
+
+        valid_bins = counts_total > 0
+        if not np.any(valid_bins):
+            return
+
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+        plotted_any = False
+        for name, counts in sorted(counts_by_species.items()):
+            probabilities = np.divide(
+                counts,
+                counts_total,
+                out=np.zeros_like(counts),
+                where=counts_total > 0,
+            )
+            if not np.any(valid_bins & np.isfinite(probabilities)):
+                continue
+            ax.plot(
+                bin_centers[valid_bins],
+                probabilities[valid_bins],
+                marker="o",
+                label=name,
+            )
+            plotted_any = True
+
+        if not plotted_any:
+            plt.close(fig)
+            return
+
+        ax.set_title(
+            f"Mass line appearance probability vs. impact velocity — {material}"
+        )
+        ax.set_xlabel("Impact velocity (m/s)")
+        ax.set_ylabel("Appearance probability")
+        ax.set_ylim(0.0, 1.05)
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="best", fontsize="small")
         pdf.savefig(fig)
         plt.close(fig)
 
