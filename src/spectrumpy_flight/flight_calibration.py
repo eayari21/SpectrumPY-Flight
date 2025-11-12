@@ -235,6 +235,7 @@ class EventRecord:
     reduced_chi_sq_by_channel: dict[str, float]
     ternary_point: tuple[float, float, float] | None
     mass_line_species: tuple[str, ...]
+    mass_line_areas: dict[str, float]
 
 
 def _mass_resolution(mass: float, sigma: float) -> float | None:
@@ -431,6 +432,7 @@ class FlightCalibrationAnalyzer:
 
         tof_group = analysis.get("TOF H")
         mass_line_species: set[str] = set()
+        mass_line_areas: dict[str, float] = {}
         if tof_group is not None:
             mass_lines = tof_group.get("MassLines")
             if mass_lines is not None:
@@ -456,7 +458,9 @@ class FlightCalibrationAnalyzer:
                         if resolution is not None:
                             mass_resolutions.append(resolution)
                     areas = _mass_lines_to_areas(table)
-                    ternary_point = _ternary_from_areas(areas)
+                    if areas:
+                        mass_line_areas = areas
+                        ternary_point = _ternary_from_areas(areas)
 
         instrument_mass: float | None = None
         instrument_velocity: float | None = None
@@ -515,6 +519,7 @@ class FlightCalibrationAnalyzer:
             reduced_chi_sq_by_channel=reduced_chi_sq_by_channel,
             ternary_point=ternary_point,
             mass_line_species=tuple(sorted(mass_line_species)),
+            mass_line_areas=mass_line_areas,
         )
 
     def build_summary(self) -> dict[str, object]:
@@ -643,6 +648,7 @@ class FlightCalibrationAnalyzer:
                 self._plot_ternary(pdf, material, records)
                 try:
                     self._plot_mass_line_probabilities(pdf, material, records)
+                    self._plot_mass_line_yields(pdf, material, records)
                 except Exception:
                     continue
 
@@ -910,6 +916,70 @@ class FlightCalibrationAnalyzer:
         ax.set_xlabel("Impact velocity (m/s)")
         ax.set_ylabel("Appearance probability")
         ax.set_ylim(0.0, 1.05)
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="best", fontsize="small")
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _plot_mass_line_yields(
+        self, pdf: PdfPages, material: str, records: Sequence[EventRecord]
+    ) -> None:
+        assert plt is not None
+
+        entries_by_species: dict[str, list[tuple[float, float]]] = {}
+        species_counts: Counter[str] = Counter()
+
+        for record in records:
+            velocity = record.accelerator_velocity_mps
+            if velocity is None or not np.isfinite(velocity):
+                continue
+            mass_kg = record.accelerator_mass_kg
+            if not np.isfinite(mass_kg) or mass_kg <= 0.0:
+                continue
+            for species, area in record.mass_line_areas.items():
+                if not np.isfinite(area) or area <= 0.0:
+                    continue
+                yield_value = area / mass_kg
+                if not np.isfinite(yield_value):
+                    continue
+                entries_by_species.setdefault(species, []).append(
+                    (float(velocity), float(yield_value))
+                )
+                species_counts[species] += 1
+
+        eligible_species = [
+            name for name, count in species_counts.items() if count >= 10
+        ]
+        if not eligible_species:
+            return
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+        plotted_any = False
+        for name in sorted(eligible_species):
+            points = entries_by_species.get(name)
+            if not points:
+                continue
+            velocities_arr = np.asarray([velocity for velocity, _ in points], dtype=float)
+            yields_arr = np.asarray([yield_value for _, yield_value in points], dtype=float)
+            valid = np.isfinite(velocities_arr) & np.isfinite(yields_arr)
+            if not np.any(valid):
+                continue
+            ax.scatter(
+                velocities_arr[valid],
+                yields_arr[valid],
+                label=name,
+                alpha=0.7,
+                s=30,
+            )
+            plotted_any = True
+
+        if not plotted_any:
+            plt.close(fig)
+            return
+
+        ax.set_title(f"Mass line ion yield vs. impact velocity — {material}")
+        ax.set_xlabel("Impact velocity (m/s)")
+        ax.set_ylabel("Ion yield (area / dust mass)")
         ax.grid(True, alpha=0.3)
         ax.legend(loc="best", fontsize="small")
         pdf.savefig(fig)
