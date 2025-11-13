@@ -76,8 +76,34 @@ else:
         spacecraft_seconds_to_datetime,
     )
 
+try:
+    if __package__ is None or __package__ == "":
+        from calibration_data import AcceleratorMatch, AcceleratorMatchFinder
+    else:
+        from .calibration_data import AcceleratorMatch, AcceleratorMatchFinder
+except Exception:  # pragma: no cover - optional dependency
+    AcceleratorMatch = None  # type: ignore[assignment]
+    AcceleratorMatchFinder = None  # type: ignore[assignment]
+
 apply_plot_style()
 import numpy as np
+
+
+_FALLBACK_MATCH_FINDER: Optional[AcceleratorMatchFinder] = None
+
+
+def _get_fallback_match_finder() -> Optional[AcceleratorMatchFinder]:
+    """Initialise and cache the accelerator CSV match finder."""
+
+    global _FALLBACK_MATCH_FINDER
+    if AcceleratorMatchFinder is None:
+        return None
+    if _FALLBACK_MATCH_FINDER is None:
+        try:
+            _FALLBACK_MATCH_FINDER = AcceleratorMatchFinder()
+        except Exception:
+            _FALLBACK_MATCH_FINDER = None
+    return _FALLBACK_MATCH_FINDER
 
 MASS_STRETCH_MIN = 1.3
 MASS_STRETCH_MAX = 1.6
@@ -779,6 +805,46 @@ class SQLMatchResult:
         return float(self.velocity_mps) / 1000.0
 
 
+def _sql_result_from_accelerator_match(match: AcceleratorMatch) -> SQLMatchResult:
+    metadata: Dict[str, Any] = {"Source": match.source}
+    if match.dust_type:
+        metadata.setdefault("DustType", match.dust_type)
+    if match.campaign:
+        metadata["Campaign"] = match.campaign
+    if match.schedule_label:
+        metadata["ScheduleLabel"] = match.schedule_label
+    entry = match.calibration_entry
+    if entry is not None:
+        if entry.material:
+            metadata["CalibrationMaterial"] = entry.material
+        if entry.target_location:
+            metadata["TargetLocation"] = entry.target_location
+        if entry.azimuthal_location:
+            metadata["AzimuthalLocation"] = entry.azimuthal_location
+        if entry.speed_range:
+            metadata["SpeedRange"] = entry.speed_range
+        if entry.reference_voltage is not None:
+            metadata["ReferenceVoltage"] = entry.reference_voltage
+        if entry.target_voltage is not None:
+            metadata["TargetVoltage"] = entry.target_voltage
+        if entry.detector_voltage is not None:
+            metadata["DetectorVoltage"] = entry.detector_voltage
+        if entry.notes:
+            metadata["CalibrationNotes"] = entry.notes
+    return SQLMatchResult(
+        record_id=match.record_id,
+        estimate_quality=match.estimate_quality,
+        timestamp_ms=match.timestamp_ms,
+        velocity_mps=match.velocity_mps,
+        mass_kg=match.mass_kg,
+        charge_c=match.charge_c,
+        radius_m=match.radius_m,
+        experiment_tag=match.experiment_name,
+        experiment_description=match.experiment_description,
+        metadata=metadata,
+    )
+
+
 def query_dust_events(criteria: SQLMatchCriteria) -> Tuple[List[SQLMatchResult], str, Dict[str, Any]]:
     engine = _get_sql_engine()
     if engine is None:
@@ -1280,6 +1346,32 @@ def _attempt_sql_match(
             if candidate is not None:
                 chosen_match = candidate
                 chosen_criteria = velocity_only
+
+    if chosen_match is None and time_ms is not None:
+        finder = _get_fallback_match_finder()
+        if finder is not None and AcceleratorMatch is not None:
+            velocity_target_mps: Optional[float]
+            if velocity_kmps is None:
+                velocity_target_mps = None
+            else:
+                try:
+                    velocity_target_mps = float(velocity_kmps) * 1000.0
+                except (TypeError, ValueError):
+                    velocity_target_mps = None
+            fallback = finder.find(
+                time_ms,
+                timezone_offset_ms=0.0,
+                velocity_mps=velocity_target_mps,
+            )
+            if fallback is not None:
+                chosen_match = _sql_result_from_accelerator_match(fallback)
+                chosen_criteria = SQLMatchCriteria(
+                    time_ms=time_ms,
+                    time_window_ms=finder.time_tolerance_ms,
+                    velocity_kmps=(fallback.velocity_mps / 1000.0) if fallback.velocity_mps else None,
+                    restrict_time=True,
+                    restrict_velocity=fallback.velocity_mps is not None,
+                )
 
     if chosen_match is None:
         print(f"No SQL match found for event {event_key}")

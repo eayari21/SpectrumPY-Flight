@@ -14,6 +14,18 @@ def test_accelerator_match_finder_csv_fallback() -> None:
     assert match.source in {"csv", "server", "hdf"}
     # Velocity should agree with the CSV metadata (within tolerance).
     assert math.isclose(match.velocity_mps, 2237.1, rel_tol=1e-3)
+    assert match.schedule_label is not None
+    assert match.campaign is not None
+
+
+def test_accelerator_match_finder_search_window() -> None:
+    finder = AcceleratorMatchFinder()
+    timestamp_ms = 1702495880712
+    matches = finder.search(timestamp_ms, limit=5)
+    assert matches
+    assert 1 <= len(matches) <= 5
+    assert all(match.schedule_label is not None for match in matches)
+    assert all(match.campaign is not None for match in matches)
 
 
 def test_calibration_matrix_lookup() -> None:

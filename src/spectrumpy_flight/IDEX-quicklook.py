@@ -81,6 +81,7 @@ def _erfc(values: np.ndarray) -> np.ndarray:
 from .HDF_View import launch_hdf_viewer
 from .dust_composition import launch_dust_composition_window
 from .dust_estimator_gui import launch_dust_estimator_window
+from .calibration_data import AcceleratorMatch, AcceleratorMatchFinder
 from .mass_calibration import TOFMassCal
 from .noise_analysis import ChannelMeta, launch_noise_analysis_window
 from .plot_style import apply_plot_style
@@ -2407,6 +2408,48 @@ class SQLMatchResult:
         return float(self.timestamp_ms) - float(reference_ms)
 
 
+def _sql_result_from_accelerator_match(match: AcceleratorMatch) -> SQLMatchResult:
+    metadata: Dict[str, Any] = {"Source": match.source}
+    if match.dust_type:
+        metadata.setdefault("DustType", match.dust_type)
+    if match.campaign:
+        metadata["Campaign"] = match.campaign
+    if match.schedule_label:
+        metadata["ScheduleLabel"] = match.schedule_label
+    entry = match.calibration_entry
+    if entry is not None:
+        if entry.material:
+            metadata["CalibrationMaterial"] = entry.material
+        if entry.target_location:
+            metadata["TargetLocation"] = entry.target_location
+        if entry.azimuthal_location:
+            metadata["AzimuthalLocation"] = entry.azimuthal_location
+        if entry.speed_range:
+            metadata["SpeedRange"] = entry.speed_range
+        if entry.reference_voltage is not None:
+            metadata["ReferenceVoltage"] = entry.reference_voltage
+        if entry.target_voltage is not None:
+            metadata["TargetVoltage"] = entry.target_voltage
+        if entry.detector_voltage is not None:
+            metadata["DetectorVoltage"] = entry.detector_voltage
+        if entry.notes:
+            metadata["CalibrationNotes"] = entry.notes
+    return SQLMatchResult(
+        record_id=match.record_id,
+        estimate_quality=match.estimate_quality,
+        timestamp_ms=match.timestamp_ms,
+        velocity_mps=match.velocity_mps,
+        mass_kg=match.mass_kg,
+        charge_c=match.charge_c,
+        radius_m=match.radius_m,
+        experiment_settings_id=None,
+        dust_info_id=None,
+        experiment_tag=match.experiment_name,
+        experiment_description=match.experiment_description,
+        metadata=metadata,
+    )
+
+
 def build_default_criteria(data_source: BaseDataSource, event: str) -> SQLMatchCriteria:
     time_ms = _guess_event_timestamp_ms(data_source, event)
     velocity_kmps = _guess_event_velocity_kmps(data_source, event)
@@ -2829,6 +2872,7 @@ class SQLMatchDialog(QDialog):
         self._last_query_params: Dict[str, Any] = {}
         self._reference_time_ms: Optional[float] = None
         self._custom_limit_value: int = DEFAULT_RESULT_LIMIT
+        self._accelerator_matcher: Optional[AcceleratorMatchFinder] = None
 
         self._build_ui()
         self._populate_event_combo()
@@ -2973,7 +3017,7 @@ class SQLMatchDialog(QDialog):
         self._reference_time_ms = self._default_criteria.time_ms
         self._set_criteria_fields(self._default_criteria)
         self._update_summary_label()
-        self.run_search()
+        self._load_initial_matches()
         if notify_parent and self._on_event_changed is not None:
             self._on_event_changed(event_name)
 
@@ -3065,12 +3109,54 @@ class SQLMatchDialog(QDialog):
             QMessageBox.critical(self, "SQL query failed", f"Unable to execute the query:\n{exc}")
             return
 
-        self._matches = results
+        for result in results:
+            result.metadata.setdefault("Source", "server")
+
+        combined: List[SQLMatchResult] = list(results)
+        matcher = self._ensure_accelerator_matcher()
+        if (
+            matcher is not None
+            and criteria.time_ms is not None
+            and np.isfinite(criteria.time_ms)
+        ):
+            try:
+                velocity_mps = (
+                    float(criteria.velocity_kmps) * 1000.0
+                    if criteria.velocity_kmps is not None and np.isfinite(criteria.velocity_kmps)
+                    else None
+                )
+            except Exception:
+                velocity_mps = None
+            try:
+                csv_matches = matcher.search(
+                    criteria.time_ms,
+                    velocity_mps=velocity_mps,
+                    limit=criteria.effective_limit(),
+                    time_window_ms=criteria.time_window_ms,
+                    restrict_time=criteria.restrict_time,
+                    restrict_velocity=criteria.restrict_velocity and velocity_mps is not None,
+                    velocity_tolerance_mps=criteria.velocity_tolerance_kmps * 1000.0,
+                )
+            except Exception:
+                csv_matches = []
+            csv_results = [_sql_result_from_accelerator_match(match) for match in csv_matches]
+            combined.extend(csv_results)
+
+        reference = criteria.time_ms if criteria.time_ms is not None and np.isfinite(criteria.time_ms) else None
+
+        def _delta(result: SQLMatchResult) -> float:
+            if reference is None or result.timestamp_ms is None or not np.isfinite(result.timestamp_ms):
+                return float("inf")
+            return abs(float(result.timestamp_ms) - reference)
+
+        combined.sort(key=_delta)
+
+        self._matches = combined
         self._last_query_sql = sql
         self._last_query_params = params
         self._last_criteria = criteria
         self._populate_table()
-        if results:
+        if combined:
             self.matches_table.selectRow(0)
         else:
             self.apply_button.setEnabled(False)
@@ -3248,6 +3334,72 @@ class SQLMatchDialog(QDialog):
         summary.append(f"<b>Trigger (UTC):</b> {event_time}")
         summary.append(f"<b>Velocity estimate:</b> {velocity} km/s")
         self.summary_label.setText("<br/>".join(summary))
+
+    def _ensure_accelerator_matcher(self) -> Optional[AcceleratorMatchFinder]:
+        if self._accelerator_matcher is None:
+            try:
+                self._accelerator_matcher = AcceleratorMatchFinder()
+            except Exception:
+                self._accelerator_matcher = None
+        return self._accelerator_matcher
+
+    def _load_initial_matches(self) -> None:
+        timestamp = self._default_criteria.time_ms
+        combined: List[SQLMatchResult] = []
+        sql_text = ""
+        sql_params: Dict[str, Any] = {}
+
+        if timestamp is not None and np.isfinite(timestamp):
+            initial_criteria = SQLMatchCriteria(time_ms=timestamp, limit=5)
+            try:
+                server_results, sql_text, sql_params = query_dust_events(initial_criteria)
+            except Exception:
+                server_results = []
+            for result in server_results[:5]:
+                result.metadata.setdefault("Source", "server")
+                combined.append(result)
+
+            matcher = self._ensure_accelerator_matcher()
+            if matcher is not None:
+                try:
+                    csv_matches = matcher.search(timestamp, limit=5)
+                except Exception:
+                    csv_matches = []
+                csv_results = [_sql_result_from_accelerator_match(match) for match in csv_matches]
+                combined.extend(csv_results)
+        else:
+            matcher = None
+
+        if combined:
+            reference = timestamp if timestamp is not None and np.isfinite(timestamp) else None
+
+            def _delta(match: SQLMatchResult) -> float:
+                if reference is None or match.timestamp_ms is None or not np.isfinite(match.timestamp_ms):
+                    return float("inf")
+                return abs(float(match.timestamp_ms) - reference)
+
+            combined.sort(key=_delta)
+            self._matches = combined
+            self._last_query_sql = sql_text
+            self._last_query_params = sql_params
+            self._last_criteria = SQLMatchCriteria(time_ms=timestamp)
+            self._populate_table()
+            if combined:
+                self.matches_table.selectRow(0)
+                self.apply_button.setEnabled(True)
+            self.details_browser.setText(
+                "Initial matches include live SQL results and FM lookup records."
+            )
+        else:
+            self._matches = []
+            self._last_query_sql = ""
+            self._last_query_params = {}
+            self._last_criteria = SQLMatchCriteria(time_ms=timestamp)
+            self._populate_table()
+            self.apply_button.setEnabled(False)
+            self.details_browser.setText(
+                "No accelerator metadata were found near the event timestamp."
+            )
 
     def set_current_event(self, event_name: Optional[str]) -> None:
         if not event_name or event_name not in self._event_names:
