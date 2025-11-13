@@ -6,20 +6,22 @@ import csv
 import math
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Mapping, Sequence, TYPE_CHECKING
 
 import numpy as np
 
-try:  # Optional dependency used for live accelerator SQL queries
-    from .idex_packet import SQLMatchCriteria, SQLMatchResult, query_dust_events
-except Exception:  # pragma: no cover - optional at runtime
-    SQLMatchCriteria = None  # type: ignore[assignment]
-    SQLMatchResult = None  # type: ignore[assignment]
-    query_dust_events = None  # type: ignore[assignment]
-
 from . import package_path
+from .dust_schedule import load_dust_schedule
+
+if TYPE_CHECKING:  # pragma: no cover - imported only for typing support
+    from .idex_packet import SQLMatchCriteria, SQLMatchResult
+
+SQLMatchCriteria = None  # type: ignore[assignment]
+SQLMatchResult = None  # type: ignore[assignment]
+query_dust_events = None  # type: ignore[assignment]
+_SQL_IMPORT_ATTEMPTED = False
 
 __all__ = [
     "AcceleratorMatch",
@@ -30,6 +32,30 @@ __all__ = [
 
 
 EXCEL_EPOCH = datetime(1899, 12, 30)
+
+
+def _ensure_sql_support() -> bool:
+    """Lazily import SQL matching utilities when available."""
+
+    global SQLMatchCriteria, SQLMatchResult, query_dust_events, _SQL_IMPORT_ATTEMPTED
+    if query_dust_events is not None:
+        return True
+    if _SQL_IMPORT_ATTEMPTED:
+        return False
+    _SQL_IMPORT_ATTEMPTED = True
+    try:  # pragma: no cover - optional dependency at runtime
+        from .idex_packet import (  # type: ignore
+            SQLMatchCriteria as _SQLMatchCriteria,
+            SQLMatchResult as _SQLMatchResult,
+            query_dust_events as _query_dust_events,
+        )
+    except Exception:
+        return False
+
+    SQLMatchCriteria = _SQLMatchCriteria  # type: ignore[assignment]
+    SQLMatchResult = _SQLMatchResult  # type: ignore[assignment]
+    query_dust_events = _query_dust_events  # type: ignore[assignment]
+    return True
 
 
 def _excel_serial_to_datetime(value: str | float | int | None) -> datetime | None:
@@ -151,6 +177,9 @@ class AcceleratorMatch:
     experiment_description: str | None = None
     dust_type: str | None = None
     group_id: str | None = None
+    campaign: str | None = None
+    schedule_label: str | None = None
+    calibration_entry: "CalibrationEntry | None" = None
 
 
 @dataclass(frozen=True)
@@ -320,16 +349,19 @@ class AcceleratorMatchFinder:
         self._timezone_offsets_ms = tuple(
             sorted({int(hours * 3_600_000) for hours in timezone_offsets_hours})
         )
+        self._server_successes = 0
+        self._calibration_matrix = CalibrationMatrix()
+        self._fm_windows_ms = self._load_dust_windows()
         self._csv_records = self._load_csv_records()
         self._csv_timestamps = np.array(
             [record["timestamp_ms"] for record in self._csv_records], dtype=float
         )
-        self._server_successes = 0
 
     def _load_csv_records(self) -> list[dict[str, float | str | None]]:
         records: list[dict[str, float | str | None]] = []
         if not self.csv_path.exists():
             return records
+        lookup = self._calibration_matrix.lookup
         with self.csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
@@ -349,6 +381,29 @@ class AcceleratorMatchFinder:
                 experiment_description = (row.get("Current Experiment Description") or "").strip()
                 dust_type = (row.get("Dust Type") or "").strip()
                 group_id = (row.get("Current Group ID") or "").strip()
+                campaign: str | None = None
+                calibration_entry: CalibrationEntry | None = None
+                calibration_window: tuple[float, float] | None = None
+                if experiment_name:
+                    entry = lookup(experiment_name)
+                    if entry is not None:
+                        calibration_entry = entry
+                        campaign = entry.campaign or None
+                        if entry.date is not None:
+                            date = entry.date
+                            if date.tzinfo is None:
+                                date = date.replace(tzinfo=timezone.utc)
+                            day_start = datetime(
+                                date.year,
+                                date.month,
+                                date.day,
+                                tzinfo=timezone.utc,
+                            )
+                            day_end = day_start + timedelta(days=1) - timedelta(milliseconds=1)
+                            calibration_window = (
+                                day_start.timestamp() * 1000.0,
+                                day_end.timestamp() * 1000.0,
+                            )
                 records.append(
                     {
                         "record_id": int(record_id) if record_id else None,
@@ -362,10 +417,144 @@ class AcceleratorMatchFinder:
                         "experiment_description": experiment_description or None,
                         "dust_type": dust_type or None,
                         "group_id": group_id or None,
+                        "campaign": campaign,
+                        "calibration_entry": calibration_entry,
+                        "calibration_window": calibration_window,
                     }
                 )
         records.sort(key=lambda item: item["timestamp_ms"])
         return records
+
+    def _load_dust_windows(self) -> list[tuple[float, float, str]]:
+        windows: list[tuple[float, float, str]] = []
+        try:
+            schedule = load_dust_schedule()
+        except Exception:
+            return windows
+        for entry in schedule:
+            instrument = entry.instrument_model.lower()
+            if "idex fm" not in instrument:
+                continue
+            try:
+                start_ms = entry.start.timestamp() * 1000.0
+                end_ms = entry.end.timestamp() * 1000.0
+            except Exception:
+                continue
+            windows.append((float(start_ms), float(end_ms), entry.label))
+        windows.sort(key=lambda item: item[0])
+        return windows
+
+    def _schedule_label_for_time(self, timestamp_ms: float) -> str | None:
+        for start_ms, end_ms, label in self._fm_windows_ms:
+            if start_ms <= timestamp_ms <= end_ms:
+                return label
+        return None
+
+    def _is_within_fm_window(self, timestamp_ms: float) -> bool:
+        if not self._fm_windows_ms:
+            return True
+        return self._schedule_label_for_time(timestamp_ms) is not None
+
+    def _create_match_from_record(
+        self,
+        record: Mapping[str, float | str | None],
+        schedule_label: str | None,
+    ) -> AcceleratorMatch:
+        calibration_entry = record.get("calibration_entry")
+        if not isinstance(calibration_entry, CalibrationEntry):
+            calibration_entry = None
+        return AcceleratorMatch(
+            record_id=record.get("record_id"),
+            timestamp_ms=float(record["timestamp_ms"]),
+            mass_kg=float(record["mass_kg"]),
+            velocity_mps=float(record["velocity_mps"]),
+            charge_c=float(record["charge_c"]),
+            radius_m=float(record["radius_m"]),
+            estimate_quality=float(record["estimate_quality"]),
+            source="csv",
+            experiment_name=record.get("experiment_name") if isinstance(record.get("experiment_name"), str) else None,
+            experiment_description=record.get("experiment_description") if isinstance(record.get("experiment_description"), str) else None,
+            dust_type=record.get("dust_type") if isinstance(record.get("dust_type"), str) else None,
+            group_id=record.get("group_id") if isinstance(record.get("group_id"), str) else None,
+            campaign=record.get("campaign") if isinstance(record.get("campaign"), str) else None,
+            schedule_label=schedule_label,
+            calibration_entry=calibration_entry,
+        )
+
+    def search(
+        self,
+        timestamp_ms: float,
+        *,
+        timezone_offset_ms: float = 0.0,
+        velocity_mps: float | None = None,
+        limit: int = 5,
+        time_window_ms: float | None = None,
+        restrict_time: bool = False,
+        restrict_velocity: bool = False,
+        velocity_tolerance_mps: float = 1_500.0,
+    ) -> list[AcceleratorMatch]:
+        if not self._csv_records:
+            return []
+
+        try:
+            limit_value = max(1, int(limit))
+        except (TypeError, ValueError):
+            limit_value = 5
+
+        velocity_target: float | None
+        if velocity_mps is None:
+            velocity_target = None
+        else:
+            try:
+                velocity_target = float(velocity_mps)
+            except (TypeError, ValueError):
+                velocity_target = None
+            else:
+                if not math.isfinite(velocity_target):
+                    velocity_target = None
+
+        velocity_tol = max(float(velocity_tolerance_mps), 0.0)
+        candidates: list[tuple[float, AcceleratorMatch]] = []
+        used_indices: set[int] = set()
+
+        for offset in self._candidate_offsets(timezone_offset_ms):
+            adjusted_time = float(timestamp_ms + offset)
+            if not self._is_within_fm_window(adjusted_time):
+                continue
+            deltas = np.abs(self._csv_timestamps - adjusted_time)
+            order = np.argsort(deltas)
+            for idx in order:
+                if idx in used_indices:
+                    continue
+                record = self._csv_records[idx]
+                delta = float(deltas[idx])
+                if time_window_ms is not None:
+                    window_limit = float(time_window_ms)
+                    if restrict_time and delta > window_limit:
+                        continue
+                if restrict_velocity and velocity_target is not None:
+                    diff = abs(float(record["velocity_mps"]) - velocity_target)
+                    if diff > velocity_tol:
+                        continue
+                calibration_window = record.get("calibration_window")
+                if isinstance(calibration_window, tuple):
+                    start_ms, end_ms = calibration_window
+                    if not (start_ms <= adjusted_time <= end_ms):
+                        continue
+                record_time = float(record["timestamp_ms"])
+                schedule_label = self._schedule_label_for_time(record_time)
+                if schedule_label is None and self._fm_windows_ms:
+                    continue
+                match = self._create_match_from_record(record, schedule_label)
+                candidates.append((delta, match))
+                used_indices.add(idx)
+                if len(candidates) >= limit_value:
+                    break
+            if len(candidates) >= limit_value:
+                break
+
+        candidates.sort(key=lambda item: item[0])
+        return [match for _delta, match in candidates[:limit_value]]
 
     @property
     def server_successes(self) -> int:
@@ -390,7 +579,7 @@ class AcceleratorMatchFinder:
         timezone_offset_ms: float,
         velocity_mps: float | None,
     ) -> AcceleratorMatch | None:
-        if SQLMatchCriteria is None or query_dust_events is None:
+        if not _ensure_sql_support():
             return None
         offsets_ms = self._candidate_offsets(timezone_offset_ms)
         for offset in offsets_ms:
@@ -411,6 +600,17 @@ class AcceleratorMatchFinder:
                 continue
             match = self._choose_best_result(results, adjusted_time)
             if match is not None:
+                experiment_name = (
+                    match.experiment_tag
+                    or (match.metadata.get("ExperimentTag") if match.metadata else None)
+                )
+                experiment_name = experiment_name.strip() if isinstance(experiment_name, str) else None
+                calibration_entry = self._calibration_matrix.lookup(experiment_name) if experiment_name else None
+                schedule_label: str | None = None
+                if match.timestamp_ms is not None and math.isfinite(match.timestamp_ms):
+                    schedule_label = self._schedule_label_for_time(float(match.timestamp_ms))
+                elif self._is_within_fm_window(adjusted_time):
+                    schedule_label = self._schedule_label_for_time(adjusted_time)
                 return AcceleratorMatch(
                     record_id=match.record_id,
                     timestamp_ms=float(match.timestamp_ms or 0.0),
@@ -420,13 +620,16 @@ class AcceleratorMatchFinder:
                     radius_m=float(match.radius_m or 0.0),
                     estimate_quality=float(match.estimate_quality or 0.0),
                     source="server",
-                    experiment_name=(match.experiment_tag or match.metadata.get("ExperimentTag") if match.metadata else None),
+                    experiment_name=experiment_name,
                     experiment_description=(
                         match.experiment_description
                         or (match.metadata.get("ExperimentDescription") if match.metadata else None)
                     ),
                     dust_type=(match.metadata.get("DustSourceNotes") if match.metadata else None),
                     group_id=str(match.experiment_settings_id) if match.experiment_settings_id is not None else None,
+                    campaign=(calibration_entry.campaign if calibration_entry else None),
+                    schedule_label=schedule_label,
+                    calibration_entry=calibration_entry,
                 )
         return None
 
@@ -476,42 +679,20 @@ class AcceleratorMatchFinder:
         timezone_offset_ms: float,
         velocity_mps: float | None,
     ) -> AcceleratorMatch | None:
-        if not self._csv_records:
-            return None
-        best_record: dict[str, float | str | None] | None = None
-        best_delta = float("inf")
-        for offset in self._candidate_offsets(timezone_offset_ms):
-            adjusted = float(timestamp_ms + offset)
-            idx = int(np.searchsorted(self._csv_timestamps, adjusted))
-            for candidate_idx in (idx - 1, idx, idx + 1):
-                if candidate_idx < 0 or candidate_idx >= len(self._csv_records):
-                    continue
-                record = self._csv_records[candidate_idx]
-                delta = abs(record["timestamp_ms"] - adjusted)
-                if delta > self.time_tolerance_ms:
-                    continue
-                if velocity_mps is not None and math.isfinite(velocity_mps):
-                    if not math.isfinite(record["velocity_mps"]):
-                        continue
-                    if abs(record["velocity_mps"] - velocity_mps) > 1_500.0:
-                        continue
-                if delta < best_delta:
-                    best_delta = delta
-                    best_record = record
-        if best_record is None:
-            return None
-        return AcceleratorMatch(
-            record_id=best_record["record_id"] if best_record["record_id"] is not None else None,
-            timestamp_ms=float(best_record["timestamp_ms"]),
-            mass_kg=float(best_record["mass_kg"]),
-            velocity_mps=float(best_record["velocity_mps"]),
-            charge_c=float(best_record["charge_c"]),
-            radius_m=float(best_record["radius_m"]),
-            estimate_quality=float(best_record["estimate_quality"]),
-            source="csv",
-            experiment_name=best_record.get("experiment_name") if isinstance(best_record.get("experiment_name"), str) else None,
-            experiment_description=best_record.get("experiment_description") if isinstance(best_record.get("experiment_description"), str) else None,
-            dust_type=best_record.get("dust_type") if isinstance(best_record.get("dust_type"), str) else None,
-            group_id=best_record.get("group_id") if isinstance(best_record.get("group_id"), str) else None,
+        restrict_velocity = False
+        if velocity_mps is not None:
+            try:
+                restrict_velocity = math.isfinite(float(velocity_mps))
+            except Exception:
+                restrict_velocity = False
+        matches = self.search(
+            timestamp_ms,
+            timezone_offset_ms=timezone_offset_ms,
+            velocity_mps=velocity_mps,
+            limit=1,
+            time_window_ms=self.time_tolerance_ms,
+            restrict_time=True,
+            restrict_velocity=restrict_velocity,
         )
+        return matches[0] if matches else None
 
