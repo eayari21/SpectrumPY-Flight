@@ -5,7 +5,9 @@ from __future__ import annotations
 import csv
 import json
 import math
+import re
 import sys
+import textwrap
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -25,6 +27,12 @@ except Exception:  # pragma: no cover - matplotlib may be unavailable in some co
     PdfPages = None  # type: ignore[assignment]
 
 from . import package_path
+from .calibration_data import (
+    AcceleratorMatch,
+    AcceleratorMatchFinder,
+    CalibrationEntry,
+    CalibrationMatrix,
+)
 from .olivine_metrics import FE_ISOTOPES, MG_ISOTOPES, SI_ISOTOPES
 
 __all__ = [
@@ -208,11 +216,70 @@ def _read_scalar(dataset) -> float | None:
     return None
 
 
+def _read_text(dataset) -> str | None:
+    if dataset is None:
+        return None
+    try:
+        value = dataset[()]
+    except Exception:
+        return None
+    if isinstance(value, bytes):
+        try:
+            text = value.decode("utf-8")
+        except Exception:
+            text = value.decode("latin1", "ignore")
+    else:
+        text = str(value)
+    text = text.strip()
+    return text or None
+
+
 def _ensure_matplotlib() -> None:
     if plt is None or PdfPages is None:  # pragma: no cover - runtime guard
         raise RuntimeError(
             "Matplotlib is required to generate the flight calibration report."
         )
+
+
+_EXPERIMENT_PATTERN = re.compile(r"(20\d{2})[_-](\d{2})[_-](\d{2})[_\-]run(\d+)", re.IGNORECASE)
+_RUN_PATTERN = re.compile(r"run\s*(\d+)", re.IGNORECASE)
+_DATE_PATTERN = re.compile(r"(20\d{2})[-_/](\d{2})[-_/](\d{2})")
+
+
+def _infer_experiment_name(match: AcceleratorMatch) -> str | None:
+    candidates: list[str] = []
+    if match.experiment_name:
+        text = match.experiment_name.strip()
+        if text:
+            candidates.append(text)
+    if match.experiment_description:
+        description = match.experiment_description.strip()
+        if description:
+            found = _EXPERIMENT_PATTERN.search(description)
+            if found:
+                year, month, day, run = found.groups()
+                candidates.append(f"{year}_{month}_{day}_run{int(run):d}")
+            else:
+                date_match = _DATE_PATTERN.search(description)
+                run_match = _RUN_PATTERN.search(description)
+                if date_match and run_match:
+                    year, month, day = date_match.groups()
+                    run_value = int(run_match.group(1))
+                    candidates.append(f"{year}_{month}_{day}_run{run_value:d}")
+    for candidate in candidates:
+        if candidate:
+            return candidate
+    return None
+
+
+_RSF_PRESETS: list[tuple[str, dict[str, float]]] = [
+    ("Measured abundances", {"Mg": 1.0, "Si": 1.0, "Fe": 1.0}),
+    ("PUMA/PIA (Krueger 1996)", {"Mg": 3.1, "Si": 1.0, "Fe": 1.1}),
+    ("Orthopyroxene, LAMA (Sternglass 1971)", {"Mg": 5.50, "Si": 1.0, "Fe": 1.12}),
+    ("Olivine Fo87, SUDA (Hillier et al. 2018)", {"Mg": 4.93, "Si": 1.0, "Fe": 1.50}),
+    ("Olivine Fo91, Hyperdust (this work)", {"Mg": 4.97, "Si": 1.0, "Fe": 1.32}),
+    ("TOF SIMS (Stephan 2001)", {"Mg": 5.10, "Si": 1.0, "Fe": 2.40}),
+]
 
 
 @dataclass
@@ -222,12 +289,20 @@ class EventRecord:
     dust_type: str
     instrument_model: str
     timestamp: datetime
+    accelerator_timestamp_ms: float
     accelerator_mass_kg: float
     accelerator_velocity_mps: float | None
     accelerator_charge_c: float
     accelerator_radius_m: float
+    accelerator_source: str
+    accelerator_experiment_name: str | None
+    accelerator_experiment_description: str | None
     instrument_mass_estimate_kg: float | None
     instrument_velocity_estimate_mps: float | None
+    target_rise_time_us: float | None
+    target_velocity_fit_mps: float | None
+    target_velocity_rise_mps: float | None
+    target_velocity_ratio_mps: float | None
     collection_efficiency: float | None
     mass_resolutions: list[float]
     snr_by_channel: dict[str, float]
@@ -236,6 +311,16 @@ class EventRecord:
     ternary_point: tuple[float, float, float] | None
     mass_line_species: tuple[str, ...]
     mass_line_areas: dict[str, float]
+    calibration_campaign: str | None
+    calibration_material: str | None
+    calibration_speed_range: str | None
+    calibration_target_location: str | None
+    calibration_azimuthal_location: str | None
+    calibration_notes: str | None
+    reference_voltage: float | None
+    target_voltage: float | None
+    detector_voltage: float | None
+    rejection_voltage: float | None
 
 
 def _mass_resolution(mass: float, sigma: float) -> float | None:
@@ -277,6 +362,29 @@ def _ternary_from_areas(areas: Mapping[str, float]) -> tuple[float, float, float
     return float(mg / total), float(si / total), float(fe / total)
 
 
+def _ternary_with_rsf(
+    areas: Mapping[str, float],
+    rsf: Mapping[str, float],
+) -> tuple[float, float, float] | None:
+    mg = sum(areas.get(species, 0.0) for species in MG_ISOTOPES)
+    si = sum(areas.get(species, 0.0) for species in SI_ISOTOPES)
+    fe = sum(areas.get(species, 0.0) for species in FE_ISOTOPES)
+    mg_factor = float(rsf.get("Mg", 1.0) or 1.0)
+    si_factor = float(rsf.get("Si", 1.0) or 1.0)
+    fe_factor = float(rsf.get("Fe", 1.0) or 1.0)
+    if mg_factor <= 0.0 or si_factor <= 0.0 or fe_factor <= 0.0:
+        return None
+    mg /= mg_factor
+    si /= si_factor
+    fe /= fe_factor
+    if mg <= 0.0 or si <= 0.0 or fe <= 0.0:
+        return None
+    total = mg + si + fe
+    if total <= 0.0:
+        return None
+    return float(mg / total), float(si / total), float(fe / total)
+
+
 def _ternary_to_cartesian(point: tuple[float, float, float]) -> tuple[float, float]:
     mg, si, fe = point
     x = 0.5 * (2 * si + fe)
@@ -303,6 +411,8 @@ class FlightCalibrationAnalyzer:
     schedule: Sequence[DustScheduleEntry]
     timestamp_tolerance_ms: float = 2_000.0
     material_filter: frozenset[str] | None = None
+    match_finder: AcceleratorMatchFinder | None = None
+    calibration_matrix: CalibrationMatrix | None = None
     events: list[EventRecord] = field(default_factory=list)
     skipped_files: list[Path] = field(default_factory=list)
     missing_hdf: list[Path] = field(default_factory=list)
@@ -464,6 +574,78 @@ class FlightCalibrationAnalyzer:
                 if record is not None:
                     collector.append(record)
 
+    def _match_from_group(self, accel_group) -> AcceleratorMatch | None:
+        if accel_group is None:
+            return None
+        mass_kg = _read_scalar(accel_group.get("MassKilograms"))
+        charge_c = _read_scalar(accel_group.get("ChargeCoulombs"))
+        radius_m = _read_scalar(accel_group.get("RadiusMeters"))
+        timestamp_ms = _read_scalar(accel_group.get("IntegerTimestamp"))
+        estimate_quality = _read_scalar(accel_group.get("EstimateQuality"))
+        if (
+            estimate_quality is None
+            or mass_kg is None
+            or charge_c is None
+            or radius_m is None
+            or timestamp_ms is None
+        ):
+            return None
+        if estimate_quality < 3 or mass_kg <= 0.0 or charge_c <= 0.0 or radius_m <= 0.0:
+            return None
+        velocity_mps = _read_scalar(accel_group.get("VelocityMetersPerSecond"))
+        record_id_value = _read_scalar(accel_group.get("RecordID"))
+        record_id = None
+        if record_id_value is not None and np.isfinite(record_id_value):
+            try:
+                record_id = int(record_id_value)
+            except Exception:
+                record_id = None
+        experiment_name = _read_text(accel_group.get("ExperimentTag"))
+        experiment_description = _read_text(accel_group.get("ExperimentDescription"))
+        if not experiment_name:
+            experiment_name = _read_text(accel_group.get("ExperimentSettingsKey"))
+        dust_type = _read_text(accel_group.get("DustSourceNotes"))
+        if not dust_type:
+            dust_type = _read_text(accel_group.get("DustTypeID"))
+        group_id_text = _read_text(accel_group.get("ExperimentSettingsID"))
+        if not group_id_text:
+            group_id_value = _read_scalar(accel_group.get("ExperimentSettingsID"))
+            if group_id_value is not None and np.isfinite(group_id_value):
+                group_id_text = str(int(group_id_value))
+        velocity_value = float(velocity_mps) if velocity_mps is not None and np.isfinite(velocity_mps) else float("nan")
+        return AcceleratorMatch(
+            record_id=record_id,
+            timestamp_ms=float(timestamp_ms),
+            mass_kg=float(mass_kg),
+            velocity_mps=velocity_value,
+            charge_c=float(charge_c),
+            radius_m=float(radius_m),
+            estimate_quality=float(estimate_quality),
+            source="hdf",
+            experiment_name=experiment_name,
+            experiment_description=experiment_description,
+            dust_type=dust_type,
+            group_id=group_id_text,
+        )
+
+    def _resolve_calibration_entry(
+        self, match: AcceleratorMatch, inferred_name: str | None
+    ) -> CalibrationEntry | None:
+        if self.calibration_matrix is None:
+            return None
+        candidates = []
+        if inferred_name:
+            candidates.append(inferred_name.strip())
+        if match.experiment_name:
+            candidates.append(match.experiment_name.strip())
+        for candidate in candidates:
+            if not candidate:
+                continue
+            entry = self.calibration_matrix.lookup(candidate)
+            if entry is not None:
+                return entry
+        return None
+
     def _process_event(
         self,
         event_group,
@@ -478,28 +660,6 @@ class FlightCalibrationAnalyzer:
         if analysis is None:
             return None
 
-        accel_group = analysis.get("AcceleratorMetadata") if analysis else None
-        if accel_group is None:
-            return None
-
-        estimate_quality = _read_scalar(accel_group.get("EstimateQuality"))
-        mass_kg = _read_scalar(accel_group.get("MassKilograms"))
-        charge_c = _read_scalar(accel_group.get("ChargeCoulombs"))
-        radius_m = _read_scalar(accel_group.get("RadiusMeters"))
-        accel_timestamp_ms = _read_scalar(accel_group.get("IntegerTimestamp"))
-        velocity_mps = _read_scalar(accel_group.get("VelocityMetersPerSecond"))
-
-        if (
-            estimate_quality is None
-            or mass_kg is None
-            or charge_c is None
-            or radius_m is None
-            or accel_timestamp_ms is None
-        ):
-            return None
-        if estimate_quality < 3 or mass_kg <= 0.0 or charge_c <= 0.0 or radius_m <= 0.0:
-            return None
-
         instrument_timestamp_ms: float | None = None
         if metadata is not None:
             epoch_dataset = metadata.get("Epoch")
@@ -507,11 +667,7 @@ class FlightCalibrationAnalyzer:
                 epoch_value = _read_scalar(epoch_dataset)
                 if epoch_value is not None:
                     instrument_timestamp_ms = _normalise_epoch_to_ms(epoch_value)
-
         if instrument_timestamp_ms is None:
-            return None
-        adjusted_timestamp_ms = instrument_timestamp_ms + self._active_timezone_offset_ms
-        if abs(accel_timestamp_ms - adjusted_timestamp_ms) > self.timestamp_tolerance_ms:
             return None
 
         channel_names = ("Ion Grid", "Target L", "Target H")
@@ -555,6 +711,22 @@ class FlightCalibrationAnalyzer:
                         mass_line_areas = areas
                         ternary_point = _ternary_from_areas(areas)
 
+        target_rise_time = _read_scalar(analysis.get("Target H 10-90 Risetime"))
+        target_velocity_fit_kmps = _read_scalar(analysis.get("Target H Velocity Estimate"))
+        target_velocity_rise_kmps = _read_scalar(analysis.get("Target H Velocity From Rise"))
+        target_velocity_ratio_kmps = _read_scalar(analysis.get("Target H Velocity From Ratio"))
+
+        def _kmps_to_mps(value: float | None) -> float | None:
+            if value is None:
+                return None
+            try:
+                numeric = float(value)
+            except Exception:
+                return None
+            if not np.isfinite(numeric):
+                return None
+            return numeric * 1000.0
+
         instrument_mass: float | None = None
         instrument_velocity: float | None = None
         collection_efficiency: float | None = None
@@ -579,19 +751,62 @@ class FlightCalibrationAnalyzer:
                 mass_dataset = analysis.get(f"{channel} Dust Mass Estimate")
                 mass_value = _read_scalar(mass_dataset)
                 if mass_value is not None and np.isfinite(mass_value) and mass_value > 0.0:
-                    instrument_mass = mass_value
+                    instrument_mass = float(mass_value)
 
             if instrument_velocity is None:
                 velocity_dataset = analysis.get(f"{channel} Velocity Estimate")
                 velocity_value = _read_scalar(velocity_dataset)
-                if velocity_value is not None and np.isfinite(velocity_value):
-                    instrument_velocity = velocity_value
+                converted = _kmps_to_mps(velocity_value)
+                if converted is not None:
+                    instrument_velocity = converted
 
             if collection_efficiency is None:
                 ce_dataset = analysis.get(f"{channel} Collection Efficiency")
                 ce_value = _read_scalar(ce_dataset)
                 if ce_value is not None and np.isfinite(ce_value):
-                    collection_efficiency = ce_value
+                    collection_efficiency = float(ce_value)
+
+        target_velocity_fit_mps = _kmps_to_mps(target_velocity_fit_kmps)
+        target_velocity_rise_mps = _kmps_to_mps(target_velocity_rise_kmps)
+        target_velocity_ratio_mps = _kmps_to_mps(target_velocity_ratio_kmps)
+
+        accel_group = analysis.get("AcceleratorMetadata")
+        match = self._match_from_group(accel_group)
+        adjusted_timestamp_ms = instrument_timestamp_ms + self._active_timezone_offset_ms
+
+        def _is_valid_match(candidate: AcceleratorMatch | None) -> bool:
+            if candidate is None:
+                return False
+            if not math.isfinite(candidate.timestamp_ms):
+                return False
+            if abs(candidate.timestamp_ms - adjusted_timestamp_ms) > self.timestamp_tolerance_ms:
+                return False
+            if candidate.mass_kg <= 0.0 or candidate.charge_c <= 0.0 or candidate.radius_m <= 0.0:
+                return False
+            return True
+
+        if not _is_valid_match(match) and self.match_finder is not None:
+            velocity_hint = instrument_velocity
+            if velocity_hint is None:
+                velocity_hint = target_velocity_fit_mps or target_velocity_rise_mps
+            fallback = self.match_finder.find(
+                instrument_timestamp_ms,
+                timezone_offset_ms=self._active_timezone_offset_ms,
+                velocity_mps=velocity_hint,
+            )
+            if _is_valid_match(fallback):
+                match = fallback
+        if not _is_valid_match(match):
+            return None
+
+        accelerator_velocity = match.velocity_mps if math.isfinite(match.velocity_mps) else None
+        experiment_name = _infer_experiment_name(match)
+        calibration_entry = self._resolve_calibration_entry(match, experiment_name)
+        calibration_material = (
+            (calibration_entry.material if calibration_entry and calibration_entry.material else None)
+            or match.dust_type
+            or material
+        )
 
         return EventRecord(
             file=raw_file,
@@ -599,12 +814,20 @@ class FlightCalibrationAnalyzer:
             dust_type=material,
             instrument_model=instrument_model,
             timestamp=file_timestamp,
-            accelerator_mass_kg=float(mass_kg),
-            accelerator_velocity_mps=None if velocity_mps is None else float(velocity_mps),
-            accelerator_charge_c=float(charge_c),
-            accelerator_radius_m=float(radius_m),
+            accelerator_timestamp_ms=float(match.timestamp_ms),
+            accelerator_mass_kg=float(match.mass_kg),
+            accelerator_velocity_mps=accelerator_velocity,
+            accelerator_charge_c=float(match.charge_c),
+            accelerator_radius_m=float(match.radius_m),
+            accelerator_source=match.source,
+            accelerator_experiment_name=experiment_name,
+            accelerator_experiment_description=match.experiment_description,
             instrument_mass_estimate_kg=instrument_mass,
             instrument_velocity_estimate_mps=instrument_velocity,
+            target_rise_time_us=float(target_rise_time) if target_rise_time is not None and np.isfinite(target_rise_time) else None,
+            target_velocity_fit_mps=target_velocity_fit_mps,
+            target_velocity_rise_mps=target_velocity_rise_mps,
+            target_velocity_ratio_mps=target_velocity_ratio_mps,
             collection_efficiency=collection_efficiency,
             mass_resolutions=mass_resolutions,
             snr_by_channel=snr_by_channel,
@@ -613,6 +836,16 @@ class FlightCalibrationAnalyzer:
             ternary_point=ternary_point,
             mass_line_species=tuple(sorted(mass_line_species)),
             mass_line_areas=mass_line_areas,
+            calibration_campaign=calibration_entry.campaign if calibration_entry else None,
+            calibration_material=calibration_material,
+            calibration_speed_range=calibration_entry.speed_range if calibration_entry else None,
+            calibration_target_location=calibration_entry.target_location if calibration_entry else None,
+            calibration_azimuthal_location=calibration_entry.azimuthal_location if calibration_entry else None,
+            calibration_notes=calibration_entry.notes if calibration_entry else None,
+            reference_voltage=calibration_entry.reference_voltage if calibration_entry else None,
+            target_voltage=calibration_entry.target_voltage if calibration_entry else None,
+            detector_voltage=calibration_entry.detector_voltage if calibration_entry else None,
+            rejection_voltage=calibration_entry.rejection_voltage if calibration_entry else None,
         )
 
     def build_summary(self) -> dict[str, object]:
@@ -733,6 +966,12 @@ class FlightCalibrationAnalyzer:
             pdf.savefig(fig)
             plt.close(fig)
 
+            if self.calibration_matrix is not None:
+                self._plot_calibration_overview(pdf)
+            self._plot_methodology_page(pdf)
+            self._plot_combination_diagnostics_pages(pdf)
+            self._plot_olivine_rsf_series(pdf)
+
             for material, records in by_material.items():
                 self._plot_mass_resolution(pdf, material, records)
                 self._plot_snr(pdf, material, records)
@@ -745,6 +984,322 @@ class FlightCalibrationAnalyzer:
                     self._plot_mass_line_yields(pdf, material, records)
                 except Exception:
                     continue
+
+    def _plot_calibration_overview(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        if self.calibration_matrix is None:
+            return
+        overview_lines = list(self.calibration_matrix.overview_text())
+        grouped: dict[str, list[CalibrationEntry]] = {}
+        for entry in self.calibration_matrix.entries.values():
+            if entry.date is not None:
+                key = entry.date.strftime("%Y-%m-%d")
+            else:
+                key = entry.campaign or "Undated campaign"
+            grouped.setdefault(key, []).append(entry)
+
+        blocks: list[str] = []
+        if overview_lines:
+            blocks.append(
+                "Campaign objectives\n" + "\n".join(f"  • {line}" for line in overview_lines)
+            )
+
+        for date_key in sorted(grouped):
+            entries = grouped[date_key]
+            entries.sort(key=lambda item: (item.run_number if item.run_number is not None else 999))
+            block_lines = [date_key]
+            for entry in entries:
+                parts: list[str] = []
+                if entry.run_number is not None:
+                    parts.append(f"Run {entry.run_number}")
+                if entry.material:
+                    parts.append(f"Material: {entry.material}")
+                if entry.target_location:
+                    if entry.azimuthal_location:
+                        parts.append(
+                            f"Target {entry.target_location} (azimuth {entry.azimuthal_location})"
+                        )
+                    else:
+                        parts.append(f"Target {entry.target_location}")
+                if entry.speed_range:
+                    parts.append(f"Speed window: {entry.speed_range} km/s")
+                voltage_terms: list[str] = []
+                if entry.reference_voltage is not None:
+                    voltage_terms.append(f"V_ref={entry.reference_voltage:.0f} V")
+                if entry.target_voltage is not None:
+                    voltage_terms.append(f"V_target={entry.target_voltage:.0f} V")
+                if entry.detector_voltage is not None:
+                    voltage_terms.append(f"V_det={entry.detector_voltage:.0f} V")
+                if entry.rejection_voltage is not None:
+                    voltage_terms.append(f"V_reject={entry.rejection_voltage:.0f} V")
+                if voltage_terms:
+                    parts.append(", ".join(voltage_terms))
+                if entry.csas_used:
+                    parts.append(f"CSAs: {entry.csas_used}")
+                description = ", ".join(parts) if parts else "Configuration recorded"
+                block_lines.append(f"  • {description}")
+                if entry.notes:
+                    wrapped = textwrap.fill(
+                        f"Notes: {entry.notes}", width=80, subsequent_indent="      "
+                    )
+                    block_lines.append(f"    {wrapped}")
+            blocks.append("\n".join(block_lines))
+
+        if not blocks:
+            return
+
+        fig, ax = plt.subplots(figsize=(8.5, 11))
+        fig.suptitle("Dust testing campaign summary", fontsize=16)
+        ax.axis("off")
+        ax.text(
+            0.02,
+            0.98,
+            "\n\n".join(blocks),
+            va="top",
+            ha="left",
+            fontsize=11,
+            family="monospace",
+        )
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _plot_methodology_page(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        lines = [
+            "Data provenance:",
+            "  • Events are matched against the accelerator SQL archive when available "
+            "with quality ≥ 3.",
+            "  • If fewer than ten SQL matches succeed, the offline lookup/IDEX_FM_2023.csv "
+            "catalog is consulted.",
+            "  • Instrument timestamps are tested against UTC as well as ±6 h and ±7 h offsets "
+            "to accommodate MST/DST logging.",
+            "  • All timestamps must agree within ±2 seconds (2,000 ms).",
+            "",
+            "Derived quantities:",
+            r"  • Target rise time uses the 10/90 metric: $t_{rise} = t_{90\%} - t_{10\%}$.",
+            r"  • Velocity estimates come from Target H waveform fits ($v_{fit}$) and the rise-time lookup "
+            r"tables ($v_{rise}$) and are compared to accelerator speeds.",
+            r"  • Target masses use the calibrated charge-to-mass curves stored in the analysis products and are "
+            r"compared against accelerator shot masses.",
+            r"  • Ternary abundances sum fitted mass-line areas for Mg, Si, and Fe. RSFs renormalise these areas via "
+            r"$A_{RSF} = A_{meas} / \mathrm{RSF}$ prior to conversion to barycentric coordinates.",
+            "",
+            "Figure annotations:",
+            "  • Diagnostic plots include 1:1 reference lines or linear fits to highlight agreement with accelerator data.",
+            "  • Captions describe the processing steps and list the voltages recorded for each accelerator configuration.",
+        ]
+        fig, ax = plt.subplots(figsize=(8.5, 11))
+        fig.suptitle("Methodology and calculations", fontsize=16)
+        ax.axis("off")
+        ax.text(0.02, 0.98, "\n".join(lines), va="top", ha="left", fontsize=11)
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _plot_combination_diagnostics_pages(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        groups: dict[tuple[str, str, str], list[EventRecord]] = {}
+        for record in self.events:
+            composition = (record.calibration_material or record.dust_type or "Unknown").strip()
+            speed_range = (record.calibration_speed_range or "Unknown").strip()
+            target_location = (record.calibration_target_location or "Unknown").strip()
+            key = (composition or "Unknown", speed_range or "Unknown", target_location or "Unknown")
+            groups.setdefault(key, []).append(record)
+        for key in sorted(groups):
+            self._plot_combination_diagnostics(pdf, key, groups[key])
+
+    def _plot_combination_diagnostics(
+        self,
+        pdf: PdfPages,
+        combination: tuple[str, str, str],
+        records: Sequence[EventRecord],
+    ) -> None:
+        assert plt is not None
+        composition, speed_range, target_location = combination
+        rise_points: list[tuple[float, float]] = []
+        fit_points: list[tuple[float, float]] = []
+        rise_velocity_points: list[tuple[float, float]] = []
+        mass_points: list[tuple[float, float]] = []
+
+        def _to_kmps(value: float | None) -> float | None:
+            if value is None or not np.isfinite(value):
+                return None
+            return float(value) / 1000.0
+
+        for record in records:
+            accel_velocity = record.accelerator_velocity_mps
+            if accel_velocity is None or not np.isfinite(accel_velocity):
+                continue
+            accel_kmps = _to_kmps(accel_velocity)
+            if accel_kmps is None:
+                continue
+            if record.target_rise_time_us is not None and np.isfinite(record.target_rise_time_us):
+                rise_points.append((accel_kmps, float(record.target_rise_time_us)))
+            if record.target_velocity_fit_mps is not None and np.isfinite(record.target_velocity_fit_mps):
+                fit_points.append((accel_kmps, float(record.target_velocity_fit_mps) / 1000.0))
+            if record.target_velocity_rise_mps is not None and np.isfinite(record.target_velocity_rise_mps):
+                rise_velocity_points.append(
+                    (accel_kmps, float(record.target_velocity_rise_mps) / 1000.0)
+                )
+            if (
+                record.instrument_mass_estimate_kg is not None
+                and np.isfinite(record.instrument_mass_estimate_kg)
+                and record.accelerator_mass_kg is not None
+                and np.isfinite(record.accelerator_mass_kg)
+                and record.accelerator_mass_kg > 0.0
+                and record.instrument_mass_estimate_kg > 0.0
+            ):
+                mass_points.append(
+                    (float(record.accelerator_mass_kg), float(record.instrument_mass_estimate_kg))
+                )
+
+        if not (rise_points or fit_points or rise_velocity_points or mass_points):
+            return
+
+        fig, axes = plt.subplots(3, 1, figsize=(8.5, 11), constrained_layout=True)
+        fig.suptitle(
+            f"{composition} — {speed_range} — Target {target_location} (n={len(records)})",
+            fontsize=16,
+        )
+
+        ax_rise, ax_speed, ax_mass = axes
+
+        if rise_points:
+            rise_arr = np.asarray(rise_points, dtype=float)
+            ax_rise.scatter(rise_arr[:, 0], rise_arr[:, 1], color="#0b5394", alpha=0.7)
+            if rise_arr.shape[0] >= 2:
+                x = rise_arr[:, 0]
+                y = rise_arr[:, 1]
+                coeffs = np.polyfit(x, y, deg=1)
+                xs = np.linspace(float(np.min(x)), float(np.max(x)), 200)
+                ax_rise.plot(xs, coeffs[0] * xs + coeffs[1], color="#990000", linestyle="--", label="Linear fit")
+                ax_rise.legend(loc="best")
+        else:
+            ax_rise.text(0.5, 0.5, "No rise-time data", transform=ax_rise.transAxes, ha="center", va="center")
+        ax_rise.set_xlabel("Accelerator speed (km/s)")
+        ax_rise.set_ylabel("Target rise time (µs)")
+        ax_rise.grid(True, alpha=0.3)
+        ax_rise.text(0.02, 0.92, r"$t_{rise} = t_{90\%} - t_{10\%}$", transform=ax_rise.transAxes)
+
+        plotted_any = False
+        if fit_points:
+            fit_arr = np.asarray(fit_points, dtype=float)
+            ax_speed.scatter(fit_arr[:, 0], fit_arr[:, 1], label="$v_{fit}$", color="#1c4587", alpha=0.75)
+            plotted_any = True
+        if rise_velocity_points:
+            rise_vel_arr = np.asarray(rise_velocity_points, dtype=float)
+            ax_speed.scatter(rise_vel_arr[:, 0], rise_vel_arr[:, 1], label="$v_{rise}$", color="#6aa84f", alpha=0.75)
+            plotted_any = True
+        if plotted_any:
+            combined = []
+            if fit_points:
+                combined.extend(fit_points)
+            if rise_velocity_points:
+                combined.extend(rise_velocity_points)
+            combined_arr = np.asarray(combined, dtype=float)
+            low = float(np.min(combined_arr[:, 0]))
+            high = float(np.max(combined_arr[:, 0]))
+            diag = np.linspace(low, high, 200)
+            ax_speed.plot(diag, diag, color="#444444", linestyle=":", label="1:1 reference")
+        else:
+            ax_speed.text(0.5, 0.5, "No velocity estimates", transform=ax_speed.transAxes, ha="center", va="center")
+        ax_speed.set_xlabel("Accelerator speed (km/s)")
+        ax_speed.set_ylabel("Instrument speed (km/s)")
+        ax_speed.grid(True, alpha=0.3)
+        if plotted_any:
+            ax_speed.legend(loc="best")
+
+        if mass_points:
+            mass_arr = np.asarray(mass_points, dtype=float)
+            ax_mass.scatter(mass_arr[:, 0], mass_arr[:, 1], color="#38761d", alpha=0.75)
+            ax_mass.set_xscale("log")
+            ax_mass.set_yscale("log")
+            diag_min = float(min(np.min(mass_arr[:, 0]), np.min(mass_arr[:, 1])))
+            diag_max = float(max(np.max(mass_arr[:, 0]), np.max(mass_arr[:, 1])))
+            diag = np.linspace(diag_min, diag_max, 200)
+            ax_mass.plot(diag, diag, color="#444444", linestyle=":", label="1:1 reference")
+            ax_mass.legend(loc="best")
+        else:
+            ax_mass.text(0.5, 0.5, "No mass estimates", transform=ax_mass.transAxes, ha="center", va="center")
+        ax_mass.set_xlabel("Accelerator mass (kg)")
+        ax_mass.set_ylabel("Target H mass estimate (kg)")
+        ax_mass.grid(True, alpha=0.3, which="both")
+        ax_mass.text(0.02, 0.92, "Masses derived from Target H charge calibration", transform=ax_mass.transAxes)
+
+        fig.text(
+            0.5,
+            0.02,
+            "Figure: Rise time, velocity, and mass comparisons for the specified composition/speed/location combination.",
+            ha="center",
+            fontsize=10,
+        )
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _plot_olivine_rsf_series(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        olivine_records = [
+            record
+            for record in self.events
+            if (record.calibration_material or record.dust_type or "").lower().find("olivine") >= 0
+        ]
+        if not olivine_records:
+            return
+        preset_points: list[tuple[str, list[tuple[float, float]]]] = []
+        for label, rsf in _RSF_PRESETS:
+            cartesian: list[tuple[float, float]] = []
+            for record in olivine_records:
+                if not record.mass_line_areas:
+                    continue
+                barycentric = _ternary_with_rsf(record.mass_line_areas, rsf)
+                if barycentric is None:
+                    continue
+                cartesian.append(_ternary_to_cartesian(barycentric))
+            if cartesian:
+                preset_points.append((label, cartesian))
+        if not preset_points:
+            return
+
+        cols = 3
+        rows = math.ceil(len(preset_points) / cols)
+        fig, axes = plt.subplots(rows, cols, figsize=(8.5, 11))
+        axes = np.atleast_2d(axes)
+        fig.suptitle("Olivine ternary scatter with RSF adjustments", fontsize=16)
+
+        triangle = np.array([[0, 0], [1, 0], [0.5, math.sqrt(3) / 2], [0, 0]], dtype=float)
+        for idx, (label, points) in enumerate(preset_points):
+            row = idx // cols
+            col = idx % cols
+            ax = axes[row, col]
+            ax.plot(triangle[:, 0], triangle[:, 1], color="black")
+            point_array = np.asarray(points, dtype=float)
+            ax.scatter(point_array[:, 0], point_array[:, 1], alpha=0.7, color="#0b5394")
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_xlim(-0.05, 1.05)
+            ax.set_ylim(-0.05, math.sqrt(3) / 2 + 0.05)
+            ax.set_title(label, fontsize=11)
+            ax.text(0, -0.05, "Mg", ha="center")
+            ax.text(1, -0.05, "Si", ha="center")
+            ax.text(0.5, math.sqrt(3) / 2 + 0.03, "Fe", ha="center")
+            factors = ", ".join(f"{element}: {value:.2f}" for element, value in rsf.items())
+            ax.text(0.02, 0.92, f"RSF {factors}", transform=ax.transAxes, fontsize=9)
+
+        total_axes = rows * cols
+        if total_axes > len(preset_points):
+            for idx in range(len(preset_points), total_axes):
+                row = idx // cols
+                col = idx % cols
+                axes[row, col].axis("off")
+
+        fig.text(
+            0.5,
+            0.02,
+            "Figure: Mg–Si–Fe distributions for olivine shots with different relative sensitivity factors applied.",
+            ha="center",
+            fontsize=10,
+        )
+        pdf.savefig(fig)
+        plt.close(fig)
 
     def _plot_histogram(
         self,
@@ -1090,7 +1645,20 @@ def generate_flight_calibration_report(
     """Process IDEX flight data and produce a detailed calibration report."""
 
     schedule = load_dust_schedule(schedule_path)
-    analyzer = FlightCalibrationAnalyzer(schedule, material_filter=material_filter)
+    try:
+        match_finder = AcceleratorMatchFinder()
+    except Exception:
+        match_finder = None
+    try:
+        calibration_matrix = CalibrationMatrix()
+    except Exception:
+        calibration_matrix = None
+    analyzer = FlightCalibrationAnalyzer(
+        schedule,
+        material_filter=material_filter,
+        match_finder=match_finder,
+        calibration_matrix=calibration_matrix,
+    )
     analyzer.collect(Path(data_root))
 
     output = Path(output_dir)
