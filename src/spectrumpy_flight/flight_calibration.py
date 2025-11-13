@@ -146,14 +146,16 @@ _RUN_PATTERN = re.compile(r"run\s*(\d+)", re.IGNORECASE)
 _DATE_PATTERN = re.compile(r"(20\d{2})[-_/](\d{2})[-_/](\d{2})")
 
 
-def _infer_experiment_name(match: AcceleratorMatch) -> str | None:
+def _experiment_name_candidates(
+    experiment_name: str | None, experiment_description: str | None
+) -> list[str]:
     candidates: list[str] = []
-    if match.experiment_name:
-        text = match.experiment_name.strip()
+    if experiment_name:
+        text = experiment_name.strip()
         if text:
             candidates.append(text)
-    if match.experiment_description:
-        description = match.experiment_description.strip()
+    if experiment_description:
+        description = experiment_description.strip()
         if description:
             found = _EXPERIMENT_PATTERN.search(description)
             if found:
@@ -166,7 +168,15 @@ def _infer_experiment_name(match: AcceleratorMatch) -> str | None:
                     year, month, day = date_match.groups()
                     run_value = int(run_match.group(1))
                     candidates.append(f"{year}_{month}_{day}_run{run_value:d}")
-    for candidate in candidates:
+    return candidates
+
+
+def _infer_experiment_name(match: AcceleratorMatch | None) -> str | None:
+    if match is None:
+        return None
+    for candidate in _experiment_name_candidates(
+        match.experiment_name, match.experiment_description
+    ):
         if candidate:
             return candidate
     return None
@@ -189,12 +199,14 @@ class EventRecord:
     dust_type: str
     instrument_model: str
     timestamp: datetime
-    accelerator_timestamp_ms: float
-    accelerator_mass_kg: float
+    accelerator_timestamp_ms: float | None
+    accelerator_mass_kg: float | None
     accelerator_velocity_mps: float | None
-    accelerator_charge_c: float
-    accelerator_radius_m: float
+    accelerator_charge_c: float | None
+    accelerator_radius_m: float | None
     accelerator_source: str
+    accelerator_estimate_quality: float | None
+    has_accelerator_match: bool
     accelerator_experiment_name: str | None
     accelerator_experiment_description: str | None
     instrument_mass_estimate_kg: float | None
@@ -375,13 +387,10 @@ class FlightCalibrationAnalyzer:
         def _event_sort_key(record: EventRecord) -> tuple[str, str, float, str]:
             campaign = (record.calibration_campaign or "").strip().lower()
             material = _material_label(record).strip().lower()
-            try:
-                accel_time = float(record.accelerator_timestamp_ms)
-            except Exception:
-                accel_time = float("nan")
-            if not math.isfinite(accel_time):
+            accel_time = record.accelerator_timestamp_ms
+            if accel_time is None or not math.isfinite(accel_time):
                 accel_time = record.timestamp.timestamp() * 1000.0
-            return (campaign, material, accel_time, record.event_id)
+            return (campaign, material, float(accel_time), record.event_id)
 
         best_events.sort(key=_event_sort_key)
 
@@ -694,6 +703,35 @@ class FlightCalibrationAnalyzer:
         target_velocity_ratio_mps = _kmps_to_mps(target_velocity_ratio_kmps)
 
         accel_group = analysis.get("AcceleratorMetadata")
+        raw_timestamp_ms: float | None = None
+        raw_velocity_mps: float | None = None
+        raw_mass_kg: float | None = None
+        raw_charge_c: float | None = None
+        raw_radius_m: float | None = None
+        raw_quality: float | None = None
+        raw_experiment_name: str | None = None
+        raw_experiment_description: str | None = None
+        raw_dust_type: str | None = None
+
+        if accel_group is not None:
+            raw_timestamp_ms = _read_scalar(accel_group.get("IntegerTimestamp"))
+            raw_velocity_mps = _read_scalar(accel_group.get("VelocityMetersPerSecond"))
+            raw_mass_kg = _read_scalar(accel_group.get("MassKilograms"))
+            raw_charge_c = _read_scalar(accel_group.get("ChargeCoulombs"))
+            raw_radius_m = _read_scalar(accel_group.get("RadiusMeters"))
+            raw_quality = _read_scalar(accel_group.get("EstimateQuality"))
+            raw_experiment_name = _read_text(accel_group.get("ExperimentTag"))
+            raw_experiment_description = _read_text(
+                accel_group.get("ExperimentDescription")
+            )
+            if not raw_experiment_name:
+                raw_experiment_name = _read_text(
+                    accel_group.get("ExperimentSettingsKey")
+                )
+            raw_dust_type = _read_text(accel_group.get("DustSourceNotes"))
+            if not raw_dust_type:
+                raw_dust_type = _read_text(accel_group.get("DustTypeID"))
+
         match = self._match_from_group(accel_group)
         adjusted_timestamp_ms = instrument_timestamp_ms + self._active_timezone_offset_ms
 
@@ -708,26 +746,107 @@ class FlightCalibrationAnalyzer:
                 return False
             return True
 
-        if not _is_valid_match(match) and self.match_finder is not None:
+        best_match = match if _is_valid_match(match) else None
+
+        if best_match is None and self.match_finder is not None:
             velocity_hint = instrument_velocity
             if velocity_hint is None:
-                velocity_hint = target_velocity_fit_mps or target_velocity_rise_mps
+                velocity_hint = (
+                    target_velocity_fit_mps
+                    or target_velocity_rise_mps
+                    or raw_velocity_mps
+                )
             fallback = self.match_finder.find(
                 instrument_timestamp_ms,
                 timezone_offset_ms=self._active_timezone_offset_ms,
                 velocity_mps=velocity_hint,
             )
             if _is_valid_match(fallback):
-                match = fallback
-        if not _is_valid_match(match):
-            return None
+                best_match = fallback
 
-        accelerator_velocity = match.velocity_mps if math.isfinite(match.velocity_mps) else None
-        experiment_name = _infer_experiment_name(match)
-        calibration_entry = self._resolve_calibration_entry(match, experiment_name)
+        has_match = best_match is not None
+
+        accelerator_timestamp_ms: float | None = None
+        accelerator_mass_kg: float | None = None
+        accelerator_velocity: float | None = None
+        accelerator_charge_c: float | None = None
+        accelerator_radius_m: float | None = None
+        accelerator_source = "unmatched"
+        accelerator_quality: float | None = None
+        experiment_name: str | None = None
+        experiment_description: str | None = None
+        match_dust_type: str | None = None
+
+        if best_match is not None:
+            accelerator_timestamp_ms = float(best_match.timestamp_ms)
+            accelerator_mass_kg = float(best_match.mass_kg)
+            accelerator_velocity = (
+                float(best_match.velocity_mps)
+                if math.isfinite(best_match.velocity_mps)
+                else None
+            )
+            accelerator_charge_c = float(best_match.charge_c)
+            accelerator_radius_m = float(best_match.radius_m)
+            accelerator_source = best_match.source
+            accelerator_quality = float(best_match.estimate_quality)
+            experiment_description = best_match.experiment_description
+            match_dust_type = best_match.dust_type
+            experiment_name = _infer_experiment_name(best_match)
+
+        if experiment_name is None:
+            for candidate in _experiment_name_candidates(
+                raw_experiment_name, raw_experiment_description
+            ):
+                if candidate:
+                    experiment_name = candidate
+                    break
+
+        if experiment_description is None:
+            experiment_description = raw_experiment_description
+
+        if accelerator_timestamp_ms is None and raw_timestamp_ms is not None:
+            accelerator_timestamp_ms = float(raw_timestamp_ms)
+        if accelerator_mass_kg is None and raw_mass_kg is not None and np.isfinite(raw_mass_kg):
+            accelerator_mass_kg = float(raw_mass_kg)
+        if accelerator_velocity is None and raw_velocity_mps is not None and np.isfinite(raw_velocity_mps):
+            accelerator_velocity = float(raw_velocity_mps)
+        if accelerator_charge_c is None and raw_charge_c is not None and np.isfinite(raw_charge_c):
+            accelerator_charge_c = float(raw_charge_c)
+        if accelerator_radius_m is None and raw_radius_m is not None and np.isfinite(raw_radius_m):
+            accelerator_radius_m = float(raw_radius_m)
+        if accelerator_quality is None and raw_quality is not None and np.isfinite(raw_quality):
+            accelerator_quality = float(raw_quality)
+
+        calibration_entry: CalibrationEntry | None = None
+        if self.calibration_matrix is not None:
+            candidate_names: list[str] = []
+            if best_match is not None:
+                candidate_names.extend(
+                    _experiment_name_candidates(
+                        best_match.experiment_name, best_match.experiment_description
+                    )
+                )
+            candidate_names.extend(
+                _experiment_name_candidates(
+                    raw_experiment_name, raw_experiment_description
+                )
+            )
+            seen: set[str] = set()
+            for candidate in candidate_names:
+                if not candidate:
+                    continue
+                if candidate in seen:
+                    continue
+                seen.add(candidate)
+                entry = self.calibration_matrix.lookup(candidate)
+                if entry is not None:
+                    calibration_entry = entry
+                    break
+
         calibration_material = (
             (calibration_entry.material if calibration_entry and calibration_entry.material else None)
-            or match.dust_type
+            or match_dust_type
+            or raw_dust_type
             or material
         )
 
@@ -737,14 +856,16 @@ class FlightCalibrationAnalyzer:
             dust_type=material,
             instrument_model=instrument_model,
             timestamp=file_timestamp,
-            accelerator_timestamp_ms=float(match.timestamp_ms),
-            accelerator_mass_kg=float(match.mass_kg),
+            accelerator_timestamp_ms=accelerator_timestamp_ms,
+            accelerator_mass_kg=accelerator_mass_kg,
             accelerator_velocity_mps=accelerator_velocity,
-            accelerator_charge_c=float(match.charge_c),
-            accelerator_radius_m=float(match.radius_m),
-            accelerator_source=match.source,
+            accelerator_charge_c=accelerator_charge_c,
+            accelerator_radius_m=accelerator_radius_m,
+            accelerator_source=accelerator_source,
+            accelerator_estimate_quality=accelerator_quality,
+            has_accelerator_match=has_match,
             accelerator_experiment_name=experiment_name,
-            accelerator_experiment_description=match.experiment_description,
+            accelerator_experiment_description=experiment_description,
             instrument_mass_estimate_kg=instrument_mass,
             instrument_velocity_estimate_mps=instrument_velocity,
             target_rise_time_us=float(target_rise_time) if target_rise_time is not None and np.isfinite(target_rise_time) else None,
@@ -791,8 +912,8 @@ class FlightCalibrationAnalyzer:
             mass_ratio = [
                 record.instrument_mass_estimate_kg / record.accelerator_mass_kg
                 for record in records
-                if record.instrument_mass_estimate_kg
-                and record.accelerator_mass_kg
+                if record.instrument_mass_estimate_kg is not None
+                and record.accelerator_mass_kg is not None
                 and np.isfinite(record.instrument_mass_estimate_kg)
                 and np.isfinite(record.accelerator_mass_kg)
                 and record.accelerator_mass_kg > 0.0
@@ -800,8 +921,8 @@ class FlightCalibrationAnalyzer:
             velocity_ratio = [
                 record.instrument_velocity_estimate_mps / record.accelerator_velocity_mps
                 for record in records
-                if record.instrument_velocity_estimate_mps
-                and record.accelerator_velocity_mps
+                if record.instrument_velocity_estimate_mps is not None
+                and record.accelerator_velocity_mps is not None
                 and np.isfinite(record.instrument_velocity_estimate_mps)
                 and np.isfinite(record.accelerator_velocity_mps)
                 and record.accelerator_velocity_mps > 0.0
@@ -834,8 +955,12 @@ class FlightCalibrationAnalyzer:
                 "ternary_point_count": len(ternary_points),
             }
 
+        matched_events = sum(1 for record in self.events if record.has_accelerator_match)
+
         summary = {
             "total_events": len(self.events),
+            "matched_events": matched_events,
+            "unmatched_events": len(self.events) - matched_events,
             "materials": material_stats,
             "best_mass_resolution": {
                 "material": best_mass_resolution[0] if best_mass_resolution else None,
@@ -873,7 +998,9 @@ class FlightCalibrationAnalyzer:
             best_res = summary["best_mass_resolution"]
             best_ce = summary["best_collection_efficiency"]
 
-            source_counts = Counter(record.accelerator_source for record in self.events)
+            source_counts = Counter(
+                record.accelerator_source or "unknown" for record in self.events
+            )
             source_text = ", ".join(
                 f"{source}: {count}"
                 for source, count in sorted(source_counts.items())
@@ -882,8 +1009,13 @@ class FlightCalibrationAnalyzer:
             timezone_offset_ms = summary.get("applied_timezone_offset_ms", 0.0) or 0.0
             timezone_hours = timezone_offset_ms / 3_600_000.0
 
+            matched_count = sum(1 for record in self.events if record.has_accelerator_match)
+            unmatched_count = len(self.events) - matched_count
+
             lines = [
-                f"Total events with accelerator matches: {len(self.events)}",
+                f"Total events processed: {len(self.events)}",
+                f"Events with accelerator matches: {matched_count}",
+                f"Events without accelerator matches: {unmatched_count}",
                 f"Files skipped (missing dependencies/errors): {len(self.skipped_files)}",
                 f"Files missing decoded HDF5 products: {len(self.missing_hdf)}",
             ]
@@ -1232,7 +1364,7 @@ class FlightCalibrationAnalyzer:
         fig.text(
             0.5,
             0.02,
-            "Figure: Rise time, velocity, and mass comparisons for the specified composition/speed/location combination.",
+            r"\textit{Figure: Rise time, velocity, and mass comparisons for the specified composition/speed/location combination.}",
             ha="center",
             fontsize=10,
         )
@@ -1298,7 +1430,7 @@ class FlightCalibrationAnalyzer:
         fig.text(
             0.5,
             0.02,
-            "Figure: Mg–Si–Fe distributions for olivine shots with different relative sensitivity factors applied.",
+            r"\textit{Figure: Mg--Si--Fe distributions for olivine shots with different relative sensitivity factors applied.}",
             ha="center",
             fontsize=10,
         )
@@ -1389,21 +1521,29 @@ class FlightCalibrationAnalyzer:
     def _plot_mass_velocity(
         self, pdf: PdfPages, material: str, records: Sequence[EventRecord]
     ) -> None:
-        accel_masses = [record.accelerator_mass_kg for record in records]
+        accel_masses = [
+            record.accelerator_mass_kg
+            for record in records
+            if record.accelerator_mass_kg is not None
+            and np.isfinite(record.accelerator_mass_kg)
+        ]
         instrument_masses = [
             record.instrument_mass_estimate_kg
             for record in records
             if record.instrument_mass_estimate_kg is not None
+            and np.isfinite(record.instrument_mass_estimate_kg)
         ]
         accel_velocities = [
             record.accelerator_velocity_mps
             for record in records
             if record.accelerator_velocity_mps is not None
+            and np.isfinite(record.accelerator_velocity_mps)
         ]
         instrument_velocities = [
             record.instrument_velocity_estimate_mps
             for record in records
             if record.instrument_velocity_estimate_mps is not None
+            and np.isfinite(record.instrument_velocity_estimate_mps)
         ]
 
         if accel_masses:
@@ -1473,6 +1613,17 @@ class FlightCalibrationAnalyzer:
         events: list[tuple[float, set[str]]] = []
         for record in records:
             velocity = record.accelerator_velocity_mps
+            if velocity is None or not np.isfinite(velocity):
+                velocity = record.instrument_velocity_estimate_mps
+            if velocity is None or not np.isfinite(velocity):
+                for candidate in (
+                    record.target_velocity_fit_mps,
+                    record.target_velocity_rise_mps,
+                    record.target_velocity_ratio_mps,
+                ):
+                    if candidate is not None and np.isfinite(candidate):
+                        velocity = float(candidate)
+                        break
             if velocity is None or not np.isfinite(velocity):
                 continue
             species = set(record.mass_line_species)
@@ -1585,9 +1736,22 @@ class FlightCalibrationAnalyzer:
         for record in records:
             velocity = record.accelerator_velocity_mps
             if velocity is None or not np.isfinite(velocity):
+                velocity = record.instrument_velocity_estimate_mps
+            if velocity is None or not np.isfinite(velocity):
+                for candidate in (
+                    record.target_velocity_fit_mps,
+                    record.target_velocity_rise_mps,
+                    record.target_velocity_ratio_mps,
+                ):
+                    if candidate is not None and np.isfinite(candidate):
+                        velocity = float(candidate)
+                        break
+            if velocity is None or not np.isfinite(velocity):
                 continue
             mass_kg = record.accelerator_mass_kg
-            if not np.isfinite(mass_kg) or mass_kg <= 0.0:
+            if mass_kg is None or not np.isfinite(mass_kg) or mass_kg <= 0.0:
+                mass_kg = record.instrument_mass_estimate_kg
+            if mass_kg is None or not np.isfinite(mass_kg) or mass_kg <= 0.0:
                 continue
             for species, area in record.mass_line_areas.items():
                 if not np.isfinite(area) or area <= 0.0:
