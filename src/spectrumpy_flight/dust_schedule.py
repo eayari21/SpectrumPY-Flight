@@ -11,9 +11,11 @@ from . import package_path
 __all__ = ["DustScheduleEntry", "load_dust_schedule"]
 
 
-@dataclass(slots=True)
+@dataclass
 class DustScheduleEntry:
     """Describe a dust accelerator campaign window."""
+
+    __slots__ = ("label", "start", "end", "instrument_model", "material", "count")
 
     label: str
     start: datetime
