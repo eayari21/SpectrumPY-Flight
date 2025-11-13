@@ -306,6 +306,16 @@ def _format_stats(values: Sequence[float]) -> dict[str, float | int]:
     }
 
 
+def _material_label(record: EventRecord) -> str:
+    for candidate in (record.calibration_material, record.dust_type):
+        if not candidate:
+            continue
+        label = str(candidate).strip()
+        if label:
+            return label
+    return "Unknown"
+
+
 @dataclass
 class FlightCalibrationAnalyzer:
     schedule: Sequence[DustScheduleEntry]
@@ -364,7 +374,7 @@ class FlightCalibrationAnalyzer:
 
         def _event_sort_key(record: EventRecord) -> tuple[str, str, float, str]:
             campaign = (record.calibration_campaign or "").strip().lower()
-            material = (record.calibration_material or record.dust_type or "").strip().lower()
+            material = _material_label(record).strip().lower()
             try:
                 accel_time = float(record.accelerator_timestamp_ms)
             except Exception:
@@ -764,7 +774,8 @@ class FlightCalibrationAnalyzer:
     def build_summary(self) -> dict[str, object]:
         by_material: dict[str, list[EventRecord]] = {}
         for record in self.events:
-            by_material.setdefault(record.dust_type, []).append(record)
+            label = _material_label(record)
+            by_material.setdefault(label, []).append(record)
 
         material_stats: dict[str, dict[str, object]] = {}
         best_mass_resolution: tuple[str, float] | None = None
@@ -849,7 +860,8 @@ class FlightCalibrationAnalyzer:
 
         by_material: dict[str, list[EventRecord]] = {}
         for record in self.events:
-            by_material.setdefault(record.dust_type, []).append(record)
+            label = _material_label(record)
+            by_material.setdefault(label, []).append(record)
 
         with PdfPages(path) as pdf:
             fig = plt.figure(figsize=(8.5, 11))
