@@ -46,12 +46,28 @@ __all__ = [
 
 
 def _discover_data_files(root: Path) -> list[Path]:
-    candidates: list[Path] = []
+    """Return data products sorted chronologically, preferring decoded HDF5."""
+
+    preferred: dict[datetime, Path] = {}
     for path in sorted(root.rglob("ois_output_*")):
         if path.is_dir():
             continue
-        candidates.append(path)
-    return candidates
+        timestamp = _parse_filename_timestamp(path)
+        if timestamp is None:
+            continue
+        existing = preferred.get(timestamp)
+        suffix = path.suffix.lower()
+        if existing is None:
+            preferred[timestamp] = path
+            continue
+        existing_suffix = existing.suffix.lower()
+        if existing_suffix != ".h5" and suffix == ".h5":
+            preferred[timestamp] = path
+        elif existing_suffix == ".h5" and suffix != ".h5":
+            continue
+        elif suffix == existing_suffix == ".h5" and str(path) < str(existing):
+            preferred[timestamp] = path
+    return [preferred[key] for key in sorted(preferred)]
 
 
 def _parse_filename_timestamp(path: Path) -> datetime | None:
@@ -345,6 +361,19 @@ class FlightCalibrationAnalyzer:
                     best_missing = missing
                     best_count = len(events)
                     best_offset = offset_ms
+
+        def _event_sort_key(record: EventRecord) -> tuple[str, str, float, str]:
+            campaign = (record.calibration_campaign or "").strip().lower()
+            material = (record.calibration_material or record.dust_type or "").strip().lower()
+            try:
+                accel_time = float(record.accelerator_timestamp_ms)
+            except Exception:
+                accel_time = float("nan")
+            if not math.isfinite(accel_time):
+                accel_time = record.timestamp.timestamp() * 1000.0
+            return (campaign, material, accel_time, record.event_id)
+
+        best_events.sort(key=_event_sort_key)
 
         self.events = best_events
         self.skipped_files = best_skipped
@@ -828,14 +857,30 @@ class FlightCalibrationAnalyzer:
             ax = fig.add_subplot(111)
             ax.axis("off")
 
+            summary = self.build_summary()
+            best_res = summary["best_mass_resolution"]
+            best_ce = summary["best_collection_efficiency"]
+
+            source_counts = Counter(record.accelerator_source for record in self.events)
+            source_text = ", ".join(
+                f"{source}: {count}"
+                for source, count in sorted(source_counts.items())
+            )
+
+            timezone_offset_ms = summary.get("applied_timezone_offset_ms", 0.0) or 0.0
+            timezone_hours = timezone_offset_ms / 3_600_000.0
+
             lines = [
                 f"Total events with accelerator matches: {len(self.events)}",
                 f"Files skipped (missing dependencies/errors): {len(self.skipped_files)}",
                 f"Files missing decoded HDF5 products: {len(self.missing_hdf)}",
             ]
-            summary = self.build_summary()
-            best_res = summary["best_mass_resolution"]
-            best_ce = summary["best_collection_efficiency"]
+            if source_text:
+                lines.append(f"Accelerator metadata sources → {source_text}")
+            lines.append(
+                "Timezone search offset applied to accelerator matching: "
+                f"{timezone_hours:+.1f} h"
+            )
             if best_res.get("material"):
                 lines.append(
                     "Best median mass resolution: "
@@ -846,7 +891,70 @@ class FlightCalibrationAnalyzer:
                     "Best median collection efficiency: "
                     f"{best_ce['material']} ({best_ce['median']:.3f})"
                 )
-            ax.text(0.01, 0.95, "\n".join(lines), va="top", ha="left", fontsize=12)
+            lines.extend(
+                [
+                    "",  # spacer line
+                    "This summary consolidates accelerator SQL matches, CSV fallbacks,",
+                    "and embedded HDF metadata. Events are sorted using the calibration",
+                    "lookup tables so that campaigns share contiguous pages in the report.",
+                    "The table below ranks each material by event count and lists the",
+                    "median instrument/accelerator ratios for quick agreement checks.",
+                ]
+            )
+
+            ax.text(0.01, 0.97, "\n".join(lines), va="top", ha="left", fontsize=11)
+
+            def _format_median(stats: Mapping[str, object], precision: int) -> str:
+                value = stats.get("median") if isinstance(stats, Mapping) else None
+                if value is None:
+                    return "—"
+                try:
+                    numeric = float(value)
+                except Exception:
+                    return "—"
+                if not np.isfinite(numeric):
+                    return "—"
+                return f"{numeric:.{precision}f}"
+
+            material_rows: list[list[str]] = []
+            materials_summary = summary.get("materials", {})
+            for material, stats in sorted(
+                materials_summary.items(),
+                key=lambda item: item[1].get("event_count", 0),
+                reverse=True,
+            ):
+                event_count = stats.get("event_count", 0)
+                mass_ratio = _format_median(stats.get("mass_ratio", {}), 2)
+                velocity_ratio = _format_median(stats.get("velocity_ratio", {}), 2)
+                collection_eff = _format_median(stats.get("collection_efficiency", {}), 3)
+                material_rows.append(
+                    [
+                        material,
+                        str(event_count),
+                        mass_ratio,
+                        velocity_ratio,
+                        collection_eff,
+                    ]
+                )
+
+            if material_rows:
+                table = ax.table(
+                    cellText=material_rows,
+                    colLabels=[
+                        "Material",
+                        "Events",
+                        "Median mass ratio",
+                        "Median velocity ratio",
+                        "Median collection eff.",
+                    ],
+                    loc="lower center",
+                    cellLoc="center",
+                    bbox=[0.0, 0.0, 1.0, 0.42],
+                )
+                table.auto_set_font_size(False)
+                table.set_fontsize(9)
+                table.scale(1.0, 1.2)
+
             pdf.savefig(fig)
             plt.close(fig)
 
