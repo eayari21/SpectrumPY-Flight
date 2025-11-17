@@ -11,7 +11,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Mapping, Sequence, cast
 
 import numpy as np
 
@@ -316,6 +316,37 @@ def _format_stats(values: Sequence[float]) -> dict[str, float | int]:
         "min": float(np.min(arr)),
         "max": float(np.max(arr)),
     }
+
+
+def _format_numeric(value: float | None, precision: int = 2, *, scale: float = 1.0) -> str:
+    if value is None:
+        return "—"
+    try:
+        numeric = float(value)
+    except Exception:
+        return "—"
+    if not np.isfinite(numeric):
+        return "—"
+    numeric *= scale
+    return f"{numeric:.{precision}f}"
+
+
+_SPEED_RANGE_PATTERN = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _speed_label_to_value(label: str | None) -> float | None:
+    if not label:
+        return None
+    matches = _SPEED_RANGE_PATTERN.findall(label)
+    if not matches:
+        return None
+    try:
+        numbers = [float(match) for match in matches]
+    except ValueError:
+        return None
+    if not numbers:
+        return None
+    return float(sum(numbers) / len(numbers))
 
 
 def _material_label(record: EventRecord) -> str:
@@ -1102,6 +1133,8 @@ class FlightCalibrationAnalyzer:
             pdf.savefig(fig)
             plt.close(fig)
 
+            self._plot_data_inventory(pdf)
+            self._plot_speed_efficiency_trends(pdf)
             if self.calibration_matrix is not None:
                 self._plot_calibration_overview(pdf)
             self._plot_methodology_page(pdf)
@@ -1120,6 +1153,311 @@ class FlightCalibrationAnalyzer:
                     self._plot_mass_line_yields(pdf, material, records)
                 except Exception:
                     continue
+
+    def _schedule_overview_rows(self) -> list[list[str]]:
+        rows: list[list[str]] = []
+        entries = sorted(self.schedule, key=lambda item: item.start)
+        for entry in entries:
+            count_text = f"{entry.count:,}" if entry.count else "—"
+            instrument = entry.instrument_model or "Unknown"
+            material = entry.material or "Unknown"
+            rows.append([entry.label, instrument, material, count_text])
+        return rows
+
+    def _campaign_summary_rows(self) -> list[list[str]]:
+        grouped: dict[str, dict[str, object]] = {}
+        for record in self.events:
+            campaign = record.calibration_campaign or "Uncatalogued campaign"
+            bucket = grouped.setdefault(
+                campaign,
+                {
+                    "materials": set(),
+                    "speed_ranges": set(),
+                    "targets": set(),
+                    "charges": [],
+                    "collection": [],
+                    "count": 0,
+                    "start": None,
+                    "end": None,
+                },
+            )
+            bucket["count"] = int(bucket.get("count", 0)) + 1
+            materials = cast(set[str], bucket.setdefault("materials", set()))
+            speed_ranges = cast(set[str], bucket.setdefault("speed_ranges", set()))
+            targets = cast(set[str], bucket.setdefault("targets", set()))
+            charges = cast(list[float], bucket.setdefault("charges", []))
+            collection = cast(list[float], bucket.setdefault("collection", []))
+            material_label = _material_label(record)
+            if material_label:
+                materials.add(material_label)
+            if record.calibration_speed_range:
+                speed_ranges.add(record.calibration_speed_range)
+            if record.calibration_target_location:
+                target_text = record.calibration_target_location
+                if record.calibration_azimuthal_location:
+                    target_text = (
+                        f"{target_text} (az {record.calibration_azimuthal_location})"
+                    )
+                targets.add(target_text)
+            charge = record.accelerator_charge_c
+            if charge is not None and np.isfinite(charge) and charge > 0.0:
+                charges.append(float(charge))
+            ce = record.collection_efficiency
+            if ce is not None and np.isfinite(ce):
+                collection.append(float(ce))
+            event_time = record.timestamp
+            if event_time.tzinfo is None:
+                event_time = event_time.replace(tzinfo=timezone.utc)
+            else:
+                event_time = event_time.astimezone(timezone.utc)
+            start = bucket["start"]
+            end = bucket["end"]
+            if start is None or event_time < start:  # type: ignore[operator]
+                bucket["start"] = event_time
+            if end is None or event_time > end:  # type: ignore[operator]
+                bucket["end"] = event_time
+
+        rows: list[list[str]] = []
+        for campaign, bucket in sorted(
+            grouped.items(), key=lambda item: int(item[1]["count"]), reverse=True
+        ):
+            materials = sorted(bucket["materials"]) if bucket.get("materials") else []
+            speed_ranges = sorted(bucket["speed_ranges"]) if bucket.get("speed_ranges") else []
+            targets = sorted(bucket["targets"]) if bucket.get("targets") else []
+            start = bucket.get("start")
+            end = bucket.get("end")
+            if isinstance(start, datetime) and isinstance(end, datetime):
+                start_text = start.strftime("%Y-%m-%d %H:%M")
+                end_text = end.strftime("%Y-%m-%d %H:%M")
+                time_range = f"{start_text} – {end_text} UTC"
+            else:
+                time_range = "—"
+            charge_stats = _format_stats(
+                cast(Sequence[float], bucket.get("charges", []))
+            )
+            ce_stats = _format_stats(
+                cast(Sequence[float], bucket.get("collection", []))
+            )
+            median_charge = _format_numeric(charge_stats.get("median"), 3, scale=1e12)
+            median_ce = _format_numeric(ce_stats.get("median"), 3)
+            rows.append(
+                [
+                    campaign,
+                    ", ".join(materials) if materials else "—",
+                    ", ".join(speed_ranges) if speed_ranges else "—",
+                    ", ".join(targets) if targets else "—",
+                    time_range,
+                    str(bucket.get("count", 0)),
+                    median_charge,
+                    median_ce,
+                ]
+            )
+        return rows
+
+    def _target_speed_rows(self) -> list[list[str]]:
+        grouped: dict[tuple[str, str], dict[str, object]] = {}
+        for record in self.events:
+            speed = record.calibration_speed_range or "Unspecified"
+            target = record.calibration_target_location or "Unspecified target"
+            key = (target, speed)
+            bucket = grouped.setdefault(
+                key,
+                {"count": 0, "collection": [], "charges": []},
+            )
+            bucket["count"] = int(bucket.get("count", 0)) + 1
+            charges = cast(list[float], bucket.setdefault("charges", []))
+            collection = cast(list[float], bucket.setdefault("collection", []))
+            ce = record.collection_efficiency
+            if ce is not None and np.isfinite(ce):
+                collection.append(float(ce))
+            charge = record.accelerator_charge_c
+            if charge is not None and np.isfinite(charge) and charge > 0.0:
+                charges.append(float(charge))
+
+        rows: list[list[str]] = []
+        for (target, speed), bucket in sorted(
+            grouped.items(), key=lambda item: (item[0][0], item[0][1])
+        ):
+            charge_stats = _format_stats(
+                cast(Sequence[float], bucket.get("charges", []))
+            )
+            ce_stats = _format_stats(
+                cast(Sequence[float], bucket.get("collection", []))
+            )
+            rows.append(
+                [
+                    target,
+                    speed,
+                    str(bucket.get("count", 0)),
+                    _format_numeric(charge_stats.get("median"), 3, scale=1e12),
+                    _format_numeric(ce_stats.get("median"), 3),
+                ]
+            )
+        return rows
+
+    def _speed_efficiency_points(self) -> list[tuple[float, float, str]]:
+        points: list[tuple[float, float, str]] = []
+        for record in self.events:
+            ce = record.collection_efficiency
+            if ce is None or not np.isfinite(ce):
+                continue
+            speed_value = _speed_label_to_value(record.calibration_speed_range)
+            if speed_value is None or not np.isfinite(speed_value):
+                continue
+            location = record.calibration_target_location or "Unspecified target"
+            points.append((float(speed_value), float(ce), location))
+        return points
+
+    def _plot_data_inventory(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        schedule_rows = self._schedule_overview_rows()
+        campaign_rows = self._campaign_summary_rows()
+        if not schedule_rows and not campaign_rows:
+            return
+        fig = plt.figure(figsize=(8.5, 11))
+        fig.suptitle("Data inventory overview", fontsize=16)
+        grid = fig.add_gridspec(2, 1, height_ratios=(0.4, 0.6), hspace=0.35)
+
+        ax_schedule = fig.add_subplot(grid[0])
+        ax_schedule.axis("off")
+        ax_schedule.set_title(
+            "Dust accelerator usage (lookup/IDEX_Dust_Testing.csv)",
+            loc="left",
+            fontsize=12,
+            pad=10,
+        )
+        if schedule_rows:
+            table = ax_schedule.table(
+                cellText=schedule_rows,
+                colLabels=["Window", "Instrument", "Material", "Planned shots"],
+                loc="center",
+                cellLoc="center",
+                bbox=[0.0, 0.0, 1.0, 0.85],
+            )
+            table.auto_set_font_size(False)
+            table.set_fontsize(9)
+            table.scale(1.0, 1.1)
+        else:
+            ax_schedule.text(
+                0.02,
+                0.5,
+                "No dust schedule information was available.",
+                va="center",
+                ha="left",
+                fontsize=11,
+            )
+
+        ax_campaign = fig.add_subplot(grid[1])
+        ax_campaign.axis("off")
+        ax_campaign.set_title(
+            "Processed HDF5 coverage by calibration campaign",
+            loc="left",
+            fontsize=12,
+            pad=10,
+        )
+        if campaign_rows:
+            table = ax_campaign.table(
+                cellText=campaign_rows,
+                colLabels=[
+                    "Campaign",
+                    "Materials",
+                    "Speed windows",
+                    "Targets",
+                    "UTC span",
+                    "Events",
+                    "Median charge (pC)",
+                    "Median CE",
+                ],
+                loc="center",
+                cellLoc="center",
+                colLoc="center",
+                bbox=[0.0, -0.05, 1.0, 1.05],
+            )
+            table.auto_set_font_size(False)
+            table.set_fontsize(8)
+            table.scale(1.0, 1.15)
+        else:
+            ax_campaign.text(
+                0.02,
+                0.5,
+                "No processed events were available to summarise.",
+                va="center",
+                ha="left",
+                fontsize=11,
+            )
+
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _plot_speed_efficiency_trends(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        rows = self._target_speed_rows()
+        points = self._speed_efficiency_points()
+        if not rows and not points:
+            return
+        fig = plt.figure(figsize=(8.5, 11))
+        fig.suptitle("Collection efficiency trends", fontsize=16)
+        grid = fig.add_gridspec(2, 1, height_ratios=(0.5, 0.5), hspace=0.35)
+
+        ax_table = fig.add_subplot(grid[0])
+        ax_table.axis("off")
+        ax_table.set_title(
+            "Target/speed combinations derived from the calibration matrix",
+            loc="left",
+            fontsize=12,
+            pad=10,
+        )
+        if rows:
+            table = ax_table.table(
+                cellText=rows,
+                colLabels=[
+                    "Target location",
+                    "Speed window",
+                    "Events",
+                    "Median charge (pC)",
+                    "Median CE",
+                ],
+                loc="center",
+                cellLoc="center",
+                bbox=[0.0, 0.0, 1.0, 0.85],
+            )
+            table.auto_set_font_size(False)
+            table.set_fontsize(9)
+            table.scale(1.0, 1.15)
+        else:
+            ax_table.text(
+                0.02,
+                0.5,
+                "No calibration metadata was attached to the processed events.",
+                va="center",
+                ha="left",
+                fontsize=11,
+            )
+
+        ax_plot = fig.add_subplot(grid[1])
+        if points:
+            locations = sorted({location for _, _, location in points})
+            for location in locations:
+                xs = [speed for speed, _, loc in points if loc == location]
+                ys = [ce for _, ce, loc in points if loc == location]
+                ax_plot.scatter(xs, ys, label=location, alpha=0.7, s=30)
+            ax_plot.set_xlabel("Speed window centre (km/s)")
+            ax_plot.set_ylabel("Collection efficiency")
+            ax_plot.grid(True, alpha=0.3)
+            if len(locations) <= 12:
+                ax_plot.legend(loc="best", fontsize="small")
+        else:
+            ax_plot.axis("off")
+            ax_plot.text(
+                0.02,
+                0.5,
+                "Collection efficiency vs. speed trend could not be plotted",
+                va="center",
+                ha="left",
+            )
+
+        pdf.savefig(fig)
+        plt.close(fig)
 
     def _plot_calibration_overview(self, pdf: PdfPages) -> None:
         assert plt is not None
