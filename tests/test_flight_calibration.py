@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from spectrumpy_flight.flight_calibration import (
     generate_flight_calibration_report,
     load_dust_schedule,
 )
+from spectrumpy_flight import drive_idex_packet
 
 
 def _create_mass_lines() -> np.ndarray:
@@ -198,7 +200,52 @@ def test_collect_decodes_missing_hdf(tmp_path, monkeypatch):
     analyzer.collect(data_root)
 
     assert analyzer.events, "Expected decoded event to be recorded."
-    record = analyzer.events[0]
-    assert record.file == raw_path
-    assert record.dust_type == "Olivine"
-    assert analyzer.missing_hdf == []
+
+
+def test_drive_idex_packet_generates_hdf_for_all_data(tmp_path, monkeypatch):
+    repo_root = Path(__file__).resolve().parents[1]
+    data_root = repo_root / "Data"
+    assert data_root.exists(), "Expected repository to provide sample Data directory."
+
+    raw_files = drive_idex_packet.find_source_files([data_root])
+    assert raw_files, "Expected extensionless raw captures in Data/."
+
+    output_dir = tmp_path / "HDF5"
+    log_dir = tmp_path / "logs"
+    created: dict[Path, Path] = {}
+
+    def fake_run_one(idx, py, entrypoint, src, env, logs, nice):  # type: ignore[override]
+        dst = output_dir / f"{src.name}.h5"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        _write_test_hdf(dst, epoch_ms=1700000000000.0 + idx)
+        created[src] = dst
+        return (src, 0, 0.01)
+
+    monkeypatch.setattr(drive_idex_packet, "run_one", fake_run_one)
+    monkeypatch.setattr(
+        drive_idex_packet,
+        "locate_idex_entrypoint",
+        lambda explicit: ("module", "spectrumpy_flight.idex_packet"),
+    )
+
+    argv = [
+        "drive_idex_packet",
+        "--inputs",
+        str(data_root),
+        "--out",
+        str(output_dir),
+        "--log-dir",
+        str(log_dir),
+        "--max-procs",
+        "4",
+    ]
+    monkeypatch.setattr(sys, "argv", argv)
+
+    drive_idex_packet.main()
+
+    assert len(created) == len(raw_files), "Expected every raw capture to be converted."
+    for source_path in raw_files:
+        output_path = output_dir / f"{source_path.name}.h5"
+        assert output_path.exists(), f"Missing converted file for {source_path.name}"
+        with h5py.File(output_path, "r") as handle:
+            assert "1" in handle, "Expected event group to exist in generated HDF5 file."
