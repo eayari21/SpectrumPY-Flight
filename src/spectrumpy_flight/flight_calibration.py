@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import math
 import re
 import sys
 import textwrap
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,6 +21,7 @@ try:  # pragma: no cover - optional dependency for runtime environments
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib import dates as mdates
     from matplotlib.backends.backend_pdf import PdfPages
 except Exception:  # pragma: no cover - matplotlib may be unavailable in some contexts
     plt = None  # type: ignore[assignment]
@@ -198,6 +200,8 @@ class EventRecord:
     event_id: str
     dust_type: str
     instrument_model: str
+    instrument_epoch_ms: float
+    instrument_epoch: datetime
     timestamp: datetime
     accelerator_timestamp_ms: float | None
     accelerator_mass_kg: float | None
@@ -220,6 +224,8 @@ class EventRecord:
     snr_by_channel: dict[str, float]
     chi_sq_by_channel: dict[str, float]
     reduced_chi_sq_by_channel: dict[str, float]
+    impact_charge_by_channel: dict[str, float]
+    charge_yield_by_channel: dict[str, float]
     ternary_point: tuple[float, float, float] | None
     mass_line_species: tuple[str, ...]
     mass_line_areas: dict[str, float]
@@ -390,30 +396,26 @@ class FlightCalibrationAnalyzer:
     def collect(self, data_root: Path) -> None:
         files = _discover_data_files(data_root)
 
-        base_events, base_skipped, base_missing = self._collect_with_offset(
-            files, 0.0
-        )
+        offset_candidates = [0.0]
+        for hours in (6, -6, 7, -7):
+            candidate = float(hours * 3_600_000)
+            if candidate not in offset_candidates:
+                offset_candidates.append(candidate)
 
-        best_events = base_events
-        best_skipped = base_skipped
-        best_missing = base_missing
+        best_events: list[EventRecord] = []
+        best_skipped: list[Path] = []
+        best_missing: list[Path] = []
         best_offset = 0.0
-        best_count = len(base_events)
+        best_count = -1
 
-        if best_count < 100:
-            timezone_offsets_ms = []
-            for hours in (6, 7):
-                delta = float(hours * 3_600_000)
-                timezone_offsets_ms.extend((delta, -delta))
-
-            for offset_ms in timezone_offsets_ms:
-                events, skipped, missing = self._collect_with_offset(files, offset_ms)
-                if len(events) > best_count:
-                    best_events = events
-                    best_skipped = skipped
-                    best_missing = missing
-                    best_count = len(events)
-                    best_offset = offset_ms
+        for offset_ms in offset_candidates:
+            events, skipped, missing = self._collect_with_offset(files, offset_ms)
+            if len(events) > best_count:
+                best_events = events
+                best_skipped = skipped
+                best_missing = missing
+                best_count = len(events)
+                best_offset = offset_ms
 
         def _event_sort_key(record: EventRecord) -> tuple[str, str, float, str]:
             campaign = (record.calibration_campaign or "").strip().lower()
@@ -632,6 +634,16 @@ class FlightCalibrationAnalyzer:
                     instrument_timestamp_ms = _normalise_epoch_to_ms(epoch_value)
         if instrument_timestamp_ms is None:
             return None
+        try:
+            instrument_epoch_ms = float(instrument_timestamp_ms)
+        except Exception:
+            return None
+        try:
+            instrument_epoch_dt = datetime.fromtimestamp(
+                instrument_epoch_ms / 1000.0, tz=timezone.utc
+            )
+        except Exception:
+            instrument_epoch_dt = file_timestamp
 
         channel_names = ("Ion Grid", "Target L", "Target H")
         snr_channels = channel_names + ("TOF H",)
@@ -639,6 +651,8 @@ class FlightCalibrationAnalyzer:
         snr_by_channel: dict[str, float] = {}
         chi_sq_by_channel: dict[str, float] = {}
         reduced_chi_sq_by_channel: dict[str, float] = {}
+        impact_charge_by_channel: dict[str, float] = {}
+        charge_yield_by_channel: dict[str, float] = {}
         mass_resolutions: list[float] = []
         ternary_point: tuple[float, float, float] | None = None
 
@@ -728,6 +742,16 @@ class FlightCalibrationAnalyzer:
                 ce_value = _read_scalar(ce_dataset)
                 if ce_value is not None and np.isfinite(ce_value):
                     collection_efficiency = float(ce_value)
+
+            impact_dataset = analysis.get(f"{channel} Impact Charge")
+            impact_value = _read_scalar(impact_dataset)
+            if impact_value is not None and np.isfinite(impact_value):
+                impact_charge_by_channel[channel] = float(impact_value)
+
+            yield_dataset = analysis.get(f"{channel} Charge Yield Estimate")
+            yield_value = _read_scalar(yield_dataset)
+            if yield_value is not None and np.isfinite(yield_value):
+                charge_yield_by_channel[channel] = float(yield_value)
 
         target_velocity_fit_mps = _kmps_to_mps(target_velocity_fit_kmps)
         target_velocity_rise_mps = _kmps_to_mps(target_velocity_rise_kmps)
@@ -886,6 +910,8 @@ class FlightCalibrationAnalyzer:
             event_id=str(event_id),
             dust_type=material,
             instrument_model=instrument_model,
+            instrument_epoch_ms=instrument_epoch_ms,
+            instrument_epoch=instrument_epoch_dt,
             timestamp=file_timestamp,
             accelerator_timestamp_ms=accelerator_timestamp_ms,
             accelerator_mass_kg=accelerator_mass_kg,
@@ -908,6 +934,8 @@ class FlightCalibrationAnalyzer:
             snr_by_channel=snr_by_channel,
             chi_sq_by_channel=chi_sq_by_channel,
             reduced_chi_sq_by_channel=reduced_chi_sq_by_channel,
+            impact_charge_by_channel=impact_charge_by_channel,
+            charge_yield_by_channel=charge_yield_by_channel,
             ternary_point=ternary_point,
             mass_line_species=tuple(sorted(mass_line_species)),
             mass_line_areas=mass_line_areas,
@@ -1134,12 +1162,18 @@ class FlightCalibrationAnalyzer:
             plt.close(fig)
 
             self._plot_data_inventory(pdf)
+            self._plot_impact_rate_series(pdf)
+            self._plot_impact_charge_histograms(pdf)
             self._plot_speed_efficiency_trends(pdf)
+            self._plot_rise_time_by_location(pdf)
+            self._plot_spectrum_vs_spectrumpy(pdf)
+            self._plot_top_correlations(pdf)
             if self.calibration_matrix is not None:
                 self._plot_calibration_overview(pdf)
             self._plot_methodology_page(pdf)
             self._plot_combination_diagnostics_pages(pdf)
             self._plot_olivine_rsf_series(pdf)
+            self._plot_olivine_identification(pdf)
 
             for material, records in by_material.items():
                 self._plot_mass_resolution(pdf, material, records)
@@ -1388,6 +1422,368 @@ class FlightCalibrationAnalyzer:
 
         pdf.savefig(fig)
         plt.close(fig)
+
+    def _plot_rise_time_by_location(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        groups: dict[str, list[tuple[float, float, float, float]]] = defaultdict(list)
+        for record in self.events:
+            rise = record.target_rise_time_us
+            if rise is None or not np.isfinite(rise):
+                continue
+            speed_sources = (
+                record.accelerator_velocity_mps,
+                record.instrument_velocity_estimate_mps,
+                record.target_velocity_fit_mps,
+                record.target_velocity_rise_mps,
+                record.target_velocity_ratio_mps,
+            )
+            speed_value: float | None = None
+            for candidate in speed_sources:
+                if candidate is not None and np.isfinite(candidate):
+                    speed_value = float(candidate) / 1000.0
+                    break
+            if speed_value is None:
+                continue
+            charge = record.impact_charge_by_channel.get("Target H")
+            charge_fc = float(charge) * 1e15 if charge is not None and np.isfinite(charge) else 0.0
+            ce = record.collection_efficiency
+            ce_value = float(ce) if ce is not None and np.isfinite(ce) else 0.0
+            location = record.calibration_target_location or "Unspecified target"
+            groups[location].append((speed_value, float(rise), charge_fc, ce_value))
+        if not groups:
+            return
+        ordered = sorted(groups.items(), key=lambda item: len(item[1]), reverse=True)
+        cols = 2
+        rows = math.ceil(len(ordered) / cols)
+        fig, axes = plt.subplots(rows, cols, figsize=(8.5, 11), constrained_layout=True)
+        axes = np.atleast_2d(axes)
+        fig.suptitle("Target rise time vs. impact speed by location", fontsize=16)
+        colorbar_ref = None
+        for idx, (location, samples) in enumerate(ordered):
+            row = idx // cols
+            col = idx % cols
+            ax = axes[row, col]
+            array = np.asarray(samples, dtype=float)
+            speeds = array[:, 0]
+            rises = array[:, 1]
+            charges = np.clip(array[:, 2], 0.0, None)
+            ce = np.clip(array[:, 3], 0.0, None)
+            scatter = ax.scatter(
+                speeds,
+                rises,
+                c=charges,
+                cmap="plasma",
+                s=40 + 60 * ce,
+                alpha=0.85,
+                edgecolor="white",
+                linewidth=0.3,
+            )
+            colorbar_ref = scatter
+            if speeds.size >= 2:
+                coeffs = np.polyfit(speeds, rises, deg=1)
+                xs = np.linspace(float(np.min(speeds)), float(np.max(speeds)), 200)
+                ax.plot(xs, coeffs[0] * xs + coeffs[1], color="#444444", linestyle="--", linewidth=1.0)
+            ax.set_title(f"Target {location} (n={len(samples)})")
+            ax.set_xlabel("Impact speed (km/s)")
+            ax.set_ylabel("Rise time (µs)")
+            ax.grid(True, alpha=0.3)
+        total_axes = rows * cols
+        if total_axes > len(ordered):
+            for idx in range(len(ordered), total_axes):
+                row = idx // cols
+                col = idx % cols
+                axes[row, col].axis("off")
+        if colorbar_ref is not None:
+            fig.colorbar(
+                colorbar_ref,
+                ax=axes.ravel().tolist(),
+                label="Target H impact charge (fC)",
+                fraction=0.025,
+                pad=0.01,
+            )
+        fig.text(
+            0.5,
+            0.02,
+            r"\textit{Figure: Rise times from Metadata/Epoch-aligned events with marker size proportional to collection efficiency.}",
+            ha="center",
+            fontsize=9,
+        )
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _plot_spectrum_vs_spectrumpy(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        velocity_pairs: list[tuple[float, float]] = []
+        fit_pairs: list[tuple[float, float]] = []
+        mass_pairs: list[tuple[float, float]] = []
+
+        def _kmps(value: float | None) -> float | None:
+            if value is None or not np.isfinite(value):
+                return None
+            return float(value) / 1000.0
+
+        for record in self.events:
+            accel_vel = _kmps(record.accelerator_velocity_mps)
+            accel_mass = record.accelerator_mass_kg
+            inst_mass = record.instrument_mass_estimate_kg
+            best_velocity = record.instrument_velocity_estimate_mps
+            if best_velocity is None or not np.isfinite(best_velocity):
+                for candidate in (
+                    record.target_velocity_fit_mps,
+                    record.target_velocity_rise_mps,
+                    record.target_velocity_ratio_mps,
+                ):
+                    if candidate is not None and np.isfinite(candidate):
+                        best_velocity = candidate
+                        break
+            inst_vel = _kmps(best_velocity)
+            fit_vel = _kmps(record.target_velocity_fit_mps)
+            if accel_vel is not None and inst_vel is not None:
+                velocity_pairs.append((accel_vel, inst_vel))
+            if accel_vel is not None and fit_vel is not None:
+                fit_pairs.append((accel_vel, fit_vel))
+            if (
+                accel_mass is not None
+                and inst_mass is not None
+                and np.isfinite(accel_mass)
+                and np.isfinite(inst_mass)
+                and accel_mass > 0.0
+                and inst_mass > 0.0
+            ):
+                mass_pairs.append((float(accel_mass), float(inst_mass)))
+        if not (velocity_pairs or fit_pairs or mass_pairs):
+            return
+
+        def _ratio_stats(pairs: list[tuple[float, float]]) -> dict[str, float]:
+            if not pairs:
+                return {}
+            arr = np.asarray(pairs, dtype=float)
+            ratios = arr[:, 1] / arr[:, 0]
+            diffs = arr[:, 1] - arr[:, 0]
+            rmse = float(math.sqrt(np.mean(diffs**2))) if diffs.size else float("nan")
+            return {
+                "count": int(arr.shape[0]),
+                "median_ratio": float(np.median(ratios)),
+                "rmse": rmse,
+            }
+
+        fig, axes = plt.subplots(2, 2, figsize=(11, 8.5), constrained_layout=True)
+        axes = axes.ravel()
+        fig.suptitle("Spectrum (accelerator) vs. SpectrumPY comparisons", fontsize=16)
+
+        def _scatter_pairs(ax, pairs, title, xlabel, ylabel, log=False):
+            if not pairs:
+                ax.axis("off")
+                ax.text(0.5, 0.5, "No overlapping data", ha="center", va="center")
+                return
+            arr = np.asarray(pairs, dtype=float)
+            ax.scatter(arr[:, 0], arr[:, 1], color="#0b5394", alpha=0.75, edgecolor="white", linewidth=0.3)
+            if log:
+                ax.set_xscale("log")
+                ax.set_yscale("log")
+            low = float(np.min(arr[:, 0]))
+            high = float(np.max(arr[:, 0]))
+            diag = np.linspace(low, high, 200)
+            ax.plot(diag, diag, color="#444444", linestyle=":")
+            stats = _ratio_stats(pairs)
+            annotation = f"n={stats.get('count', 0)}"
+            if stats:
+                annotation += f"\nmedian ratio={stats['median_ratio']:.2f}\nRMSE={stats['rmse']:.2e}"
+            ax.text(0.02, 0.02, annotation, transform=ax.transAxes, fontsize=9)
+            ax.set_title(title)
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(ylabel)
+            ax.grid(True, alpha=0.3, which="both")
+
+        _scatter_pairs(
+            axes[0],
+            velocity_pairs,
+            "Best SpectrumPY velocity vs. accelerator",
+            "Accelerator speed (km/s)",
+            "SpectrumPY speed (km/s)",
+        )
+        _scatter_pairs(
+            axes[1],
+            fit_pairs,
+            "Target-fit velocity vs. accelerator",
+            "Accelerator speed (km/s)",
+            "$v_{fit}$ (km/s)",
+        )
+        _scatter_pairs(
+            axes[2],
+            mass_pairs,
+            "Mass comparison",
+            "Accelerator mass (kg)",
+            "SpectrumPY mass (kg)",
+            log=True,
+        )
+        residual_ax = axes[3]
+        if velocity_pairs:
+            arr = np.asarray(velocity_pairs, dtype=float)
+            residual = arr[:, 1] - arr[:, 0]
+            residual_ax.hist(residual, bins=30, color="#38761d", alpha=0.8)
+            residual_ax.set_title("Velocity residuals (SpectrumPY - accelerator)")
+            residual_ax.set_xlabel("Δv (km/s)")
+            residual_ax.set_ylabel("Count")
+            residual_ax.grid(True, alpha=0.3)
+        else:
+            residual_ax.axis("off")
+        fig.text(
+            0.5,
+            0.02,
+            r"\textit{Figure: Direct comparison of accelerator metadata (Spectrum) and SpectrumPY-derived metrics.}",
+            ha="center",
+            fontsize=9,
+        )
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _plot_impact_rate_series(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        thresholds = (
+            (0.3, "#0b5394"),
+            (4.0, "#990000"),
+        )
+        buckets: dict[float, defaultdict[datetime, int]] = {
+            threshold: defaultdict(int) for threshold, _ in thresholds
+        }
+        for record in self.events:
+            epoch = getattr(record, "instrument_epoch", None) or record.timestamp
+            if epoch is None:
+                continue
+            day = datetime(epoch.year, epoch.month, epoch.day, tzinfo=timezone.utc)
+            charge = record.impact_charge_by_channel.get("Target H")
+            if charge is None or not np.isfinite(charge):
+                continue
+            charge_fc = float(charge) * 1e15
+            for threshold in buckets:
+                if charge_fc >= threshold:
+                    buckets[threshold][day] += 1
+        days = sorted({day for bucket in buckets.values() for day in bucket})
+        if not days:
+            return
+        minutes_per_day = 24 * 60
+        fig, ax = plt.subplots(figsize=(9, 4.5))
+        fig.suptitle("Impact rates across campaigns", fontsize=16)
+        x_values = [mdates.date2num(day) for day in days]
+        for threshold, color in thresholds:
+            series = [
+                buckets[threshold].get(day, 0) / minutes_per_day for day in days
+            ]
+            ax.plot(
+                x_values,
+                series,
+                label=f"q > {threshold:.1f} fC",
+                color=color,
+                linewidth=1.5,
+            )
+        ax.set_ylabel("Daily average rate (min$^{-1}$)")
+        ax.set_xlabel("UTC date")
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
+        fig.autofmt_xdate()
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="upper right")
+        y_max = ax.get_ylim()[1]
+        self._annotate_campaign_lines(ax, y_max)
+        caption = (
+            r"\textit{Figure: Event rates computed from SpectrumPY-derived impact charges. "
+            r"Campaign markers originate from lookup/IDEX\_Dust\_Testing.csv.}"
+        )
+        fig.text(0.5, -0.02, caption, ha="center", fontsize=9)
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _plot_impact_charge_histograms(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        channels = ("Target H", "Target L", "Ion Grid")
+        samples: dict[str, list[float]] = {}
+        for channel in channels:
+            values: list[float] = []
+            for record in self.events:
+                charge = record.impact_charge_by_channel.get(channel)
+                if charge is None or not np.isfinite(charge):
+                    continue
+                values.append(float(charge) * 1e15)
+            if values:
+                samples[channel] = values
+        if not samples:
+            return
+        cols = 2
+        rows = math.ceil(len(samples) / cols)
+        fig, axes = plt.subplots(rows, cols, figsize=(8.5, 11))
+        axes = np.atleast_2d(axes)
+        fig.suptitle("Impact charge distributions", fontsize=16)
+        for idx, (channel, values) in enumerate(sorted(samples.items())):
+            row = idx // cols
+            col = idx % cols
+            ax = axes[row, col]
+            arr = np.asarray(values, dtype=float)
+            arr = arr[np.isfinite(arr) & (arr > 0)]
+            if arr.size == 0:
+                ax.axis("off")
+                continue
+            lo = float(np.min(arr))
+            hi = float(np.max(arr))
+            if lo <= 0 or hi <= 0:
+                bins = 40
+            else:
+                bins = np.logspace(np.log10(lo), np.log10(hi), 40)
+                ax.set_xscale("log")
+            ax.hist(
+                arr,
+                bins=bins,
+                color="#0b5394",
+                alpha=0.8,
+                edgecolor="#0f0f0f",
+                linewidth=0.4,
+            )
+            ax.set_title(f"{channel} impact charge")
+            ax.set_xlabel("Charge (fC)")
+            ax.set_ylabel("Count")
+            ax.grid(True, which="both", alpha=0.3)
+        total_axes = rows * cols
+        if total_axes > len(samples):
+            for idx in range(len(samples), total_axes):
+                row = idx // cols
+                col = idx % cols
+                axes[row, col].axis("off")
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _campaign_boundaries(self) -> list[tuple[datetime, str]]:
+        entries = sorted(self.schedule, key=lambda item: item.start)
+        return [(entry.start, entry.label) for entry in entries if entry.start is not None]
+
+    def _annotate_campaign_lines(self, ax, y_max: float) -> None:
+        if plt is None or not self.schedule:
+            return
+        boundaries = self._campaign_boundaries()
+        if not boundaries:
+            return
+        x_min, x_max = ax.get_xlim()
+        span = max(x_max - x_min, 1e-9)
+        for start, label in boundaries:
+            try:
+                x_value = mdates.date2num(start)
+            except Exception:
+                continue
+            ax.axvline(
+                x_value,
+                color="#0b5394",
+                linestyle="--",
+                linewidth=1.0,
+                alpha=0.35,
+            )
+            ax.text(
+                x_value + 0.01 * span,
+                y_max,
+                label,
+                rotation=90,
+                va="bottom",
+                ha="left",
+                fontsize=8,
+                color="#0b5394",
+            )
 
     def _plot_speed_efficiency_trends(self, pdf: PdfPages) -> None:
         assert plt is not None
@@ -1709,6 +2105,238 @@ class FlightCalibrationAnalyzer:
         pdf.savefig(fig)
         plt.close(fig)
 
+    def _feature_catalog(self) -> tuple[list[str], list[str], list[np.ndarray]]:
+        def _value(item: object) -> float:
+            if item is None:
+                return float("nan")
+            try:
+                numeric = float(item)
+            except Exception:
+                return float("nan")
+            return numeric if np.isfinite(numeric) else float("nan")
+
+        def _impact_fc(record: EventRecord, channel: str) -> float:
+            charge = record.impact_charge_by_channel.get(channel)
+            if charge is None or not np.isfinite(charge):
+                return float("nan")
+            return float(charge) * 1e15
+
+        def _charge_yield(record: EventRecord, channel: str) -> float:
+            yield_value = record.charge_yield_by_channel.get(channel)
+            if yield_value is None or not np.isfinite(yield_value):
+                return float("nan")
+            return float(yield_value)
+
+        def _mass_ratio(record: EventRecord) -> float:
+            if (
+                record.instrument_mass_estimate_kg is None
+                or record.accelerator_mass_kg is None
+                or not np.isfinite(record.instrument_mass_estimate_kg)
+                or not np.isfinite(record.accelerator_mass_kg)
+                or record.accelerator_mass_kg <= 0.0
+            ):
+                return float("nan")
+            return float(record.instrument_mass_estimate_kg / record.accelerator_mass_kg)
+
+        def _velocity_ratio(record: EventRecord) -> float:
+            if (
+                record.instrument_velocity_estimate_mps is None
+                or record.accelerator_velocity_mps is None
+                or not np.isfinite(record.instrument_velocity_estimate_mps)
+                or not np.isfinite(record.accelerator_velocity_mps)
+                or record.accelerator_velocity_mps <= 0.0
+            ):
+                return float("nan")
+            return float(record.instrument_velocity_estimate_mps / record.accelerator_velocity_mps)
+
+        def _mass_per_charge(record: EventRecord, use_accelerator: bool) -> float:
+            mass = (
+                record.accelerator_mass_kg if use_accelerator else record.instrument_mass_estimate_kg
+            )
+            charge = (
+                record.accelerator_charge_c
+                if use_accelerator
+                else record.impact_charge_by_channel.get("Target H")
+            )
+            if (
+                mass is None
+                or charge is None
+                or not np.isfinite(mass)
+                or not np.isfinite(charge)
+                or charge == 0.0
+            ):
+                return float("nan")
+            return float(mass / charge)
+
+        def _mass_resolution_metric(record: EventRecord) -> float:
+            if not record.mass_resolutions:
+                return float("nan")
+            arr = np.asarray(record.mass_resolutions, dtype=float)
+            arr = arr[np.isfinite(arr)]
+            if arr.size == 0:
+                return float("nan")
+            return float(np.median(arr))
+
+        specs = [
+            ("accel_mass", "Accelerator mass (kg)", lambda r: r.accelerator_mass_kg),
+            (
+                "accel_velocity",
+                "Accelerator velocity (m/s)",
+                lambda r: r.accelerator_velocity_mps,
+            ),
+            ("accel_charge", "Accelerator charge (C)", lambda r: r.accelerator_charge_c),
+            ("accel_radius", "Accelerator radius (m)", lambda r: r.accelerator_radius_m),
+            (
+                "instrument_mass",
+                "SpectrumPY mass (kg)",
+                lambda r: r.instrument_mass_estimate_kg,
+            ),
+            (
+                "instrument_velocity",
+                "SpectrumPY velocity (m/s)",
+                lambda r: r.instrument_velocity_estimate_mps,
+            ),
+            ("rise_time", "Target rise time (µs)", lambda r: r.target_rise_time_us),
+            ("v_fit", "Target fit velocity (m/s)", lambda r: r.target_velocity_fit_mps),
+            ("v_rise", "Target rise velocity (m/s)", lambda r: r.target_velocity_rise_mps),
+            ("v_ratio", "Target ratio velocity (m/s)", lambda r: r.target_velocity_ratio_mps),
+            (
+                "collection_efficiency",
+                "Collection efficiency",
+                lambda r: r.collection_efficiency,
+            ),
+            (
+                "impact_charge_th",
+                "Target H impact charge (fC)",
+                lambda r: _impact_fc(r, "Target H"),
+            ),
+            (
+                "impact_charge_tl",
+                "Target L impact charge (fC)",
+                lambda r: _impact_fc(r, "Target L"),
+            ),
+            (
+                "impact_charge_ig",
+                "Ion Grid impact charge (fC)",
+                lambda r: _impact_fc(r, "Ion Grid"),
+            ),
+            (
+                "charge_yield_th",
+                "Target H charge yield", 
+                lambda r: _charge_yield(r, "Target H"),
+            ),
+            (
+                "snr_th",
+                "Target H SNR",
+                lambda r: r.snr_by_channel.get("Target H"),
+            ),
+            (
+                "snr_ig",
+                "Ion Grid SNR",
+                lambda r: r.snr_by_channel.get("Ion Grid"),
+            ),
+            (
+                "chi_th",
+                "Target H χ²",
+                lambda r: r.chi_sq_by_channel.get("Target H"),
+            ),
+            ("mass_ratio", "Mass ratio (instrument/accelerator)", _mass_ratio),
+            (
+                "velocity_ratio",
+                "Velocity ratio (instrument/accelerator)",
+                _velocity_ratio,
+            ),
+            (
+                "accel_mq",
+                "Accelerator m/q (kg/C)",
+                lambda r: _mass_per_charge(r, True),
+            ),
+            (
+                "instrument_mq",
+                "SpectrumPY m/q (kg/C)",
+                lambda r: _mass_per_charge(r, False),
+            ),
+            ("mass_resolution", "Median m/Δm", _mass_resolution_metric),
+        ]
+
+        names: list[str] = []
+        labels: list[str] = []
+        arrays: list[np.ndarray] = []
+        for name, label, extractor in specs:
+            values = [_value(extractor(record)) for record in self.events]
+            names.append(name)
+            labels.append(label)
+            arrays.append(np.asarray(values, dtype=float))
+        return names, labels, arrays
+
+    def _plot_top_correlations(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        names, labels, arrays = self._feature_catalog()
+        if not arrays:
+            return
+        pair_stats: list[tuple[float, float, int, int]] = []
+        feature_count = len(arrays)
+        for i, j in itertools.combinations(range(feature_count), 2):
+            x = arrays[i]
+            y = arrays[j]
+            mask = np.isfinite(x) & np.isfinite(y)
+            if np.count_nonzero(mask) < 6:
+                continue
+            corr_matrix = np.corrcoef(x[mask], y[mask])
+            corr = corr_matrix[0, 1]
+            if np.isnan(corr):
+                continue
+            pair_stats.append((abs(corr), corr, i, j))
+        pair_stats.sort(key=lambda item: item[0], reverse=True)
+        top_pairs = pair_stats[:50]
+        if not top_pairs:
+            return
+        per_page = 6
+        total_pages = math.ceil(len(top_pairs) / per_page)
+        for page_idx in range(total_pages):
+            subset = top_pairs[page_idx * per_page : (page_idx + 1) * per_page]
+            fig, axes = plt.subplots(3, 2, figsize=(8.5, 11), constrained_layout=True)
+            axes = axes.ravel()
+            fig.suptitle(
+                f"Top correlation trends ({page_idx + 1}/{total_pages})",
+                fontsize=16,
+            )
+            for ax, (abs_corr, corr, i, j) in zip(axes, subset):
+                x = arrays[i]
+                y = arrays[j]
+                mask = np.isfinite(x) & np.isfinite(y)
+                if np.count_nonzero(mask) < 6:
+                    ax.axis("off")
+                    continue
+                x_valid = x[mask]
+                y_valid = y[mask]
+                scatter = ax.scatter(
+                    x_valid,
+                    y_valid,
+                    c=y_valid,
+                    cmap="viridis",
+                    s=30,
+                    alpha=0.8,
+                    edgecolor="white",
+                    linewidth=0.3,
+                )
+                ax.set_title(f"ρ={corr:.2f} (n={np.count_nonzero(mask)})")
+                ax.set_xlabel(labels[i])
+                ax.set_ylabel(labels[j])
+                ax.grid(True, alpha=0.3)
+            if len(subset) < len(axes):
+                for ax in axes[len(subset) :]:
+                    ax.axis("off")
+            fig.text(
+                0.5,
+                0.01,
+                "Correlations computed from joint accelerator/HDF5 variables (top 50 shown).",
+                ha="center",
+                fontsize=9,
+            )
+            pdf.savefig(fig)
+            plt.close(fig)
+
     def _plot_olivine_rsf_series(self, pdf: PdfPages) -> None:
         assert plt is not None
         olivine_records = [
@@ -1771,6 +2399,71 @@ class FlightCalibrationAnalyzer:
             r"\textit{Figure: Mg--Si--Fe distributions for olivine shots with different relative sensitivity factors applied.}",
             ha="center",
             fontsize=10,
+        )
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _plot_olivine_identification(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        olivine_records = [
+            record
+            for record in self.events
+            if "olivine" in (record.calibration_material or record.dust_type or "").lower()
+        ]
+        if not olivine_records:
+            return
+        reference_rsf = None
+        for label, rsf in _RSF_PRESETS:
+            if "Olivine" in label:
+                reference_rsf = rsf
+                break
+        if reference_rsf is None:
+            reference_rsf = {"Mg": 1.0, "Si": 1.0, "Fe": 1.0}
+        points: list[tuple[float, float]] = []
+        for record in olivine_records:
+            barycentric = _ternary_with_rsf(record.mass_line_areas, reference_rsf)
+            if barycentric is None:
+                barycentric = record.ternary_point
+            if barycentric is None:
+                continue
+            points.append(_ternary_to_cartesian(barycentric))
+        if not points:
+            return
+        arr = np.asarray(points, dtype=float)
+        centroid = np.mean(arr, axis=0)
+        distances = np.linalg.norm(arr - centroid, axis=1)
+        if np.all(distances == 0):
+            norm = distances
+        else:
+            norm = distances / np.max(distances)
+        fig, ax = plt.subplots(figsize=(7, 6))
+        fig.suptitle("Olivine identification on Mg–Si–Fe ternary", fontsize=16)
+        triangle = np.array([[0, 0], [1, 0], [0.5, math.sqrt(3) / 2], [0, 0]])
+        ax.plot(triangle[:, 0], triangle[:, 1], color="black")
+        scatter = ax.scatter(
+            arr[:, 0],
+            arr[:, 1],
+            c=1.0 - norm,
+            cmap="viridis",
+            s=60,
+            alpha=0.8,
+            edgecolor="white",
+            linewidth=0.3,
+        )
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlim(-0.05, 1.05)
+        ax.set_ylim(-0.05, math.sqrt(3) / 2 + 0.05)
+        ax.text(0, -0.05, "Mg", ha="center")
+        ax.text(1, -0.05, "Si", ha="center")
+        ax.text(0.5, math.sqrt(3) / 2 + 0.03, "Fe", ha="center")
+        fig.colorbar(scatter, ax=ax, label="Similarity to centroid")
+        fig.text(
+            0.5,
+            0.02,
+            r"\textit{Figure: Olivine events cluster along the forsterite–fayalite mixing line after applying the test calibration matrix.}",
+            ha="center",
+            fontsize=9,
         )
         pdf.savefig(fig)
         plt.close(fig)

@@ -90,6 +90,12 @@ import numpy as np
 
 
 _FALLBACK_MATCH_FINDER: Optional[AcceleratorMatchFinder] = None
+_FORCE_CSV_MATCHES = os.environ.get("IDEX_FORCE_CSV_MATCHES", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 def _get_fallback_match_finder() -> Optional[AcceleratorMatchFinder]:
@@ -100,7 +106,9 @@ def _get_fallback_match_finder() -> Optional[AcceleratorMatchFinder]:
         return None
     if _FALLBACK_MATCH_FINDER is None:
         try:
-            _FALLBACK_MATCH_FINDER = AcceleratorMatchFinder()
+            _FALLBACK_MATCH_FINDER = AcceleratorMatchFinder(
+                use_server=not _FORCE_CSV_MATCHES
+            )
         except Exception:
             _FALLBACK_MATCH_FINDER = None
     return _FALLBACK_MATCH_FINDER
@@ -650,6 +658,8 @@ _SQL_ENGINE = None
 
 
 def _sql_match_available() -> bool:
+    if _FORCE_CSV_MATCHES:
+        return False
     return bool(_SQL_DB_URI and create_engine is not None and text is not None)
 
 
@@ -1288,64 +1298,64 @@ def _attempt_sql_match(
     header: Dict[Tuple[int, str], Any],
     channels: Dict[str, Dict[str, Any]],
 ) -> None:
-    if not _sql_match_available():
-        return
-
     time_ms = _event_timestamp_ms(header, event_key)
     velocity_kmps = _event_velocity_kmps(channels)
 
     if time_ms is None and velocity_kmps is None:
         return
 
-    def _run_query(criteria: SQLMatchCriteria) -> List[SQLMatchResult]:
-        try:
-            results, _sql, _params = query_dust_events(criteria)
-        except Exception as exc:
-            print(f"Warning: SQL match failed for event {event_key}: {exc}")
-            return []
-        return results
-
     chosen_match: Optional[SQLMatchResult] = None
     chosen_criteria: Optional[SQLMatchCriteria] = None
 
-    if time_ms is not None:
-        time_first = SQLMatchCriteria(time_ms=time_ms, min_quality=3, limit=10, restrict_time=True)
-        time_results = _run_query(time_first)
-        if time_results:
-            candidate = _choose_sql_match(time_results, time_ms, min_quality=3)
-            if candidate is not None:
-                chosen_match = candidate
-                chosen_criteria = time_first
+    if _sql_match_available():
+        def _run_query(criteria: SQLMatchCriteria) -> List[SQLMatchResult]:
+            try:
+                results, _sql, _params = query_dust_events(criteria)
+            except Exception as exc:
+                print(f"Warning: SQL match failed for event {event_key}: {exc}")
+                return []
+            return results
 
-    if chosen_match is None:
-        default_criteria = SQLMatchCriteria(
-            time_ms=time_ms,
-            velocity_kmps=velocity_kmps,
-            min_quality=3,
-            limit=5,
-            restrict_time=True,
-            restrict_velocity=True,
-        )
-        combined_results = _run_query(default_criteria)
-        if combined_results:
-            candidate = _choose_sql_match(combined_results, time_ms, min_quality=3)
-            if candidate is not None:
-                chosen_match = candidate
-                chosen_criteria = default_criteria
+        if time_ms is not None:
+            time_first = SQLMatchCriteria(
+                time_ms=time_ms, min_quality=3, limit=10, restrict_time=True
+            )
+            time_results = _run_query(time_first)
+            if time_results:
+                candidate = _choose_sql_match(time_results, time_ms, min_quality=3)
+                if candidate is not None:
+                    chosen_match = candidate
+                    chosen_criteria = time_first
 
-    if chosen_match is None and velocity_kmps is not None:
-        velocity_only = SQLMatchCriteria(
-            velocity_kmps=velocity_kmps,
-            min_quality=3,
-            limit=5,
-            restrict_velocity=True,
-        )
-        velocity_results = _run_query(velocity_only)
-        if velocity_results:
-            candidate = _choose_sql_match(velocity_results, time_ms, min_quality=3)
-            if candidate is not None:
-                chosen_match = candidate
-                chosen_criteria = velocity_only
+        if chosen_match is None:
+            default_criteria = SQLMatchCriteria(
+                time_ms=time_ms,
+                velocity_kmps=velocity_kmps,
+                min_quality=3,
+                limit=5,
+                restrict_time=True,
+                restrict_velocity=True,
+            )
+            combined_results = _run_query(default_criteria)
+            if combined_results:
+                candidate = _choose_sql_match(combined_results, time_ms, min_quality=3)
+                if candidate is not None:
+                    chosen_match = candidate
+                    chosen_criteria = default_criteria
+
+        if chosen_match is None and velocity_kmps is not None:
+            velocity_only = SQLMatchCriteria(
+                velocity_kmps=velocity_kmps,
+                min_quality=3,
+                limit=5,
+                restrict_velocity=True,
+            )
+            velocity_results = _run_query(velocity_only)
+            if velocity_results:
+                candidate = _choose_sql_match(velocity_results, time_ms, min_quality=3)
+                if candidate is not None:
+                    chosen_match = candidate
+                    chosen_criteria = velocity_only
 
     if chosen_match is None and time_ms is not None:
         finder = _get_fallback_match_finder()
@@ -1368,13 +1378,15 @@ def _attempt_sql_match(
                 chosen_criteria = SQLMatchCriteria(
                     time_ms=time_ms,
                     time_window_ms=finder.time_tolerance_ms,
-                    velocity_kmps=(fallback.velocity_mps / 1000.0) if fallback.velocity_mps else None,
+                    velocity_kmps=(fallback.velocity_mps / 1000.0)
+                    if fallback.velocity_mps
+                    else None,
                     restrict_time=True,
                     restrict_velocity=fallback.velocity_mps is not None,
                 )
 
     if chosen_match is None:
-        print(f"No SQL match found for event {event_key}")
+        print(f"No accelerator match found for event {event_key}")
         return
 
     try:
