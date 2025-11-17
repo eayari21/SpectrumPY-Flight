@@ -19,7 +19,7 @@ from __future__ import annotations
 import argparse, os, sys, subprocess, time, shutil, importlib.util
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Sequence, Tuple
 
 def find_source_files(roots: List[Path]) -> List[Path]:
     """Return all files with **no extension** under the given roots."""
@@ -79,8 +79,16 @@ def build_env(threads_per_proc: int | None) -> dict:
     _maybe_prepend_pythonpath(env)
     return env
 
-def run_one(idx: int, py: str, entrypoint: tuple[str, str | Path], src: Path, env: dict,
-            log_dir: Path, nice: int | None) -> Tuple[Path, int, float]:
+def run_one(
+    idx: int,
+    py: str,
+    entrypoint: tuple[str, str | Path],
+    src: Path,
+    dst: Path,
+    env: dict,
+    log_dir: Path,
+    nice: int | None,
+) -> Tuple[Path, int, float]:
     """Run the idex_packet converter and return ``(src, rc, seconds)``."""
     log_dir.mkdir(parents=True, exist_ok=True)
     out_log = log_dir / f"job_{idx:04d}.out"
@@ -106,6 +114,19 @@ def run_one(idx: int, py: str, entrypoint: tuple[str, str | Path], src: Path, en
         proc = subprocess.Popen(pre_cmd + cmd, stdout=out_f, stderr=err_f, env=env)
         rc = proc.wait()
     dur = time.time() - start
+    if rc == 0:
+        produced = src.with_suffix(".h5")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if produced.exists() and produced.resolve() != dst.resolve():
+                shutil.move(str(produced), str(dst))
+            elif produced.exists():
+                # Already in the desired location
+                pass
+            elif not dst.exists():
+                rc = 1
+        except Exception:
+            rc = 1
     return (src, rc, dur)
 
 def locate_idex_entrypoint(explicit: str | None) -> tuple[str, str | Path]:
@@ -142,7 +163,7 @@ def locate_idex_entrypoint(explicit: str | None) -> tuple[str, str | Path]:
     raise FileNotFoundError("Unable to find spectrumpy_flight.idex_packet entrypoint")
 
 
-def main():
+def main(argv: Sequence[str] | None = None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--inputs", nargs="+", required=True, help="Input directories to scan.")
     ap.add_argument("--out", required=True, help="Output HDF5 directory (where .h5 are created).")
@@ -153,7 +174,7 @@ def main():
     ap.add_argument("--log-dir", default="idex_logs", help="Directory for per-job logs.")
     ap.add_argument("--nice", type=int, default=None, help="POSIX niceness (e.g., 10).")
     ap.add_argument("--dry-run", action="store_true", help="Print planned work only.")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     inputs = [Path(p).resolve() for p in args.inputs]
     out_dir = Path(args.out).resolve()
@@ -163,16 +184,16 @@ def main():
 
     # 1) Discover work
     candidates = find_source_files(inputs)
-    to_do: List[Tuple[int, Path]] = []
+    to_do: List[Tuple[int, Path, Path]] = []
     for i, src in enumerate(sorted(candidates)):
         needed, dst = needs_conversion(src, out_dir)
         if needed:
-            to_do.append((i, src))
+            to_do.append((i, src, dst))
 
     print(f"Discovered {len(candidates)} source files; {len(to_do)} need conversion.")
     if args.dry_run:
-        for _, src in to_do[:20]:
-            print(f"[DRY] would process: {src}")
+        for _, src, dst in to_do[:20]:
+            print(f"[DRY] would process: {src} -> {dst}")
         if len(to_do) > 20:
             print(f"... and {len(to_do) - 20} more")
         return
@@ -192,8 +213,18 @@ def main():
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         futs = [
-            ex.submit(run_one, idx, args.python, entrypoint, src, env, log_dir, args.nice)
-            for idx, src in to_do
+            ex.submit(
+                run_one,
+                idx,
+                args.python,
+                entrypoint,
+                src,
+                dst,
+                env,
+                log_dir,
+                args.nice,
+            )
+            for idx, src, dst in to_do
         ]
         for fut in as_completed(futs):
             src, rc, dur = fut.result()
