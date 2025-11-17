@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import functools
 import itertools
 import json
 import math
@@ -82,11 +84,13 @@ def _parse_filename_timestamp(path: Path) -> datetime | None:
     if len(parts) != 2:
         return None
     timestamp = parts[1]
-    try:
-        dt = datetime.strptime(timestamp, "%Y%m%d_%H%M%S")
-    except ValueError:
-        return None
-    return dt.replace(tzinfo=timezone.utc)
+    for fmt in ("%Y%m%d_%H%M%S", "%m%d%Y_%H%M%S"):
+        try:
+            dt = datetime.strptime(timestamp, fmt)
+        except ValueError:
+            continue
+        return dt.replace(tzinfo=timezone.utc)
+    return None
 
 
 def _normalise_epoch_to_ms(value: float) -> float | None:
@@ -201,6 +205,7 @@ _RSF_PRESETS: list[tuple[str, dict[str, float]]] = [
 @dataclass
 class EventRecord:
     file: Path
+    hdf5_path: Path
     event_id: str
     dust_type: str
     instrument_model: str
@@ -359,14 +364,154 @@ def _speed_label_to_value(label: str | None) -> float | None:
     return float(sum(numbers) / len(numbers))
 
 
+def _normalise_text_value(value: object | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode("utf-8", "ignore").strip()
+    if isinstance(value, (list, tuple, set)):
+        for entry in value:
+            text = _normalise_text_value(entry)
+            if text:
+                return text
+        return ""
+    if hasattr(value, "tolist"):
+        try:
+            return _normalise_text_value(value.tolist())
+        except Exception:
+            pass
+    if isinstance(value, str):
+        text = value.strip()
+    else:
+        text = str(value).strip()
+    wrappers = [
+        ("[b'", "']"),
+        ("[b\"", "\"]"),
+        ("b'", "'"),
+        ("b\"", "\""),
+    ]
+    for prefix, suffix in wrappers:
+        if text.startswith(prefix) and text.endswith(suffix):
+            return text[len(prefix) : len(text) - len(suffix)]
+    return text
+
+
 def _material_label(record: EventRecord) -> str:
     for candidate in (record.calibration_material, record.dust_type):
-        if not candidate:
-            continue
-        label = str(candidate).strip()
+        label = _normalise_text_value(candidate)
         if label:
             return label
     return "Unknown"
+
+
+def _coerce_float(value: object | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except Exception:
+        return None
+    if not np.isfinite(numeric):
+        return None
+    return numeric
+
+
+def _clean_mapping(mapping: Mapping[str, float]) -> dict[str, float]:
+    cleaned: dict[str, float] = {}
+    for key, value in mapping.items():
+        numeric = _coerce_float(value)
+        if numeric is not None:
+            cleaned[key] = numeric
+    return cleaned
+
+
+def _serialise_event(record: EventRecord) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "raw_file": str(record.file),
+        "hdf5_file": str(record.hdf5_path),
+        "event_id": record.event_id,
+        "dust_type": record.dust_type,
+        "instrument_model": record.instrument_model,
+        "instrument_epoch_ms": record.instrument_epoch_ms,
+        "instrument_epoch": record.instrument_epoch.isoformat(),
+        "timestamp": record.timestamp.isoformat(),
+        "accelerator_source": record.accelerator_source,
+        "has_accelerator_match": record.has_accelerator_match,
+        "accelerator_experiment_name": record.accelerator_experiment_name,
+        "accelerator_experiment_description": record.accelerator_experiment_description,
+        "calibration_campaign": record.calibration_campaign,
+        "calibration_material": record.calibration_material,
+        "calibration_speed_range": record.calibration_speed_range,
+        "calibration_target_location": record.calibration_target_location,
+        "calibration_azimuthal_location": record.calibration_azimuthal_location,
+        "calibration_notes": record.calibration_notes,
+        "mass_resolutions": [
+            float(value)
+            for value in record.mass_resolutions
+            if np.isfinite(value)
+        ],
+        "mass_line_species": list(record.mass_line_species),
+        "snr_by_channel": _clean_mapping(record.snr_by_channel),
+        "chi_sq_by_channel": _clean_mapping(record.chi_sq_by_channel),
+        "reduced_chi_sq_by_channel": _clean_mapping(record.reduced_chi_sq_by_channel),
+        "impact_charge_by_channel": _clean_mapping(record.impact_charge_by_channel),
+        "charge_yield_by_channel": _clean_mapping(record.charge_yield_by_channel),
+        "mass_line_areas": _clean_mapping(record.mass_line_areas),
+        "ternary_point": list(record.ternary_point) if record.ternary_point else None,
+    }
+
+    numeric_fields = {
+        "accelerator_timestamp_ms": record.accelerator_timestamp_ms,
+        "accelerator_mass_kg": record.accelerator_mass_kg,
+        "accelerator_velocity_mps": record.accelerator_velocity_mps,
+        "accelerator_charge_c": record.accelerator_charge_c,
+        "accelerator_radius_m": record.accelerator_radius_m,
+        "accelerator_estimate_quality": record.accelerator_estimate_quality,
+        "instrument_mass_estimate_kg": record.instrument_mass_estimate_kg,
+        "instrument_velocity_estimate_mps": record.instrument_velocity_estimate_mps,
+        "target_rise_time_us": record.target_rise_time_us,
+        "target_velocity_fit_mps": record.target_velocity_fit_mps,
+        "target_velocity_rise_mps": record.target_velocity_rise_mps,
+        "target_velocity_ratio_mps": record.target_velocity_ratio_mps,
+        "collection_efficiency": record.collection_efficiency,
+        "reference_voltage": record.reference_voltage,
+        "target_voltage": record.target_voltage,
+        "detector_voltage": record.detector_voltage,
+        "rejection_voltage": record.rejection_voltage,
+    }
+    for key, value in numeric_fields.items():
+        payload[key] = _coerce_float(value)
+
+    return payload
+
+
+@functools.lru_cache(maxsize=1)
+def _load_lookup_tables() -> dict[str, dict[str, object]]:
+    lookup_dir = package_path("lookup")
+    tables: dict[str, dict[str, object]] = {}
+    if not lookup_dir.exists():
+        return tables
+    for path in sorted(lookup_dir.iterdir()):
+        if path.is_dir():
+            continue
+        suffix = path.suffix.lower()
+        if suffix not in {".csv", ".xlsx", ".numbers"}:
+            continue
+        entry: dict[str, object] = {
+            "path": str(path),
+            "size_bytes": path.stat().st_size,
+            "kind": suffix.lstrip("."),
+        }
+        if suffix == ".csv":
+            text = path.read_text(encoding="utf-8")
+            entry["row_count"] = sum(1 for line in text.splitlines() if line.strip())
+            entry["contents"] = text
+        else:
+            blob = path.read_bytes()
+            entry["row_count"] = None
+            entry["base64"] = base64.b64encode(blob).decode("ascii")
+        tables[path.name] = entry
+    return tables
 
 
 @dataclass
@@ -450,12 +595,6 @@ class FlightCalibrationAnalyzer:
                 if timestamp is None:
                     continue
                 schedule_entry = self.classify_timestamp(timestamp)
-                if self.material_filter is not None:
-                    if schedule_entry is None:
-                        continue
-                    material_key = schedule_entry.material.strip().lower()
-                    if material_key not in self.material_filter:
-                        continue
                 hdf_path: Path | None
                 if path.suffix.lower() == ".h5":
                     hdf_path = path
@@ -483,6 +622,33 @@ class FlightCalibrationAnalyzer:
             self._active_timezone_offset_ms = previous_offset
 
         return events, skipped_files, missing_hdf
+
+    def _hdf5_inventory(self) -> list[dict[str, object]]:
+        catalog: dict[Path, dict[str, object]] = {}
+        for record in self.events:
+            entry = catalog.setdefault(
+                record.hdf5_path,
+                {
+                    "hdf5_file": str(record.hdf5_path),
+                    "raw_files": set(),
+                    "event_ids": [],
+                },
+            )
+            raw_files = cast(set[str], entry["raw_files"])
+            raw_files.add(str(record.file))
+            event_ids = cast(list[str], entry["event_ids"])
+            event_ids.append(record.event_id)
+        ordered: list[dict[str, object]] = []
+        for data in catalog.values():
+            ordered.append(
+                {
+                    "hdf5_file": data["hdf5_file"],
+                    "raw_files": sorted(cast(set[str], data["raw_files"])),
+                    "event_ids": sorted(cast(list[str], data["event_ids"])),
+                }
+            )
+        ordered.sort(key=lambda item: item["hdf5_file"])
+        return ordered
 
     def _derive_hdf_path(self, raw_path: Path) -> Path:
         parts = list(raw_path.parts)
@@ -535,6 +701,7 @@ class FlightCalibrationAnalyzer:
                     continue
                 record = self._process_event(
                     event_group,
+                    hdf_path,
                     raw_path,
                     event_id,
                     timestamp,
@@ -542,6 +709,10 @@ class FlightCalibrationAnalyzer:
                     instrument_model,
                 )
                 if record is not None:
+                    if self.material_filter is not None:
+                        label = _material_label(record).strip().lower()
+                        if not label or label not in self.material_filter:
+                            continue
                     collector.append(record)
 
     def _match_from_group(self, accel_group) -> AcceleratorMatch | None:
@@ -619,6 +790,7 @@ class FlightCalibrationAnalyzer:
     def _process_event(
         self,
         event_group,
+        hdf_path: Path,
         raw_file: Path,
         event_id: str,
         file_timestamp: datetime,
@@ -912,6 +1084,7 @@ class FlightCalibrationAnalyzer:
 
         return EventRecord(
             file=raw_file,
+            hdf5_path=hdf_path,
             event_id=str(event_id),
             dust_type=material,
             instrument_model=instrument_model,
@@ -1021,6 +1194,10 @@ class FlightCalibrationAnalyzer:
 
         matched_events = sum(1 for record in self.events if record.has_accelerator_match)
 
+        events_payload = [_serialise_event(record) for record in self.events]
+        inventory = self._hdf5_inventory()
+        lookup_tables = _load_lookup_tables()
+
         summary = {
             "total_events": len(self.events),
             "matched_events": matched_events,
@@ -1037,6 +1214,9 @@ class FlightCalibrationAnalyzer:
             "skipped_files": [str(path) for path in self.skipped_files],
             "missing_hdf": [str(path) for path in self.missing_hdf],
             "applied_timezone_offset_ms": self.applied_timezone_offset_ms,
+            "events": events_payload,
+            "hdf5_inventory": inventory,
+            "lookup_tables": lookup_tables,
         }
         return summary
 
@@ -1167,6 +1347,7 @@ class FlightCalibrationAnalyzer:
             plt.close(fig)
 
             self._plot_data_inventory(pdf)
+            self._plot_data_provenance(pdf)
             self._plot_impact_rate_series(pdf)
             self._plot_impact_charge_histograms(pdf)
             self._plot_speed_efficiency_trends(pdf)
@@ -1420,6 +1601,92 @@ class FlightCalibrationAnalyzer:
                 0.02,
                 0.5,
                 "No processed events were available to summarise.",
+                va="center",
+                ha="left",
+                fontsize=11,
+            )
+
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _plot_data_provenance(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        inventory = self._hdf5_inventory()
+        lookup_tables = _load_lookup_tables()
+        if not inventory and not lookup_tables:
+            return
+        fig = plt.figure(figsize=(11, 8.5))
+        fig.suptitle("Data provenance and lookup catalog", fontsize=16)
+        grid = fig.add_gridspec(2, 1, height_ratios=(0.45, 0.55), hspace=0.35)
+
+        ax_inv = fig.add_subplot(grid[0])
+        ax_inv.axis("off")
+        total_events = sum(len(entry["event_ids"]) for entry in inventory)
+        inv_lines = [
+            f"Decoded HDF5 files catalogued: {len(inventory)}",
+            f"Total events enumerated: {total_events}",
+            "The accompanying JSON summary includes every raw→HDF5 mapping",
+            "and stores the per-event telemetry extracted from each file.",
+        ]
+        ax_inv.text(0.01, 0.95, "\n".join(inv_lines), va="top", ha="left", fontsize=11)
+        if inventory:
+            preview = inventory[:8]
+            table = ax_inv.table(
+                cellText=[
+                    [
+                        Path(entry["hdf5_file"]).name,
+                        str(len(entry["event_ids"])),
+                        ", ".join(Path(raw).name for raw in entry["raw_files"][:2])
+                        + ("…" if len(entry["raw_files"]) > 2 else ""),
+                    ]
+                    for entry in preview
+                ],
+                colLabels=["HDF5 file", "Events", "Raw sources (sample)"],
+                loc="lower center",
+                cellLoc="center",
+                colLoc="center",
+                bbox=[0.0, -0.05, 1.0, 0.55],
+            )
+            table.auto_set_font_size(False)
+            table.set_fontsize(8)
+            table.scale(1.0, 1.1)
+
+        ax_lookup = fig.add_subplot(grid[1])
+        ax_lookup.axis("off")
+        ax_lookup.set_title(
+            "Lookup spreadsheets embedded in this build",
+            loc="left",
+            fontsize=12,
+            pad=10,
+        )
+        if lookup_tables:
+            rows = []
+            for name, info in sorted(lookup_tables.items()):
+                row_count = info.get("row_count")
+                rows.append(
+                    [
+                        name,
+                        info.get("kind", ""),
+                        "—" if row_count in (None, "") else f"{row_count}",
+                        f"{int(info.get('size_bytes', 0)):,} bytes",
+                    ]
+                )
+            table = ax_lookup.table(
+                cellText=rows,
+                colLabels=["Filename", "Kind", "Rows", "Size"],
+                loc="center",
+                cellLoc="center",
+                colLoc="center",
+                bbox=[0.0, 0.0, 1.0, 0.85],
+            )
+            table.auto_set_font_size(False)
+            table.set_fontsize(9)
+            table.scale(1.0, 1.1)
+        else:
+            ax_lookup.text(
+                0.02,
+                0.5,
+                "No lookup tables were found in the package.",
                 va="center",
                 ha="left",
                 fontsize=11,
