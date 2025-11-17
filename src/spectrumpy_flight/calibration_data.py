@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import math
+import os
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -22,6 +23,18 @@ SQLMatchCriteria = None  # type: ignore[assignment]
 SQLMatchResult = None  # type: ignore[assignment]
 query_dust_events = None  # type: ignore[assignment]
 _SQL_IMPORT_ATTEMPTED = False
+_FORCE_CSV_MATCHES = os.environ.get("IDEX_FORCE_CSV_MATCHES", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+_ENABLE_SQL_MATCHES = os.environ.get("IDEX_ENABLE_SQL_MATCHES", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 __all__ = [
     "AcceleratorMatch",
@@ -341,11 +354,15 @@ class AcceleratorMatchFinder:
         *,
         time_tolerance_ms: float = 2_000.0,
         timezone_offsets_hours: Sequence[int] = (0, 6, -6, 7, -7),
+        use_server: bool | None = None,
     ) -> None:
         if csv_path is None:
             csv_path = package_path("lookup", "IDEX_FM_2023.csv")
         self.csv_path = csv_path
         self.time_tolerance_ms = float(time_tolerance_ms)
+        if use_server is None:
+            use_server = _ENABLE_SQL_MATCHES and not _FORCE_CSV_MATCHES
+        self._use_server = bool(use_server)
         self._timezone_offsets_ms = tuple(
             sorted({int(hours * 3_600_000) for hours in timezone_offsets_hours})
         )
@@ -567,10 +584,13 @@ class AcceleratorMatchFinder:
         timezone_offset_ms: float = 0.0,
         velocity_mps: float | None = None,
     ) -> AcceleratorMatch | None:
-        match = self._query_server(instrument_timestamp_ms, timezone_offset_ms, velocity_mps)
-        if match is not None:
-            self._server_successes += 1
-            return match
+        if self._use_server:
+            match = self._query_server(
+                instrument_timestamp_ms, timezone_offset_ms, velocity_mps
+            )
+            if match is not None:
+                self._server_successes += 1
+                return match
         return self._query_csv(instrument_timestamp_ms, timezone_offset_ms, velocity_mps)
 
     def _query_server(
@@ -579,6 +599,8 @@ class AcceleratorMatchFinder:
         timezone_offset_ms: float,
         velocity_mps: float | None,
     ) -> AcceleratorMatch | None:
+        if not self._use_server:
+            return None
         if not _ensure_sql_support():
             return None
         offsets_ms = self._candidate_offsets(timezone_offset_ms)
