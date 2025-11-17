@@ -23,6 +23,10 @@ try:  # pragma: no cover - optional dependency for runtime environments
     import matplotlib.pyplot as plt
     from matplotlib import dates as mdates
     from matplotlib.backends.backend_pdf import PdfPages
+
+    from .plot_style import apply_plot_style
+
+    apply_plot_style()
 except Exception:  # pragma: no cover - matplotlib may be unavailable in some contexts
     plt = None  # type: ignore[assignment]
     PdfPages = None  # type: ignore[assignment]
@@ -506,7 +510,8 @@ class FlightCalibrationAnalyzer:
             return False
 
         try:
-            packets.write_to_hdf5(packets.data, str(raw_path))
+            target_hdf.parent.mkdir(parents=True, exist_ok=True)
+            packets.write_to_hdf5(packets.data, str(target_hdf))
         except Exception:
             return False
 
