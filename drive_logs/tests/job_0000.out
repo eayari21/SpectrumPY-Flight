@@ -1,0 +1,2885 @@
+$ /opt/anaconda3/envs/idex/bin/python -m spectrumpy_flight.idex_packet -f /Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/Data/ois_output_07252023_003649
+Reading in data file /Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/Data/ois_output_07252023_003649
+Data import completed, writing packet structures.
+Packet structures written.
+0
+{'SHCOARSE': ParsedDataItem(SHCOARSE, raw=427941291, derived=427941291, unit=dn), 'SHFINE': ParsedDataItem(SHFINE, raw=7655, derived=7655, unit=dn), 'IDX__SCI0AID': ParsedDataItem(IDX__SCI0AID, raw=2415002916, derived=2415002916, unit=None), 'IDX__SCI0TYPE': ParsedDataItem(IDX__SCI0TYPE, raw=1, derived=1, unit=None), 'IDX__SCI0CONT': ParsedDataItem(IDX__SCI0CONT, raw=127, derived=127, unit=None), 'IDX__SCI0SPARE1': ParsedDataItem(IDX__SCI0SPARE1, raw=0, derived=0, unit=None), 'IDX__SCI0PACK': ParsedDataItem(IDX__SCI0PACK, raw=1, derived=EN, unit=None), 'IDX__SCI0FRAG': ParsedDataItem(IDX__SCI0FRAG, raw=0, derived=DS, unit=None), 'IDX__SCI0COMP': ParsedDataItem(IDX__SCI0COMP, raw=0, derived=DS, unit=None), 'IDX__SCI0EVTNUM': ParsedDataItem(IDX__SCI0EVTNUM, raw=0, derived=0, unit=None), 'IDX__SCI0CAT': ParsedDataItem(IDX__SCI0CAT, raw=32, derived=32, unit=None), 'IDX__SCI0QUAL': ParsedDataItem(IDX__SCI0QUAL, raw=5, derived=5, unit=None), 'IDX__SCI0FRAGOFF': ParsedDataItem(IDX__SCI0FRAGOFF, raw=0, derived=0, unit=None), 'IDX__SCI0VER': ParsedDataItem(IDX__SCI0VER, raw=9, derived=9, unit=None), 'IDX__SCI0TIME32': ParsedDataItem(IDX__SCI0TIME32, raw=427940640, derived=427940640, unit=None), 'IDX__SCI0SPARE2': ParsedDataItem(IDX__SCI0SPARE2, raw=0, derived=0, unit=None), 'IDX__SCI0SPARE3': ParsedDataItem(IDX__SCI0SPARE3, raw=0, derived=0, unit=None), 'IDX__SCI0SPARE4': ParsedDataItem(IDX__SCI0SPARE4, raw=0, derived=0, unit=None), 'IDX__TXHDRSCIEVTLEN': ParsedDataItem(IDX__TXHDRSCIEVTLEN, raw=8320, derived=8320, unit=None), 'IDX__TXHDRSP00': ParsedDataItem(IDX__TXHDRSP00, raw=0, derived=0, unit=None), 'IDX__TXHDRTIMESEC1': ParsedDataItem(IDX__TXHDRTIMESEC1, raw=6529, derived=6529, unit=None), 'IDX__TXHDRTIMESEC2': ParsedDataItem(IDX__TXHDRTIMESEC2, raw=56096, derived=56096, unit=None), 'IDX__TXHDRTIMESUBS': ParsedDataItem(IDX__TXHDRTIMESUBS, raw=10465, derived=10465, unit=None), 'IDX__TXHDRSP01': ParsedDataItem(IDX__TXHDRSP01, raw=0, derived=0, unit=None), 'IDX__TXHDRTRIGOFFSET': ParsedDataItem(IDX__TXHDRTRIGOFFSET, raw=4, derived=4, unit=None), 'IDX__TXHDRSP02': ParsedDataItem(IDX__TXHDRSP02, raw=0, derived=0, unit=None), 'IDX__TXHDRTRIGID': ParsedDataItem(IDX__TXHDRTRIGID, raw=1, derived=1, unit=None), 'IDX__TXHDREVTNUM': ParsedDataItem(IDX__TXHDREVTNUM, raw=0, derived=0, unit=None), 'IDX__TXHDRBLOCKS': ParsedDataItem(IDX__TXHDRBLOCKS, raw=1073182687, derived=1073182687, unit=None), 'IDX__TXHDRHGTRIGCTRL1': ParsedDataItem(IDX__TXHDRHGTRIGCTRL1, raw=2306867200, derived=2306867200, unit=None), 'IDX__TXHDRHGTRIGCTRL2': ParsedDataItem(IDX__TXHDRHGTRIGCTRL2, raw=0, derived=0, unit=None), 'IDX__TXHDRLGTRIGCTRL1': ParsedDataItem(IDX__TXHDRLGTRIGCTRL1, raw=4294965248, derived=4294965248, unit=None), 'IDX__TXHDRLGTRIGCTRL2': ParsedDataItem(IDX__TXHDRLGTRIGCTRL2, raw=4278255360, derived=4278255360, unit=None), 'IDX__TXHDRMGTRIGCTRL1': ParsedDataItem(IDX__TXHDRMGTRIGCTRL1, raw=4294965248, derived=4294965248, unit=None), 'IDX__TXHDRMGTRIGCTRL2': ParsedDataItem(IDX__TXHDRMGTRIGCTRL2, raw=4278255360, derived=4278255360, unit=None), 'IDX__TXHDRSP03': ParsedDataItem(IDX__TXHDRSP03, raw=0, derived=0, unit=None), 'IDX__TXHDRLSADC': ParsedDataItem(IDX__TXHDRLSADC, raw=1048320, derived=1048320, unit=None), 'IDX__TXHDRPOLSTAT': ParsedDataItem(IDX__TXHDRPOLSTAT, raw=1, derived=NEG, unit=None), 'IDX__TXHDRSP04': ParsedDataItem(IDX__TXHDRSP04, raw=0, derived=0, unit=None), 'IDX__TXHDRPOLCTRL': ParsedDataItem(IDX__TXHDRPOLCTRL, raw=0, derived=POS, unit=None), 'IDX__TXHDRCOINENA': ParsedDataItem(IDX__TXHDRCOINENA, raw=0, derived=DIS, unit=None), 'IDX__TXHDRLSTRIGMODE': ParsedDataItem(IDX__TXHDRLSTRIGMODE, raw=0, derived=DIS, unit=None), 'IDX__TXHDRMGTRIGMODE': ParsedDataItem(IDX__TXHDRMGTRIGMODE, raw=0, derived=0, unit=None), 'IDX__TXHDRLGTRIGMODE': ParsedDataItem(IDX__TXHDRLGTRIGMODE, raw=0, derived=0, unit=None), 'IDX__TXHDRHGTRIGMODE': ParsedDataItem(IDX__TXHDRHGTRIGMODE, raw=1, derived=1, unit=None), 'IDX__TXHDRSP05': ParsedDataItem(IDX__TXHDRSP05, raw=0, derived=0, unit=None), 'IDX__TXHDRSP06': ParsedDataItem(IDX__TXHDRSP06, raw=0, derived=0, unit=None), 'IDX__TXHDRSP07': ParsedDataItem(IDX__TXHDRSP07, raw=0, derived=0, unit=None), 'IDX__TXHDRSP08': ParsedDataItem(IDX__TXHDRSP08, raw=0, derived=0, unit=None), 'IDX__TXHDRTOFMAX': ParsedDataItem(IDX__TXHDRTOFMAX, raw=1069545471, derived=1069545471, unit=None), 'IDX__TXHDRTOFMIN': ParsedDataItem(IDX__TXHDRTOFMIN, raw=4196354, derived=4196354, unit=None), 'IDX__TXHDRLS0MAXMIN': ParsedDataItem(IDX__TXHDRLS0MAXMIN, raw=8538108, derived=8538108, unit=None), 'IDX__TXHDRLS1MAXMIN': ParsedDataItem(IDX__TXHDRLS1MAXMIN, raw=16773120, derived=16773120, unit=None), 'IDX__TXHDRLS2MAXMIN': ParsedDataItem(IDX__TXHDRLS2MAXMIN, raw=9004898, derived=9004898, unit=None), 'IDX__TXHDRFIFODELAY': ParsedDataItem(IDX__TXHDRFIFODELAY, raw=16, derived=16, unit=None), 'IDX__TXHDRSAMPDELAY': ParsedDataItem(IDX__TXHDRSAMPDELAY, raw=32537662, derived=32537662, unit=None), 'IDX__TXHDRTRANSCNT': ParsedDataItem(IDX__TXHDRTRANSCNT, raw=36, derived=36, unit=None), 'IDX__TXHDRPROCHKCH01': ParsedDataItem(IDX__TXHDRPROCHKCH01, raw=83559204, derived=83559204, unit=None), 'IDX__TXHDRPROCHKCH23': ParsedDataItem(IDX__TXHDRPROCHKCH23, raw=116786534, derived=116786534, unit=None), 'IDX__TXHDRPROCHKCH45': ParsedDataItem(IDX__TXHDRPROCHKCH45, raw=171115738, derived=171115738, unit=None), 'IDX__TXHDRPROCHKCH67': ParsedDataItem(IDX__TXHDRPROCHKCH67, raw=133695769, derived=133695769, unit=None), 'IDX__TXHDRHVPSHKCH01': ParsedDataItem(IDX__TXHDRHVPSHKCH01, raw=131794194, derived=131794194, unit=None), 'IDX__TXHDRHVPSHKCH23': ParsedDataItem(IDX__TXHDRHVPSHKCH23, raw=8849069, derived=8849069, unit=None), 'IDX__TXHDRHVPSHKCH45': ParsedDataItem(IDX__TXHDRHVPSHKCH45, raw=121309147, derived=121309147, unit=None), 'IDX__TXHDRHVPSHKCH67': ParsedDataItem(IDX__TXHDRHVPSHKCH67, raw=19925646, derived=19925646, unit=None), 'IDX__TXHDRLVHK0CH01': ParsedDataItem(IDX__TXHDRLVHK0CH01, raw=134219776, derived=134219776, unit=None), 'IDX__TXHDRLVHK0CH23': ParsedDataItem(IDX__TXHDRLVHK0CH23, raw=171772858, derived=171772858, unit=None), 'IDX__TXHDRLVHK0CH45': ParsedDataItem(IDX__TXHDRLVHK0CH45, raw=134745193, derived=134745193, unit=None), 'IDX__TXHDRLVHK0CH67': ParsedDataItem(IDX__TXHDRLVHK0CH67, raw=205655124, derived=205655124, unit=None), 'IDX__TXHDRLVHK1CH01': ParsedDataItem(IDX__TXHDRLVHK1CH01, raw=34014846, derived=34014846, unit=None), 'IDX__TXHDRLVHK1CH23': ParsedDataItem(IDX__TXHDRLVHK1CH23, raw=77727229, derived=77727229, unit=None), 'IDX__TXHDRLVHK1CH45': ParsedDataItem(IDX__TXHDRLVHK1CH45, raw=228263847, derived=228263847, unit=None), 'IDX__TXHDRLVHK1CH67': ParsedDataItem(IDX__TXHDRLVHK1CH67, raw=192741830, derived=192741830, unit=None), 'IDX__TXHDRLVHK2CH01': ParsedDataItem(IDX__TXHDRLVHK2CH01, raw=82707698, derived=82707698, unit=None), 'IDX__TXHDRLVHK2CH23': ParsedDataItem(IDX__TXHDRLVHK2CH23, raw=197724854, derived=197724854, unit=None), 'IDX__TXHDRLVHK2CH45': ParsedDataItem(IDX__TXHDRLVHK2CH45, raw=101059733, derived=101059733, unit=None), 'IDX__TXHDRLVHK2CH67': ParsedDataItem(IDX__TXHDRLVHK2CH67, raw=69017, derived=69017, unit=None), 'IDX__TXHDRSP09': ParsedDataItem(IDX__TXHDRSP09, raw=0, derived=0, unit=None), 'IDX__TXHDRSP10': ParsedDataItem(IDX__TXHDRSP10, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWAIDCOPY': ParsedDataItem(IDX__TXHDRFSWAIDCOPY, raw=2415002916, derived=2415002916, unit=None), 'IDX__TXHDRFSWBINCOPY': ParsedDataItem(IDX__TXHDRFSWBINCOPY, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWMAJOR': ParsedDataItem(IDX__TXHDRFSWMAJOR, raw=2, derived=2, unit=None), 'IDX__TXHDRFSWMINOR': ParsedDataItem(IDX__TXHDRFSWMINOR, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPATCH': ParsedDataItem(IDX__TXHDRFSWPATCH, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWHVSTAT': ParsedDataItem(IDX__TXHDRFSWHVSTAT, raw=3, derived=3, unit=None), 'IDX__TXHDRFSWMEM0': ParsedDataItem(IDX__TXHDRFSWMEM0, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWMEM1': ParsedDataItem(IDX__TXHDRFSWMEM1, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT0': ParsedDataItem(IDX__TXHDRFSWPT0, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT1': ParsedDataItem(IDX__TXHDRFSWPT1, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT2': ParsedDataItem(IDX__TXHDRFSWPT2, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT3': ParsedDataItem(IDX__TXHDRFSWPT3, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT4': ParsedDataItem(IDX__TXHDRFSWPT4, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT5': ParsedDataItem(IDX__TXHDRFSWPT5, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT6': ParsedDataItem(IDX__TXHDRFSWPT6, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT7': ParsedDataItem(IDX__TXHDRFSWPT7, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT8': ParsedDataItem(IDX__TXHDRFSWPT8, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT9': ParsedDataItem(IDX__TXHDRFSWPT9, raw=0, derived=0, unit=None), 'IDX__TXHDRFPGAVER': ParsedDataItem(IDX__TXHDRFPGAVER, raw=539165480, derived=539165480, unit=None), 'IDX__SYNCSCI0PKT': ParsedDataItem(IDX__SYNCSCI0PKT, raw=13107, derived=13107, unit=None), 'IDX__CRCSCI0PKT': ParsedDataItem(IDX__CRCSCI0PKT, raw=59898, derived=59898, unit=None)}
+SHCOARSE = 427941291
+SHFINE = 7655
+IDX__SCI0AID = 2415002916
+IDX__SCI0TYPE = 1
+IDX__SCI0CONT = 127
+IDX__SCI0SPARE1 = 0
+IDX__SCI0PACK = EN
+IDX__SCI0FRAG = DS
+IDX__SCI0COMP = DS
+IDX__SCI0EVTNUM = 0
+IDX__SCI0CAT = 32
+IDX__SCI0QUAL = 5
+IDX__SCI0FRAGOFF = 0
+IDX__SCI0VER = 9
+IDX__SCI0TIME32 = 427940640
+IDX__SCI0SPARE2 = 0
+IDX__SCI0SPARE3 = 0
+IDX__SCI0SPARE4 = 0
+IDX__TXHDRSCIEVTLEN = 8320
+IDX__TXHDRSP00 = 0
+IDX__TXHDRTIMESEC1 = 6529
+IDX__TXHDRTIMESEC2 = 56096
+IDX__TXHDRTIMESUBS = 10465
+IDX__TXHDRSP01 = 0
+IDX__TXHDRTRIGOFFSET = 4
+IDX__TXHDRSP02 = 0
+IDX__TXHDRTRIGID = 1
+IDX__TXHDREVTNUM = 0
+IDX__TXHDRBLOCKS = 1073182687
+IDX__TXHDRHGTRIGCTRL1 = 2306867200
+IDX__TXHDRHGTRIGCTRL2 = 0
+IDX__TXHDRLGTRIGCTRL1 = 4294965248
+IDX__TXHDRLGTRIGCTRL2 = 4278255360
+IDX__TXHDRMGTRIGCTRL1 = 4294965248
+IDX__TXHDRMGTRIGCTRL2 = 4278255360
+IDX__TXHDRSP03 = 0
+IDX__TXHDRLSADC = 1048320
+IDX__TXHDRPOLSTAT = NEG
+IDX__TXHDRSP04 = 0
+IDX__TXHDRPOLCTRL = POS
+IDX__TXHDRCOINENA = DIS
+IDX__TXHDRLSTRIGMODE = DIS
+IDX__TXHDRMGTRIGMODE = 0
+IDX__TXHDRLGTRIGMODE = 0
+IDX__TXHDRHGTRIGMODE = 1
+IDX__TXHDRSP05 = 0
+IDX__TXHDRSP06 = 0
+IDX__TXHDRSP07 = 0
+IDX__TXHDRSP08 = 0
+IDX__TXHDRTOFMAX = 1069545471
+IDX__TXHDRTOFMIN = 4196354
+IDX__TXHDRLS0MAXMIN = 8538108
+IDX__TXHDRLS1MAXMIN = 16773120
+IDX__TXHDRLS2MAXMIN = 9004898
+IDX__TXHDRFIFODELAY = 16
+IDX__TXHDRSAMPDELAY = 32537662
+IDX__TXHDRTRANSCNT = 36
+IDX__TXHDRPROCHKCH01 = 83559204
+IDX__TXHDRPROCHKCH23 = 116786534
+IDX__TXHDRPROCHKCH45 = 171115738
+IDX__TXHDRPROCHKCH67 = 133695769
+IDX__TXHDRHVPSHKCH01 = 131794194
+IDX__TXHDRHVPSHKCH23 = 8849069
+IDX__TXHDRHVPSHKCH45 = 121309147
+IDX__TXHDRHVPSHKCH67 = 19925646
+IDX__TXHDRLVHK0CH01 = 134219776
+IDX__TXHDRLVHK0CH23 = 171772858
+IDX__TXHDRLVHK0CH45 = 134745193
+IDX__TXHDRLVHK0CH67 = 205655124
+IDX__TXHDRLVHK1CH01 = 34014846
+IDX__TXHDRLVHK1CH23 = 77727229
+IDX__TXHDRLVHK1CH45 = 228263847
+IDX__TXHDRLVHK1CH67 = 192741830
+IDX__TXHDRLVHK2CH01 = 82707698
+IDX__TXHDRLVHK2CH23 = 197724854
+IDX__TXHDRLVHK2CH45 = 101059733
+IDX__TXHDRLVHK2CH67 = 69017
+IDX__TXHDRSP09 = 0
+IDX__TXHDRSP10 = 0
+IDX__TXHDRFSWAIDCOPY = 2415002916
+IDX__TXHDRFSWBINCOPY = 0
+IDX__TXHDRFSWMAJOR = 2
+IDX__TXHDRFSWMINOR = 0
+IDX__TXHDRFSWPATCH = 0
+IDX__TXHDRFSWHVSTAT = 3
+IDX__TXHDRFSWMEM0 = 0
+IDX__TXHDRFSWMEM1 = 0
+IDX__TXHDRFSWPT0 = 0
+IDX__TXHDRFSWPT1 = 0
+IDX__TXHDRFSWPT2 = 0
+IDX__TXHDRFSWPT3 = 0
+IDX__TXHDRFSWPT4 = 0
+IDX__TXHDRFSWPT5 = 0
+IDX__TXHDRFSWPT6 = 0
+IDX__TXHDRFSWPT7 = 0
+IDX__TXHDRFSWPT8 = 0
+IDX__TXHDRFSWPT9 = 0
+IDX__TXHDRFPGAVER = 539165480
+IDX__SYNCSCI0PKT = 13107
+IDX__CRCSCI0PKT = 59898
+^*****Event header 1******^
+HS pre trig sampling blocks:  31
+LS pre trig sampling blocks:  7
+HS post trig sampling blocks:  31
+LS post trig sampling blocks:  7
+IDX__TXHDRHVPSHKCH01 = 131794194
+Detector voltage =  1298
+Sensor voltage =  2011
+Target voltage =  1709
+Reflectron voltage =  135
+Rejection voltage =  2011
+Current for HVPS sensor =  1851
+Positive current for HVPS sensor =  2702
+Negative current for HVPS sensor =  304
+Voltage +3.3V reference =  2048
+Voltage +3.3V operational reference =  2048
+Voltage -6V bus =  3002
+Voltage +6V bus =  2621
+Voltage +16V bus =  3177
+Voltage +3.3V bus =  2056
+Voltage -5V bus =  3156
+Voltage +5V bus =  3138
+Current +3.3V bus =  1662
+Current +16V bus =  1186
+Current +6V bus =  1533
+Current -6V bus =  1186
+Current +5V bus =  1959
+Current -5V bus =  3483
+Current +2.5V bus =  454
+Current -2.5V bus =  2941
+Current on the 1V POL =  804
+Current on the 1.9V POL =  1275
+ProcBd Temperature 1 =  1382
+ProcBd Temperature 2 =  1782
+Voltage on 1V bus =  1242
+FPGA Temperature =  2611
+Voltage on 1.9V bus =  2329
+Voltage on 3.3V bus =  2040
+var_to_row = {'Last measurement in raw DN for Processor Board signal “1V POL Current”': 0, 'Last measurement in raw DN for Processor Board signal “1.9V POL Current”': 1, 'Last measurement in raw DN for Processor Board signal “ProcBd Temp1”': 2, nan: 48, 'Last measurement in raw DN for Processor Board signal “ProcBd Temp2”': 6, 'Last measurement in raw DN for Processor Board signal “1V Voltage”': 10, 'Last measurement in raw DN for Processor Board signal “FPGA Temp”': 11, 'Last measurement in raw DN for Processor Board signal “1.9V Voltage”': 12, 'Last measurement in raw DN for Processor Board signal “3.3V Voltage”': 13, 'Last measurement in raw DN for HVPS Board signal “Detector Voltage”': 14, 'Last measurement in raw DN for HVPS Board signal “Sensor Voltage"': 15, 'Last measurement in raw DN for HVPS Board signal “Target Voltage”': 16, 'Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”': 17, 'Last measurement in raw DN for HVPS Board signal “Rejection Voltage”': 18, 'Last measurement in raw DN for HVPS Board signal “Detector Current”': 19, 'Last measurement in raw DN for HVPS Board signal “Sensor IP”': 20, 'Last measurement in raw DN for HVPS Board signal “Sensor IN”': 21, 'Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”': 22, 'Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”': 23, 'Last measurement in raw DN for LVPS Board signal “N6V”': 24, 'Last measurement in raw DN for LVPS Board signal “P6V”': 25, 'Last measurement in raw DN for LVPS Board signal “P16V”': 26, 'Last measurement in raw DN for LVPS Board signal “P3.3V”': 27, 'Last measurement in raw DN for LVPS Board signal “N5V”': 28, 'Last measurement in raw DN for LVPS Board signal “P5V”': 29, 'Last measurement in raw DN for LVPS Board signal “P3.3_IMON”': 30, 'Last measurement in raw DN for LVPS Board signal “P16V_IMON”': 31, 'Last measurement in raw DN for LVPS Board signal “P6V_IMON”': 32, 'Last measurement in raw DN for LVPS Board signal “N6V_IMON”': 33, 'Last measurement in raw DN for LVPS Board signal “P5V_IMON”': 34, 'Last measurement in raw DN for LVPS Board signal “N5V_IMON”': 35, 'Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”': 36, 'Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”': 37, 'Last measurement in raw DN for LVPS Board signal “THERM_DECON0”': 38, 'Last measurement in raw DN for LVPS Board signal “THERM_DECON1”': 39, 'Last measurement in raw DN for LVPS Board signal “THERM_DAB”': 40, 'Last measurement in raw DN for LVPS Board signal “THERM_LVPS”': 41, 'Last measurement in raw DN for LVPS Board signal “THERM_HVPS”': 45, 'Last measurement in raw DN for LVPS Board signal “P2.5V”': 49, 'Last measurement in raw DN for LVPS Board signal “N2.5V”': 50, 'Last measurement in raw DN for LVPS Board signal “Spare”': 51}
+
+ 
+ ***** var_name being converted for each instrument setting ***** 
+ 
+
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1V POL Current”= [0.0 0.9029253 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1V POL Current”
+var_name = current_1V_pol
+Header info = 804
+Transformed value for current_1V_pol = 725.9519412000001
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1.9V POL Current”= [0.0 0.9029253 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1.9V POL Current”
+var_name = current_1.9V_pol
+Header info = 1275
+Transformed value for current_1.9V_pol = 1151.2297575
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “ProcBd Temp1”= [162.8276 -0.2668687 0.0003323794 -2.43153e-07 9.034532e-11 -1.327735e-14
+ 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “ProcBd Temp1”
+var_name = temperature_1
+Header info = 1382
+Transformed value for temperature_1 = 49.656254234781045
+Matching row  18
+coeffs for nan= [-104713.9 52.02446 -0.006463374 0.0 0.0 0.0 0.0 0.0]
+var_name = nan
+var_name = None
+KeyError: (1, None) - Could not find entry for None, 48. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “ProcBd Temp2”= [162.8276 -0.2668687 0.0003323794 -2.43153e-07 9.034532e-11 -1.327735e-14
+ 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “ProcBd Temp2”
+var_name = temperature_2
+Header info = 1782
+Transformed value for temperature_2 = 39.24530287850183
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1V Voltage”= [0.0 0.000805861 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1V Voltage”
+var_name = voltage_1V_bus
+Header info = 1242
+Transformed value for voltage_1V_bus = 1.0008793619999998
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “FPGA Temp”= [358.31 -0.1187104 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “FPGA Temp”
+var_name = fpga_temperature
+Header info = 2611
+Transformed value for fpga_temperature = 48.357145600000024
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1.9V Voltage”= [0.0 0.000805861 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1.9V Voltage”
+var_name = voltage_1.9V_bus
+Header info = 2329
+Transformed value for voltage_1.9V_bus = 1.876850269
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “3.3V Voltage”= [0.0 0.001611722 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “3.3V Voltage”
+var_name = voltage_3.3V_bus
+Header info = 2040
+Transformed value for voltage_3.3V_bus = 3.28791288
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Detector Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Detector Voltage”
+var_name = detector_voltage
+Header info = 1298
+Transformed value for detector_voltage = 1901.8296
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor Voltage"= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor Voltage"
+var_name = sensor_voltage
+Header info = 2011
+Transformed value for sensor_voltage = 2946.5172000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Target Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Target Voltage”
+var_name = target_voltage
+Header info = 1709
+Transformed value for target_voltage = 2504.0268
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”
+var_name = reflectron_voltage
+Header info = 135
+Transformed value for reflectron_voltage = 197.80200000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Rejection Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Rejection Voltage”
+var_name = rejection_voltage
+Header info = 2011
+Transformed value for rejection_voltage = 2946.5172000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Detector Current”= [0.0 7.326e-06 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Detector Current”
+var_name = current_hvps_sensor
+Header info = 1851
+Transformed value for current_hvps_sensor = 0.013560426
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor IP”= [0.0 2.4339e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor IP”
+var_name = positive_current_hvps
+Header info = 2702
+Transformed value for positive_current_hvps = 0.065763978
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor IN”= [0.0 2.4339e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor IN”
+var_name = negative_current_hvps
+Header info = 304
+Transformed value for negative_current_hvps = 0.007399055999999999
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”
+var_name = voltage_3V3_ref
+Header info = 2048
+Transformed value for voltage_3V3_ref = 3.30080256
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”
+var_name = voltage_3V3_op_ref
+Header info = 2048
+Transformed value for voltage_3V3_op_ref = 3.30080256
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N6V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N6V”
+var_name = voltage_neg6V_bus
+Header info = 3002
+Transformed value for voltage_neg6V_bus = -6.3888610600000035
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P6V”= [0.0 0.00241758 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P6V”
+var_name = voltage_pos6V_bus
+Header info = 2621
+Transformed value for voltage_pos6V_bus = 6.33647718
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P16V”= [0.0 0.00482711 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P16V”
+var_name = voltage_pos16V_bus
+Header info = 3177
+Transformed value for voltage_pos16V_bus = 15.33572847
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3V”
+var_name = voltage_pos3V3_bus
+Header info = 2056
+Transformed value for voltage_pos3V3_bus = 3.31369632
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N5V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N5V”
+var_name = voltage_neg5V_bus
+Header info = 3156
+Transformed value for voltage_neg5V_bus = -5.023732680000002
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P5V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P5V”
+var_name = voltage_pos5V_bus
+Header info = 3138
+Transformed value for voltage_pos5V_bus = 5.057577360000001
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3_IMON”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3_IMON”
+var_name = current_3V3_bus
+Header info = 1662
+Transformed value for current_3V3_bus = 2.67867864
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P16V_IMON”= [0.0 0.000161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P16V_IMON”
+var_name = current_16V_bus
+Header info = 1186
+Transformed value for current_16V_bus = 0.19114999200000002
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P6V_IMON”= [0.0 8.05861e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P6V_IMON”
+var_name = current_6V_bus
+Header info = 1533
+Transformed value for current_6V_bus = 0.1235384913
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N6V_IMON”= [0.0 -8.05861e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N6V_IMON”
+var_name = current_neg6V_bus
+Header info = 1186
+Transformed value for current_neg6V_bus = -0.0955751146
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P5V_IMON”= [0.0 4.029304e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P5V_IMON”
+var_name = current_5V_bus
+Header info = 1959
+Transformed value for current_5V_bus = 0.07893406536
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N5V_IMON”= [0.0 -2.01465e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N5V_IMON”
+var_name = current_neg5V_bus
+Header info = 3483
+Transformed value for current_neg5V_bus = -0.0701702595
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”
+var_name = current_2V5_bus
+Header info = 454
+Transformed value for current_2V5_bus = 0.73172088
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”= [0.0 -4.0293e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”
+var_name = current_neg2V5_bus
+Header info = 2941
+Transformed value for current_neg2V5_bus = -0.11850171300000001
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DECON0”= [-110.293 0.0665351 0.000305738 -6.32048e-07 5.9934e-10 -2.98784e-13
+ 7.61361e-17 -7.76467e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DECON0”
+var_name = None
+KeyError: (1, None) - Could not find entry for None, 38. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DECON1”= [-150.478 0.376986 -0.00062072 7.73853e-07 -5.81588e-10 2.56368e-13
+ -6.05698e-17 5.96635e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DECON1”
+var_name = None
+KeyError: (1, None) - Could not find entry for None, 39. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DAB”= [-443.248 1.31224 -0.00180422 1.40016e-06 -6.43766e-10 1.7448e-13
+ -2.57695e-17 1.60239e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DAB”
+var_name = None
+KeyError: (1, None) - Could not find entry for None, 40. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_LVPS”= [200.4137 -0.2020699 0.000175403 -9.739547e-08 2.888932e-11 -3.545603e-15
+ 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_LVPS”
+var_name = None
+KeyError: (1, None) - Could not find entry for None, 41. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_HVPS”= [200.4137 -0.2020699 0.000175403 -9.739547e-08 2.888932e-11 -3.545603e-15
+ 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_HVPS”
+var_name = None
+KeyError: (1, None) - Could not find entry for None, 45. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P2.5V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P2.5V”
+var_name = None
+KeyError: (1, None) - Could not find entry for None, 49. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N2.5V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N2.5V”
+var_name = None
+KeyError: (1, None) - Could not find entry for None, 50. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “Spare”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “Spare”
+var_name = spare_signal
+KeyError: (1, 'spare_signal') - Could not find entry for spare_signal, 51. Please check the Var_notes or variable mapping.
+High gain delay = 31 samples.
+Mid gain delay = 31 samples.
+Low gain delay = 62 samples.
+High sampling trigger mode =  0 0 1
+High gain trigger mode enabled.
+For 2306867200, HG Trigger level = 0.15894999999999998, sample settings = 0, 0
+Threshold trigger mode enabled for high gain channel.
+AID = 2415002916
+Event number = 0
+Rice compression enabled = False
+Timestamp = 427973270.8469 seconds since epoch (Midnight January 1st, 2010)
+Trigger time = 2023-07-25 09:27:50.846900+00:00
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+{'SHCOARSE': ParsedDataItem(SHCOARSE, raw=427941305, derived=427941305, unit=dn), 'SHFINE': ParsedDataItem(SHFINE, raw=7663, derived=7663, unit=dn), 'IDX__SCI0AID': ParsedDataItem(IDX__SCI0AID, raw=2415002916, derived=2415002916, unit=None), 'IDX__SCI0TYPE': ParsedDataItem(IDX__SCI0TYPE, raw=1, derived=1, unit=None), 'IDX__SCI0CONT': ParsedDataItem(IDX__SCI0CONT, raw=127, derived=127, unit=None), 'IDX__SCI0SPARE1': ParsedDataItem(IDX__SCI0SPARE1, raw=0, derived=0, unit=None), 'IDX__SCI0PACK': ParsedDataItem(IDX__SCI0PACK, raw=1, derived=EN, unit=None), 'IDX__SCI0FRAG': ParsedDataItem(IDX__SCI0FRAG, raw=0, derived=DS, unit=None), 'IDX__SCI0COMP': ParsedDataItem(IDX__SCI0COMP, raw=0, derived=DS, unit=None), 'IDX__SCI0EVTNUM': ParsedDataItem(IDX__SCI0EVTNUM, raw=1, derived=1, unit=None), 'IDX__SCI0CAT': ParsedDataItem(IDX__SCI0CAT, raw=32, derived=32, unit=None), 'IDX__SCI0QUAL': ParsedDataItem(IDX__SCI0QUAL, raw=5, derived=5, unit=None), 'IDX__SCI0FRAGOFF': ParsedDataItem(IDX__SCI0FRAGOFF, raw=0, derived=0, unit=None), 'IDX__SCI0VER': ParsedDataItem(IDX__SCI0VER, raw=9, derived=9, unit=None), 'IDX__SCI0TIME32': ParsedDataItem(IDX__SCI0TIME32, raw=427940684, derived=427940684, unit=None), 'IDX__SCI0SPARE2': ParsedDataItem(IDX__SCI0SPARE2, raw=0, derived=0, unit=None), 'IDX__SCI0SPARE3': ParsedDataItem(IDX__SCI0SPARE3, raw=0, derived=0, unit=None), 'IDX__SCI0SPARE4': ParsedDataItem(IDX__SCI0SPARE4, raw=0, derived=0, unit=None), 'IDX__TXHDRSCIEVTLEN': ParsedDataItem(IDX__TXHDRSCIEVTLEN, raw=8320, derived=8320, unit=None), 'IDX__TXHDRSP00': ParsedDataItem(IDX__TXHDRSP00, raw=0, derived=0, unit=None), 'IDX__TXHDRTIMESEC1': ParsedDataItem(IDX__TXHDRTIMESEC1, raw=6529, derived=6529, unit=None), 'IDX__TXHDRTIMESEC2': ParsedDataItem(IDX__TXHDRTIMESEC2, raw=56140, derived=56140, unit=None), 'IDX__TXHDRTIMESUBS': ParsedDataItem(IDX__TXHDRTIMESUBS, raw=41457, derived=41457, unit=None), 'IDX__TXHDRSP01': ParsedDataItem(IDX__TXHDRSP01, raw=0, derived=0, unit=None), 'IDX__TXHDRTRIGOFFSET': ParsedDataItem(IDX__TXHDRTRIGOFFSET, raw=5, derived=5, unit=None), 'IDX__TXHDRSP02': ParsedDataItem(IDX__TXHDRSP02, raw=0, derived=0, unit=None), 'IDX__TXHDRTRIGID': ParsedDataItem(IDX__TXHDRTRIGID, raw=1, derived=1, unit=None), 'IDX__TXHDREVTNUM': ParsedDataItem(IDX__TXHDREVTNUM, raw=1, derived=1, unit=None), 'IDX__TXHDRBLOCKS': ParsedDataItem(IDX__TXHDRBLOCKS, raw=1073182687, derived=1073182687, unit=None), 'IDX__TXHDRHGTRIGCTRL1': ParsedDataItem(IDX__TXHDRHGTRIGCTRL1, raw=2306867200, derived=2306867200, unit=None), 'IDX__TXHDRHGTRIGCTRL2': ParsedDataItem(IDX__TXHDRHGTRIGCTRL2, raw=0, derived=0, unit=None), 'IDX__TXHDRLGTRIGCTRL1': ParsedDataItem(IDX__TXHDRLGTRIGCTRL1, raw=4294965248, derived=4294965248, unit=None), 'IDX__TXHDRLGTRIGCTRL2': ParsedDataItem(IDX__TXHDRLGTRIGCTRL2, raw=4278255360, derived=4278255360, unit=None), 'IDX__TXHDRMGTRIGCTRL1': ParsedDataItem(IDX__TXHDRMGTRIGCTRL1, raw=4294965248, derived=4294965248, unit=None), 'IDX__TXHDRMGTRIGCTRL2': ParsedDataItem(IDX__TXHDRMGTRIGCTRL2, raw=4278255360, derived=4278255360, unit=None), 'IDX__TXHDRSP03': ParsedDataItem(IDX__TXHDRSP03, raw=0, derived=0, unit=None), 'IDX__TXHDRLSADC': ParsedDataItem(IDX__TXHDRLSADC, raw=1048320, derived=1048320, unit=None), 'IDX__TXHDRPOLSTAT': ParsedDataItem(IDX__TXHDRPOLSTAT, raw=1, derived=NEG, unit=None), 'IDX__TXHDRSP04': ParsedDataItem(IDX__TXHDRSP04, raw=0, derived=0, unit=None), 'IDX__TXHDRPOLCTRL': ParsedDataItem(IDX__TXHDRPOLCTRL, raw=0, derived=POS, unit=None), 'IDX__TXHDRCOINENA': ParsedDataItem(IDX__TXHDRCOINENA, raw=0, derived=DIS, unit=None), 'IDX__TXHDRLSTRIGMODE': ParsedDataItem(IDX__TXHDRLSTRIGMODE, raw=0, derived=DIS, unit=None), 'IDX__TXHDRMGTRIGMODE': ParsedDataItem(IDX__TXHDRMGTRIGMODE, raw=0, derived=0, unit=None), 'IDX__TXHDRLGTRIGMODE': ParsedDataItem(IDX__TXHDRLGTRIGMODE, raw=0, derived=0, unit=None), 'IDX__TXHDRHGTRIGMODE': ParsedDataItem(IDX__TXHDRHGTRIGMODE, raw=1, derived=1, unit=None), 'IDX__TXHDRSP05': ParsedDataItem(IDX__TXHDRSP05, raw=0, derived=0, unit=None), 'IDX__TXHDRSP06': ParsedDataItem(IDX__TXHDRSP06, raw=0, derived=0, unit=None), 'IDX__TXHDRSP07': ParsedDataItem(IDX__TXHDRSP07, raw=2018, derived=2018, unit=None), 'IDX__TXHDRSP08': ParsedDataItem(IDX__TXHDRSP08, raw=0, derived=0, unit=None), 'IDX__TXHDRTOFMAX': ParsedDataItem(IDX__TXHDRTOFMAX, raw=541596258, derived=541596258, unit=None), 'IDX__TXHDRTOFMIN': ParsedDataItem(IDX__TXHDRTOFMIN, raw=535295475, derived=535295475, unit=None), 'IDX__TXHDRLS0MAXMIN': ParsedDataItem(IDX__TXHDRLS0MAXMIN, raw=8529919, derived=8529919, unit=None), 'IDX__TXHDRLS1MAXMIN': ParsedDataItem(IDX__TXHDRLS1MAXMIN, raw=10700050, derived=10700050, unit=None), 'IDX__TXHDRLS2MAXMIN': ParsedDataItem(IDX__TXHDRLS2MAXMIN, raw=8505313, derived=8505313, unit=None), 'IDX__TXHDRFIFODELAY': ParsedDataItem(IDX__TXHDRFIFODELAY, raw=16, derived=16, unit=None), 'IDX__TXHDRSAMPDELAY': ParsedDataItem(IDX__TXHDRSAMPDELAY, raw=40934470, derived=40934470, unit=None), 'IDX__TXHDRTRANSCNT': ParsedDataItem(IDX__TXHDRTRANSCNT, raw=2, derived=2, unit=None), 'IDX__TXHDRPROCHKCH01': ParsedDataItem(IDX__TXHDRPROCHKCH01, raw=83493668, derived=83493668, unit=None), 'IDX__TXHDRPROCHKCH23': ParsedDataItem(IDX__TXHDRPROCHKCH23, raw=116393313, derived=116393313, unit=None), 'IDX__TXHDRPROCHKCH45': ParsedDataItem(IDX__TXHDRPROCHKCH45, raw=171050202, derived=171050202, unit=None), 'IDX__TXHDRPROCHKCH67': ParsedDataItem(IDX__TXHDRPROCHKCH67, raw=133695769, derived=133695769, unit=None), 'IDX__TXHDRHVPSHKCH01': ParsedDataItem(IDX__TXHDRHVPSHKCH01, raw=131794194, derived=131794194, unit=None), 'IDX__TXHDRHVPSHKCH23': ParsedDataItem(IDX__TXHDRHVPSHKCH23, raw=8849070, derived=8849070, unit=None), 'IDX__TXHDRHVPSHKCH45': ParsedDataItem(IDX__TXHDRHVPSHKCH45, raw=121309147, derived=121309147, unit=None), 'IDX__TXHDRHVPSHKCH67': ParsedDataItem(IDX__TXHDRHVPSHKCH67, raw=19991182, derived=19991182, unit=None), 'IDX__TXHDRLVHK0CH01': ParsedDataItem(IDX__TXHDRLVHK0CH01, raw=134219776, derived=134219776, unit=None), 'IDX__TXHDRLVHK0CH23': ParsedDataItem(IDX__TXHDRLVHK0CH23, raw=171772858, derived=171772858, unit=None), 'IDX__TXHDRLVHK0CH45': ParsedDataItem(IDX__TXHDRLVHK0CH45, raw=134745193, derived=134745193, unit=None), 'IDX__TXHDRLVHK0CH67': ParsedDataItem(IDX__TXHDRLVHK0CH67, raw=205655124, derived=205655124, unit=None), 'IDX__TXHDRLVHK1CH01': ParsedDataItem(IDX__TXHDRLVHK1CH01, raw=34014845, derived=34014845, unit=None), 'IDX__TXHDRLVHK1CH23': ParsedDataItem(IDX__TXHDRLVHK1CH23, raw=77661692, derived=77661692, unit=None), 'IDX__TXHDRLVHK1CH45': ParsedDataItem(IDX__TXHDRLVHK1CH45, raw=228067237, derived=228067237, unit=None), 'IDX__TXHDRLVHK1CH67': ParsedDataItem(IDX__TXHDRLVHK1CH67, raw=192741830, derived=192741830, unit=None), 'IDX__TXHDRLVHK2CH01': ParsedDataItem(IDX__TXHDRLVHK2CH01, raw=82707698, derived=82707698, unit=None), 'IDX__TXHDRLVHK2CH23': ParsedDataItem(IDX__TXHDRLVHK2CH23, raw=197528247, derived=197528247, unit=None), 'IDX__TXHDRLVHK2CH45': ParsedDataItem(IDX__TXHDRLVHK2CH45, raw=101059730, derived=101059730, unit=None), 'IDX__TXHDRLVHK2CH67': ParsedDataItem(IDX__TXHDRLVHK2CH67, raw=3481, derived=3481, unit=None), 'IDX__TXHDRSP09': ParsedDataItem(IDX__TXHDRSP09, raw=0, derived=0, unit=None), 'IDX__TXHDRSP10': ParsedDataItem(IDX__TXHDRSP10, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWAIDCOPY': ParsedDataItem(IDX__TXHDRFSWAIDCOPY, raw=2415002916, derived=2415002916, unit=None), 'IDX__TXHDRFSWBINCOPY': ParsedDataItem(IDX__TXHDRFSWBINCOPY, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWMAJOR': ParsedDataItem(IDX__TXHDRFSWMAJOR, raw=2, derived=2, unit=None), 'IDX__TXHDRFSWMINOR': ParsedDataItem(IDX__TXHDRFSWMINOR, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPATCH': ParsedDataItem(IDX__TXHDRFSWPATCH, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWHVSTAT': ParsedDataItem(IDX__TXHDRFSWHVSTAT, raw=3, derived=3, unit=None), 'IDX__TXHDRFSWMEM0': ParsedDataItem(IDX__TXHDRFSWMEM0, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWMEM1': ParsedDataItem(IDX__TXHDRFSWMEM1, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT0': ParsedDataItem(IDX__TXHDRFSWPT0, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT1': ParsedDataItem(IDX__TXHDRFSWPT1, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT2': ParsedDataItem(IDX__TXHDRFSWPT2, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT3': ParsedDataItem(IDX__TXHDRFSWPT3, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT4': ParsedDataItem(IDX__TXHDRFSWPT4, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT5': ParsedDataItem(IDX__TXHDRFSWPT5, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT6': ParsedDataItem(IDX__TXHDRFSWPT6, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT7': ParsedDataItem(IDX__TXHDRFSWPT7, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT8': ParsedDataItem(IDX__TXHDRFSWPT8, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT9': ParsedDataItem(IDX__TXHDRFSWPT9, raw=0, derived=0, unit=None), 'IDX__TXHDRFPGAVER': ParsedDataItem(IDX__TXHDRFPGAVER, raw=539165480, derived=539165480, unit=None), 'IDX__SYNCSCI0PKT': ParsedDataItem(IDX__SYNCSCI0PKT, raw=13107, derived=13107, unit=None), 'IDX__CRCSCI0PKT': ParsedDataItem(IDX__CRCSCI0PKT, raw=3394, derived=3394, unit=None)}
+SHCOARSE = 427941305
+SHFINE = 7663
+IDX__SCI0AID = 2415002916
+IDX__SCI0TYPE = 1
+IDX__SCI0CONT = 127
+IDX__SCI0SPARE1 = 0
+IDX__SCI0PACK = EN
+IDX__SCI0FRAG = DS
+IDX__SCI0COMP = DS
+IDX__SCI0EVTNUM = 1
+IDX__SCI0CAT = 32
+IDX__SCI0QUAL = 5
+IDX__SCI0FRAGOFF = 0
+IDX__SCI0VER = 9
+IDX__SCI0TIME32 = 427940684
+IDX__SCI0SPARE2 = 0
+IDX__SCI0SPARE3 = 0
+IDX__SCI0SPARE4 = 0
+IDX__TXHDRSCIEVTLEN = 8320
+IDX__TXHDRSP00 = 0
+IDX__TXHDRTIMESEC1 = 6529
+IDX__TXHDRTIMESEC2 = 56140
+IDX__TXHDRTIMESUBS = 41457
+IDX__TXHDRSP01 = 0
+IDX__TXHDRTRIGOFFSET = 5
+IDX__TXHDRSP02 = 0
+IDX__TXHDRTRIGID = 1
+IDX__TXHDREVTNUM = 1
+IDX__TXHDRBLOCKS = 1073182687
+IDX__TXHDRHGTRIGCTRL1 = 2306867200
+IDX__TXHDRHGTRIGCTRL2 = 0
+IDX__TXHDRLGTRIGCTRL1 = 4294965248
+IDX__TXHDRLGTRIGCTRL2 = 4278255360
+IDX__TXHDRMGTRIGCTRL1 = 4294965248
+IDX__TXHDRMGTRIGCTRL2 = 4278255360
+IDX__TXHDRSP03 = 0
+IDX__TXHDRLSADC = 1048320
+IDX__TXHDRPOLSTAT = NEG
+IDX__TXHDRSP04 = 0
+IDX__TXHDRPOLCTRL = POS
+IDX__TXHDRCOINENA = DIS
+IDX__TXHDRLSTRIGMODE = DIS
+IDX__TXHDRMGTRIGMODE = 0
+IDX__TXHDRLGTRIGMODE = 0
+IDX__TXHDRHGTRIGMODE = 1
+IDX__TXHDRSP05 = 0
+IDX__TXHDRSP06 = 0
+IDX__TXHDRSP07 = 2018
+IDX__TXHDRSP08 = 0
+IDX__TXHDRTOFMAX = 541596258
+IDX__TXHDRTOFMIN = 535295475
+IDX__TXHDRLS0MAXMIN = 8529919
+IDX__TXHDRLS1MAXMIN = 10700050
+IDX__TXHDRLS2MAXMIN = 8505313
+IDX__TXHDRFIFODELAY = 16
+IDX__TXHDRSAMPDELAY = 40934470
+IDX__TXHDRTRANSCNT = 2
+IDX__TXHDRPROCHKCH01 = 83493668
+IDX__TXHDRPROCHKCH23 = 116393313
+IDX__TXHDRPROCHKCH45 = 171050202
+IDX__TXHDRPROCHKCH67 = 133695769
+IDX__TXHDRHVPSHKCH01 = 131794194
+IDX__TXHDRHVPSHKCH23 = 8849070
+IDX__TXHDRHVPSHKCH45 = 121309147
+IDX__TXHDRHVPSHKCH67 = 19991182
+IDX__TXHDRLVHK0CH01 = 134219776
+IDX__TXHDRLVHK0CH23 = 171772858
+IDX__TXHDRLVHK0CH45 = 134745193
+IDX__TXHDRLVHK0CH67 = 205655124
+IDX__TXHDRLVHK1CH01 = 34014845
+IDX__TXHDRLVHK1CH23 = 77661692
+IDX__TXHDRLVHK1CH45 = 228067237
+IDX__TXHDRLVHK1CH67 = 192741830
+IDX__TXHDRLVHK2CH01 = 82707698
+IDX__TXHDRLVHK2CH23 = 197528247
+IDX__TXHDRLVHK2CH45 = 101059730
+IDX__TXHDRLVHK2CH67 = 3481
+IDX__TXHDRSP09 = 0
+IDX__TXHDRSP10 = 0
+IDX__TXHDRFSWAIDCOPY = 2415002916
+IDX__TXHDRFSWBINCOPY = 0
+IDX__TXHDRFSWMAJOR = 2
+IDX__TXHDRFSWMINOR = 0
+IDX__TXHDRFSWPATCH = 0
+IDX__TXHDRFSWHVSTAT = 3
+IDX__TXHDRFSWMEM0 = 0
+IDX__TXHDRFSWMEM1 = 0
+IDX__TXHDRFSWPT0 = 0
+IDX__TXHDRFSWPT1 = 0
+IDX__TXHDRFSWPT2 = 0
+IDX__TXHDRFSWPT3 = 0
+IDX__TXHDRFSWPT4 = 0
+IDX__TXHDRFSWPT5 = 0
+IDX__TXHDRFSWPT6 = 0
+IDX__TXHDRFSWPT7 = 0
+IDX__TXHDRFSWPT8 = 0
+IDX__TXHDRFSWPT9 = 0
+IDX__TXHDRFPGAVER = 539165480
+IDX__SYNCSCI0PKT = 13107
+IDX__CRCSCI0PKT = 3394
+^*****Event header 2******^
+HS pre trig sampling blocks:  31
+LS pre trig sampling blocks:  7
+HS post trig sampling blocks:  31
+LS post trig sampling blocks:  7
+IDX__TXHDRHVPSHKCH01 = 131794194
+Detector voltage =  1298
+Sensor voltage =  2011
+Target voltage =  1710
+Reflectron voltage =  135
+Rejection voltage =  2011
+Current for HVPS sensor =  1851
+Positive current for HVPS sensor =  2702
+Negative current for HVPS sensor =  305
+Voltage +3.3V reference =  2048
+Voltage +3.3V operational reference =  2048
+Voltage -6V bus =  3002
+Voltage +6V bus =  2621
+Voltage +16V bus =  3177
+Voltage +3.3V bus =  2056
+Voltage -5V bus =  3156
+Voltage +5V bus =  3138
+Current +3.3V bus =  1661
+Current +16V bus =  1185
+Current +6V bus =  1532
+Current -6V bus =  1185
+Current +5V bus =  1957
+Current -5V bus =  3480
+Current +2.5V bus =  454
+Current -2.5V bus =  2941
+Current on the 1V POL =  804
+Current on the 1.9V POL =  1274
+ProcBd Temperature 1 =  1377
+ProcBd Temperature 2 =  1776
+Voltage on 1V bus =  1242
+FPGA Temperature =  2610
+Voltage on 1.9V bus =  2329
+Voltage on 3.3V bus =  2040
+var_to_row = {'Last measurement in raw DN for Processor Board signal “1V POL Current”': 0, 'Last measurement in raw DN for Processor Board signal “1.9V POL Current”': 1, 'Last measurement in raw DN for Processor Board signal “ProcBd Temp1”': 2, nan: 48, 'Last measurement in raw DN for Processor Board signal “ProcBd Temp2”': 6, 'Last measurement in raw DN for Processor Board signal “1V Voltage”': 10, 'Last measurement in raw DN for Processor Board signal “FPGA Temp”': 11, 'Last measurement in raw DN for Processor Board signal “1.9V Voltage”': 12, 'Last measurement in raw DN for Processor Board signal “3.3V Voltage”': 13, 'Last measurement in raw DN for HVPS Board signal “Detector Voltage”': 14, 'Last measurement in raw DN for HVPS Board signal “Sensor Voltage"': 15, 'Last measurement in raw DN for HVPS Board signal “Target Voltage”': 16, 'Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”': 17, 'Last measurement in raw DN for HVPS Board signal “Rejection Voltage”': 18, 'Last measurement in raw DN for HVPS Board signal “Detector Current”': 19, 'Last measurement in raw DN for HVPS Board signal “Sensor IP”': 20, 'Last measurement in raw DN for HVPS Board signal “Sensor IN”': 21, 'Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”': 22, 'Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”': 23, 'Last measurement in raw DN for LVPS Board signal “N6V”': 24, 'Last measurement in raw DN for LVPS Board signal “P6V”': 25, 'Last measurement in raw DN for LVPS Board signal “P16V”': 26, 'Last measurement in raw DN for LVPS Board signal “P3.3V”': 27, 'Last measurement in raw DN for LVPS Board signal “N5V”': 28, 'Last measurement in raw DN for LVPS Board signal “P5V”': 29, 'Last measurement in raw DN for LVPS Board signal “P3.3_IMON”': 30, 'Last measurement in raw DN for LVPS Board signal “P16V_IMON”': 31, 'Last measurement in raw DN for LVPS Board signal “P6V_IMON”': 32, 'Last measurement in raw DN for LVPS Board signal “N6V_IMON”': 33, 'Last measurement in raw DN for LVPS Board signal “P5V_IMON”': 34, 'Last measurement in raw DN for LVPS Board signal “N5V_IMON”': 35, 'Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”': 36, 'Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”': 37, 'Last measurement in raw DN for LVPS Board signal “THERM_DECON0”': 38, 'Last measurement in raw DN for LVPS Board signal “THERM_DECON1”': 39, 'Last measurement in raw DN for LVPS Board signal “THERM_DAB”': 40, 'Last measurement in raw DN for LVPS Board signal “THERM_LVPS”': 41, 'Last measurement in raw DN for LVPS Board signal “THERM_HVPS”': 45, 'Last measurement in raw DN for LVPS Board signal “P2.5V”': 49, 'Last measurement in raw DN for LVPS Board signal “N2.5V”': 50, 'Last measurement in raw DN for LVPS Board signal “Spare”': 51}
+
+ 
+ ***** var_name being converted for each instrument setting ***** 
+ 
+
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1V POL Current”= [0.0 0.9029253 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1V POL Current”
+var_name = current_1V_pol
+Header info = 804
+Transformed value for current_1V_pol = 725.9519412000001
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1.9V POL Current”= [0.0 0.9029253 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1.9V POL Current”
+var_name = current_1.9V_pol
+Header info = 1274
+Transformed value for current_1.9V_pol = 1150.3268322000001
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “ProcBd Temp1”= [162.8276 -0.2668687 0.0003323794 -2.43153e-07 9.034532e-11 -1.327735e-14
+ 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “ProcBd Temp1”
+var_name = temperature_1
+Header info = 1377
+Transformed value for temperature_1 = 49.80487314493658
+Matching row  18
+coeffs for nan= [-104713.9 52.02446 -0.006463374 0.0 0.0 0.0 0.0 0.0]
+var_name = nan
+var_name = None
+KeyError: (2, None) - Could not find entry for None, 48. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “ProcBd Temp2”= [162.8276 -0.2668687 0.0003323794 -2.43153e-07 9.034532e-11 -1.327735e-14
+ 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “ProcBd Temp2”
+var_name = temperature_2
+Header info = 1776
+Transformed value for temperature_2 = 39.3842700931705
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1V Voltage”= [0.0 0.000805861 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1V Voltage”
+var_name = voltage_1V_bus
+Header info = 1242
+Transformed value for voltage_1V_bus = 1.0008793619999998
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “FPGA Temp”= [358.31 -0.1187104 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “FPGA Temp”
+var_name = fpga_temperature
+Header info = 2610
+Transformed value for fpga_temperature = 48.47585600000002
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1.9V Voltage”= [0.0 0.000805861 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1.9V Voltage”
+var_name = voltage_1.9V_bus
+Header info = 2329
+Transformed value for voltage_1.9V_bus = 1.876850269
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “3.3V Voltage”= [0.0 0.001611722 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “3.3V Voltage”
+var_name = voltage_3.3V_bus
+Header info = 2040
+Transformed value for voltage_3.3V_bus = 3.28791288
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Detector Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Detector Voltage”
+var_name = detector_voltage
+Header info = 1298
+Transformed value for detector_voltage = 1901.8296
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor Voltage"= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor Voltage"
+var_name = sensor_voltage
+Header info = 2011
+Transformed value for sensor_voltage = 2946.5172000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Target Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Target Voltage”
+var_name = target_voltage
+Header info = 1710
+Transformed value for target_voltage = 2505.492
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”
+var_name = reflectron_voltage
+Header info = 135
+Transformed value for reflectron_voltage = 197.80200000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Rejection Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Rejection Voltage”
+var_name = rejection_voltage
+Header info = 2011
+Transformed value for rejection_voltage = 2946.5172000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Detector Current”= [0.0 7.326e-06 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Detector Current”
+var_name = current_hvps_sensor
+Header info = 1851
+Transformed value for current_hvps_sensor = 0.013560426
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor IP”= [0.0 2.4339e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor IP”
+var_name = positive_current_hvps
+Header info = 2702
+Transformed value for positive_current_hvps = 0.065763978
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor IN”= [0.0 2.4339e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor IN”
+var_name = negative_current_hvps
+Header info = 305
+Transformed value for negative_current_hvps = 0.007423394999999999
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”
+var_name = voltage_3V3_ref
+Header info = 2048
+Transformed value for voltage_3V3_ref = 3.30080256
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”
+var_name = voltage_3V3_op_ref
+Header info = 2048
+Transformed value for voltage_3V3_op_ref = 3.30080256
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N6V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N6V”
+var_name = voltage_neg6V_bus
+Header info = 3002
+Transformed value for voltage_neg6V_bus = -6.3888610600000035
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P6V”= [0.0 0.00241758 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P6V”
+var_name = voltage_pos6V_bus
+Header info = 2621
+Transformed value for voltage_pos6V_bus = 6.33647718
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P16V”= [0.0 0.00482711 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P16V”
+var_name = voltage_pos16V_bus
+Header info = 3177
+Transformed value for voltage_pos16V_bus = 15.33572847
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3V”
+var_name = voltage_pos3V3_bus
+Header info = 2056
+Transformed value for voltage_pos3V3_bus = 3.31369632
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N5V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N5V”
+var_name = voltage_neg5V_bus
+Header info = 3156
+Transformed value for voltage_neg5V_bus = -5.023732680000002
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P5V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P5V”
+var_name = voltage_pos5V_bus
+Header info = 3138
+Transformed value for voltage_pos5V_bus = 5.057577360000001
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3_IMON”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3_IMON”
+var_name = current_3V3_bus
+Header info = 1661
+Transformed value for current_3V3_bus = 2.67706692
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P16V_IMON”= [0.0 0.000161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P16V_IMON”
+var_name = current_16V_bus
+Header info = 1185
+Transformed value for current_16V_bus = 0.19098882
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P6V_IMON”= [0.0 8.05861e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P6V_IMON”
+var_name = current_6V_bus
+Header info = 1532
+Transformed value for current_6V_bus = 0.1234579052
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N6V_IMON”= [0.0 -8.05861e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N6V_IMON”
+var_name = current_neg6V_bus
+Header info = 1185
+Transformed value for current_neg6V_bus = -0.0954945285
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P5V_IMON”= [0.0 4.029304e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P5V_IMON”
+var_name = current_5V_bus
+Header info = 1957
+Transformed value for current_5V_bus = 0.07885347928
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N5V_IMON”= [0.0 -2.01465e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N5V_IMON”
+var_name = current_neg5V_bus
+Header info = 3480
+Transformed value for current_neg5V_bus = -0.07010982
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”
+var_name = current_2V5_bus
+Header info = 454
+Transformed value for current_2V5_bus = 0.73172088
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”= [0.0 -4.0293e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”
+var_name = current_neg2V5_bus
+Header info = 2941
+Transformed value for current_neg2V5_bus = -0.11850171300000001
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DECON0”= [-110.293 0.0665351 0.000305738 -6.32048e-07 5.9934e-10 -2.98784e-13
+ 7.61361e-17 -7.76467e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DECON0”
+var_name = None
+KeyError: (2, None) - Could not find entry for None, 38. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DECON1”= [-150.478 0.376986 -0.00062072 7.73853e-07 -5.81588e-10 2.56368e-13
+ -6.05698e-17 5.96635e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DECON1”
+var_name = None
+KeyError: (2, None) - Could not find entry for None, 39. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DAB”= [-443.248 1.31224 -0.00180422 1.40016e-06 -6.43766e-10 1.7448e-13
+ -2.57695e-17 1.60239e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DAB”
+var_name = None
+KeyError: (2, None) - Could not find entry for None, 40. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_LVPS”= [200.4137 -0.2020699 0.000175403 -9.739547e-08 2.888932e-11 -3.545603e-15
+ 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_LVPS”
+var_name = None
+KeyError: (2, None) - Could not find entry for None, 41. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_HVPS”= [200.4137 -0.2020699 0.000175403 -9.739547e-08 2.888932e-11 -3.545603e-15
+ 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_HVPS”
+var_name = None
+KeyError: (2, None) - Could not find entry for None, 45. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P2.5V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P2.5V”
+var_name = None
+KeyError: (2, None) - Could not find entry for None, 49. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N2.5V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N2.5V”
+var_name = None
+KeyError: (2, None) - Could not find entry for None, 50. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “Spare”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “Spare”
+var_name = spare_signal
+KeyError: (2, 'spare_signal') - Could not find entry for spare_signal, 51. Please check the Var_notes or variable mapping.
+High gain delay = 39 samples.
+Mid gain delay = 39 samples.
+Low gain delay = 70 samples.
+High sampling trigger mode =  0 0 1
+High gain trigger mode enabled.
+For 2306867200, HG Trigger level = 0.15894999999999998, sample settings = 0, 0
+Threshold trigger mode enabled for high gain channel.
+AID = 2415002916
+Event number = 1
+Rice compression enabled = False
+Timestamp = 427973284.84705997 seconds since epoch (Midnight January 1st, 2010)
+Trigger time = 2023-07-25 09:28:04.847060+00:00
+2
+2
+2
+2
+2
+2
+2
+2
+2
+2
+2
+2
+2
+{'SHCOARSE': ParsedDataItem(SHCOARSE, raw=427941318, derived=427941318, unit=dn), 'SHFINE': ParsedDataItem(SHFINE, raw=7670, derived=7670, unit=dn), 'IDX__SCI0AID': ParsedDataItem(IDX__SCI0AID, raw=2415002916, derived=2415002916, unit=None), 'IDX__SCI0TYPE': ParsedDataItem(IDX__SCI0TYPE, raw=1, derived=1, unit=None), 'IDX__SCI0CONT': ParsedDataItem(IDX__SCI0CONT, raw=127, derived=127, unit=None), 'IDX__SCI0SPARE1': ParsedDataItem(IDX__SCI0SPARE1, raw=0, derived=0, unit=None), 'IDX__SCI0PACK': ParsedDataItem(IDX__SCI0PACK, raw=1, derived=EN, unit=None), 'IDX__SCI0FRAG': ParsedDataItem(IDX__SCI0FRAG, raw=0, derived=DS, unit=None), 'IDX__SCI0COMP': ParsedDataItem(IDX__SCI0COMP, raw=0, derived=DS, unit=None), 'IDX__SCI0EVTNUM': ParsedDataItem(IDX__SCI0EVTNUM, raw=2, derived=2, unit=None), 'IDX__SCI0CAT': ParsedDataItem(IDX__SCI0CAT, raw=32, derived=32, unit=None), 'IDX__SCI0QUAL': ParsedDataItem(IDX__SCI0QUAL, raw=5, derived=5, unit=None), 'IDX__SCI0FRAGOFF': ParsedDataItem(IDX__SCI0FRAGOFF, raw=0, derived=0, unit=None), 'IDX__SCI0VER': ParsedDataItem(IDX__SCI0VER, raw=9, derived=9, unit=None), 'IDX__SCI0TIME32': ParsedDataItem(IDX__SCI0TIME32, raw=427941035, derived=427941035, unit=None), 'IDX__SCI0SPARE2': ParsedDataItem(IDX__SCI0SPARE2, raw=0, derived=0, unit=None), 'IDX__SCI0SPARE3': ParsedDataItem(IDX__SCI0SPARE3, raw=0, derived=0, unit=None), 'IDX__SCI0SPARE4': ParsedDataItem(IDX__SCI0SPARE4, raw=0, derived=0, unit=None), 'IDX__TXHDRSCIEVTLEN': ParsedDataItem(IDX__TXHDRSCIEVTLEN, raw=8320, derived=8320, unit=None), 'IDX__TXHDRSP00': ParsedDataItem(IDX__TXHDRSP00, raw=0, derived=0, unit=None), 'IDX__TXHDRTIMESEC1': ParsedDataItem(IDX__TXHDRTIMESEC1, raw=6529, derived=6529, unit=None), 'IDX__TXHDRTIMESEC2': ParsedDataItem(IDX__TXHDRTIMESEC2, raw=56491, derived=56491, unit=None), 'IDX__TXHDRTIMESUBS': ParsedDataItem(IDX__TXHDRTIMESUBS, raw=8804, derived=8804, unit=None), 'IDX__TXHDRSP01': ParsedDataItem(IDX__TXHDRSP01, raw=0, derived=0, unit=None), 'IDX__TXHDRTRIGOFFSET': ParsedDataItem(IDX__TXHDRTRIGOFFSET, raw=4, derived=4, unit=None), 'IDX__TXHDRSP02': ParsedDataItem(IDX__TXHDRSP02, raw=0, derived=0, unit=None), 'IDX__TXHDRTRIGID': ParsedDataItem(IDX__TXHDRTRIGID, raw=1, derived=1, unit=None), 'IDX__TXHDREVTNUM': ParsedDataItem(IDX__TXHDREVTNUM, raw=2, derived=2, unit=None), 'IDX__TXHDRBLOCKS': ParsedDataItem(IDX__TXHDRBLOCKS, raw=1073182687, derived=1073182687, unit=None), 'IDX__TXHDRHGTRIGCTRL1': ParsedDataItem(IDX__TXHDRHGTRIGCTRL1, raw=2306867200, derived=2306867200, unit=None), 'IDX__TXHDRHGTRIGCTRL2': ParsedDataItem(IDX__TXHDRHGTRIGCTRL2, raw=0, derived=0, unit=None), 'IDX__TXHDRLGTRIGCTRL1': ParsedDataItem(IDX__TXHDRLGTRIGCTRL1, raw=4294965248, derived=4294965248, unit=None), 'IDX__TXHDRLGTRIGCTRL2': ParsedDataItem(IDX__TXHDRLGTRIGCTRL2, raw=4278255360, derived=4278255360, unit=None), 'IDX__TXHDRMGTRIGCTRL1': ParsedDataItem(IDX__TXHDRMGTRIGCTRL1, raw=4294965248, derived=4294965248, unit=None), 'IDX__TXHDRMGTRIGCTRL2': ParsedDataItem(IDX__TXHDRMGTRIGCTRL2, raw=4278255360, derived=4278255360, unit=None), 'IDX__TXHDRSP03': ParsedDataItem(IDX__TXHDRSP03, raw=0, derived=0, unit=None), 'IDX__TXHDRLSADC': ParsedDataItem(IDX__TXHDRLSADC, raw=1048320, derived=1048320, unit=None), 'IDX__TXHDRPOLSTAT': ParsedDataItem(IDX__TXHDRPOLSTAT, raw=1, derived=NEG, unit=None), 'IDX__TXHDRSP04': ParsedDataItem(IDX__TXHDRSP04, raw=0, derived=0, unit=None), 'IDX__TXHDRPOLCTRL': ParsedDataItem(IDX__TXHDRPOLCTRL, raw=0, derived=POS, unit=None), 'IDX__TXHDRCOINENA': ParsedDataItem(IDX__TXHDRCOINENA, raw=0, derived=DIS, unit=None), 'IDX__TXHDRLSTRIGMODE': ParsedDataItem(IDX__TXHDRLSTRIGMODE, raw=0, derived=DIS, unit=None), 'IDX__TXHDRMGTRIGMODE': ParsedDataItem(IDX__TXHDRMGTRIGMODE, raw=0, derived=0, unit=None), 'IDX__TXHDRLGTRIGMODE': ParsedDataItem(IDX__TXHDRLGTRIGMODE, raw=0, derived=0, unit=None), 'IDX__TXHDRHGTRIGMODE': ParsedDataItem(IDX__TXHDRHGTRIGMODE, raw=1, derived=1, unit=None), 'IDX__TXHDRSP05': ParsedDataItem(IDX__TXHDRSP05, raw=0, derived=0, unit=None), 'IDX__TXHDRSP06': ParsedDataItem(IDX__TXHDRSP06, raw=0, derived=0, unit=None), 'IDX__TXHDRSP07': ParsedDataItem(IDX__TXHDRSP07, raw=2018, derived=2018, unit=None), 'IDX__TXHDRSP08': ParsedDataItem(IDX__TXHDRSP08, raw=0, derived=0, unit=None), 'IDX__TXHDRTOFMAX': ParsedDataItem(IDX__TXHDRTOFMAX, raw=541596217, derived=541596217, unit=None), 'IDX__TXHDRTOFMIN': ParsedDataItem(IDX__TXHDRTOFMIN, raw=535295474, derived=535295474, unit=None), 'IDX__TXHDRLS0MAXMIN': ParsedDataItem(IDX__TXHDRLS0MAXMIN, raw=8538108, derived=8538108, unit=None), 'IDX__TXHDRLS1MAXMIN': ParsedDataItem(IDX__TXHDRLS1MAXMIN, raw=16773120, derived=16773120, unit=None), 'IDX__TXHDRLS2MAXMIN': ParsedDataItem(IDX__TXHDRLS2MAXMIN, raw=8755039, derived=8755039, unit=None), 'IDX__TXHDRFIFODELAY': ParsedDataItem(IDX__TXHDRFIFODELAY, raw=17, derived=17, unit=None), 'IDX__TXHDRSAMPDELAY': ParsedDataItem(IDX__TXHDRSAMPDELAY, raw=32537665, derived=32537665, unit=None), 'IDX__TXHDRTRANSCNT': ParsedDataItem(IDX__TXHDRTRANSCNT, raw=2, derived=2, unit=None), 'IDX__TXHDRPROCHKCH01': ParsedDataItem(IDX__TXHDRPROCHKCH01, raw=83559212, derived=83559212, unit=None), 'IDX__TXHDRPROCHKCH23': ParsedDataItem(IDX__TXHDRPROCHKCH23, raw=113640767, derived=113640767, unit=None), 'IDX__TXHDRPROCHKCH45': ParsedDataItem(IDX__TXHDRPROCHKCH45, raw=170460378, derived=170460378, unit=None), 'IDX__TXHDRPROCHKCH67': ParsedDataItem(IDX__TXHDRPROCHKCH67, raw=133695769, derived=133695769, unit=None), 'IDX__TXHDRHVPSHKCH01': ParsedDataItem(IDX__TXHDRHVPSHKCH01, raw=131794194, derived=131794194, unit=None), 'IDX__TXHDRHVPSHKCH23': ParsedDataItem(IDX__TXHDRHVPSHKCH23, raw=8849070, derived=8849070, unit=None), 'IDX__TXHDRHVPSHKCH45': ParsedDataItem(IDX__TXHDRHVPSHKCH45, raw=121309147, derived=121309147, unit=None), 'IDX__TXHDRHVPSHKCH67': ParsedDataItem(IDX__TXHDRHVPSHKCH67, raw=19991182, derived=19991182, unit=None), 'IDX__TXHDRLVHK0CH01': ParsedDataItem(IDX__TXHDRLVHK0CH01, raw=134219776, derived=134219776, unit=None), 'IDX__TXHDRLVHK0CH23': ParsedDataItem(IDX__TXHDRLVHK0CH23, raw=171772858, derived=171772858, unit=None), 'IDX__TXHDRLVHK0CH45': ParsedDataItem(IDX__TXHDRLVHK0CH45, raw=134745194, derived=134745194, unit=None), 'IDX__TXHDRLVHK0CH67': ParsedDataItem(IDX__TXHDRLVHK0CH67, raw=205655124, derived=205655124, unit=None), 'IDX__TXHDRLVHK1CH01': ParsedDataItem(IDX__TXHDRLVHK1CH01, raw=34080386, derived=34080386, unit=None), 'IDX__TXHDRLVHK1CH23': ParsedDataItem(IDX__TXHDRLVHK1CH23, raw=77727230, derived=77727230, unit=None), 'IDX__TXHDRLVHK1CH45': ParsedDataItem(IDX__TXHDRLVHK1CH45, raw=228132775, derived=228132775, unit=None), 'IDX__TXHDRLVHK1CH67': ParsedDataItem(IDX__TXHDRLVHK1CH67, raw=192741830, derived=192741830, unit=None), 'IDX__TXHDRLVHK2CH01': ParsedDataItem(IDX__TXHDRLVHK2CH01, raw=82773235, derived=82773235, unit=None), 'IDX__TXHDRLVHK2CH23': ParsedDataItem(IDX__TXHDRLVHK2CH23, raw=196283065, derived=196283065, unit=None), 'IDX__TXHDRLVHK2CH45': ParsedDataItem(IDX__TXHDRLVHK2CH45, raw=101059713, derived=101059713, unit=None), 'IDX__TXHDRLVHK2CH67': ParsedDataItem(IDX__TXHDRLVHK2CH67, raw=69017, derived=69017, unit=None), 'IDX__TXHDRSP09': ParsedDataItem(IDX__TXHDRSP09, raw=0, derived=0, unit=None), 'IDX__TXHDRSP10': ParsedDataItem(IDX__TXHDRSP10, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWAIDCOPY': ParsedDataItem(IDX__TXHDRFSWAIDCOPY, raw=2415002916, derived=2415002916, unit=None), 'IDX__TXHDRFSWBINCOPY': ParsedDataItem(IDX__TXHDRFSWBINCOPY, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWMAJOR': ParsedDataItem(IDX__TXHDRFSWMAJOR, raw=2, derived=2, unit=None), 'IDX__TXHDRFSWMINOR': ParsedDataItem(IDX__TXHDRFSWMINOR, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPATCH': ParsedDataItem(IDX__TXHDRFSWPATCH, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWHVSTAT': ParsedDataItem(IDX__TXHDRFSWHVSTAT, raw=3, derived=3, unit=None), 'IDX__TXHDRFSWMEM0': ParsedDataItem(IDX__TXHDRFSWMEM0, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWMEM1': ParsedDataItem(IDX__TXHDRFSWMEM1, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT0': ParsedDataItem(IDX__TXHDRFSWPT0, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT1': ParsedDataItem(IDX__TXHDRFSWPT1, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT2': ParsedDataItem(IDX__TXHDRFSWPT2, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT3': ParsedDataItem(IDX__TXHDRFSWPT3, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT4': ParsedDataItem(IDX__TXHDRFSWPT4, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT5': ParsedDataItem(IDX__TXHDRFSWPT5, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT6': ParsedDataItem(IDX__TXHDRFSWPT6, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT7': ParsedDataItem(IDX__TXHDRFSWPT7, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT8': ParsedDataItem(IDX__TXHDRFSWPT8, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT9': ParsedDataItem(IDX__TXHDRFSWPT9, raw=0, derived=0, unit=None), 'IDX__TXHDRFPGAVER': ParsedDataItem(IDX__TXHDRFPGAVER, raw=539165480, derived=539165480, unit=None), 'IDX__SYNCSCI0PKT': ParsedDataItem(IDX__SYNCSCI0PKT, raw=13107, derived=13107, unit=None), 'IDX__CRCSCI0PKT': ParsedDataItem(IDX__CRCSCI0PKT, raw=16430, derived=16430, unit=None)}
+SHCOARSE = 427941318
+SHFINE = 7670
+IDX__SCI0AID = 2415002916
+IDX__SCI0TYPE = 1
+IDX__SCI0CONT = 127
+IDX__SCI0SPARE1 = 0
+IDX__SCI0PACK = EN
+IDX__SCI0FRAG = DS
+IDX__SCI0COMP = DS
+IDX__SCI0EVTNUM = 2
+IDX__SCI0CAT = 32
+IDX__SCI0QUAL = 5
+IDX__SCI0FRAGOFF = 0
+IDX__SCI0VER = 9
+IDX__SCI0TIME32 = 427941035
+IDX__SCI0SPARE2 = 0
+IDX__SCI0SPARE3 = 0
+IDX__SCI0SPARE4 = 0
+IDX__TXHDRSCIEVTLEN = 8320
+IDX__TXHDRSP00 = 0
+IDX__TXHDRTIMESEC1 = 6529
+IDX__TXHDRTIMESEC2 = 56491
+IDX__TXHDRTIMESUBS = 8804
+IDX__TXHDRSP01 = 0
+IDX__TXHDRTRIGOFFSET = 4
+IDX__TXHDRSP02 = 0
+IDX__TXHDRTRIGID = 1
+IDX__TXHDREVTNUM = 2
+IDX__TXHDRBLOCKS = 1073182687
+IDX__TXHDRHGTRIGCTRL1 = 2306867200
+IDX__TXHDRHGTRIGCTRL2 = 0
+IDX__TXHDRLGTRIGCTRL1 = 4294965248
+IDX__TXHDRLGTRIGCTRL2 = 4278255360
+IDX__TXHDRMGTRIGCTRL1 = 4294965248
+IDX__TXHDRMGTRIGCTRL2 = 4278255360
+IDX__TXHDRSP03 = 0
+IDX__TXHDRLSADC = 1048320
+IDX__TXHDRPOLSTAT = NEG
+IDX__TXHDRSP04 = 0
+IDX__TXHDRPOLCTRL = POS
+IDX__TXHDRCOINENA = DIS
+IDX__TXHDRLSTRIGMODE = DIS
+IDX__TXHDRMGTRIGMODE = 0
+IDX__TXHDRLGTRIGMODE = 0
+IDX__TXHDRHGTRIGMODE = 1
+IDX__TXHDRSP05 = 0
+IDX__TXHDRSP06 = 0
+IDX__TXHDRSP07 = 2018
+IDX__TXHDRSP08 = 0
+IDX__TXHDRTOFMAX = 541596217
+IDX__TXHDRTOFMIN = 535295474
+IDX__TXHDRLS0MAXMIN = 8538108
+IDX__TXHDRLS1MAXMIN = 16773120
+IDX__TXHDRLS2MAXMIN = 8755039
+IDX__TXHDRFIFODELAY = 17
+IDX__TXHDRSAMPDELAY = 32537665
+IDX__TXHDRTRANSCNT = 2
+IDX__TXHDRPROCHKCH01 = 83559212
+IDX__TXHDRPROCHKCH23 = 113640767
+IDX__TXHDRPROCHKCH45 = 170460378
+IDX__TXHDRPROCHKCH67 = 133695769
+IDX__TXHDRHVPSHKCH01 = 131794194
+IDX__TXHDRHVPSHKCH23 = 8849070
+IDX__TXHDRHVPSHKCH45 = 121309147
+IDX__TXHDRHVPSHKCH67 = 19991182
+IDX__TXHDRLVHK0CH01 = 134219776
+IDX__TXHDRLVHK0CH23 = 171772858
+IDX__TXHDRLVHK0CH45 = 134745194
+IDX__TXHDRLVHK0CH67 = 205655124
+IDX__TXHDRLVHK1CH01 = 34080386
+IDX__TXHDRLVHK1CH23 = 77727230
+IDX__TXHDRLVHK1CH45 = 228132775
+IDX__TXHDRLVHK1CH67 = 192741830
+IDX__TXHDRLVHK2CH01 = 82773235
+IDX__TXHDRLVHK2CH23 = 196283065
+IDX__TXHDRLVHK2CH45 = 101059713
+IDX__TXHDRLVHK2CH67 = 69017
+IDX__TXHDRSP09 = 0
+IDX__TXHDRSP10 = 0
+IDX__TXHDRFSWAIDCOPY = 2415002916
+IDX__TXHDRFSWBINCOPY = 0
+IDX__TXHDRFSWMAJOR = 2
+IDX__TXHDRFSWMINOR = 0
+IDX__TXHDRFSWPATCH = 0
+IDX__TXHDRFSWHVSTAT = 3
+IDX__TXHDRFSWMEM0 = 0
+IDX__TXHDRFSWMEM1 = 0
+IDX__TXHDRFSWPT0 = 0
+IDX__TXHDRFSWPT1 = 0
+IDX__TXHDRFSWPT2 = 0
+IDX__TXHDRFSWPT3 = 0
+IDX__TXHDRFSWPT4 = 0
+IDX__TXHDRFSWPT5 = 0
+IDX__TXHDRFSWPT6 = 0
+IDX__TXHDRFSWPT7 = 0
+IDX__TXHDRFSWPT8 = 0
+IDX__TXHDRFSWPT9 = 0
+IDX__TXHDRFPGAVER = 539165480
+IDX__SYNCSCI0PKT = 13107
+IDX__CRCSCI0PKT = 16430
+^*****Event header 3******^
+HS pre trig sampling blocks:  31
+LS pre trig sampling blocks:  7
+HS post trig sampling blocks:  31
+LS post trig sampling blocks:  7
+IDX__TXHDRHVPSHKCH01 = 131794194
+Detector voltage =  1298
+Sensor voltage =  2011
+Target voltage =  1710
+Reflectron voltage =  135
+Rejection voltage =  2011
+Current for HVPS sensor =  1851
+Positive current for HVPS sensor =  2702
+Negative current for HVPS sensor =  305
+Voltage +3.3V reference =  2048
+Voltage +3.3V operational reference =  2048
+Voltage -6V bus =  3002
+Voltage +6V bus =  2621
+Voltage +16V bus =  3178
+Voltage +3.3V bus =  2056
+Voltage -5V bus =  3156
+Voltage +5V bus =  3138
+Current +3.3V bus =  1666
+Current +16V bus =  1186
+Current +6V bus =  1534
+Current -6V bus =  1186
+Current +5V bus =  1959
+Current -5V bus =  3481
+Current +2.5V bus =  454
+Current -2.5V bus =  2941
+Current on the 1V POL =  812
+Current on the 1.9V POL =  1275
+ProcBd Temperature 1 =  1343
+ProcBd Temperature 2 =  1734
+Voltage on 1V bus =  1242
+FPGA Temperature =  2601
+Voltage on 1.9V bus =  2329
+Voltage on 3.3V bus =  2040
+var_to_row = {'Last measurement in raw DN for Processor Board signal “1V POL Current”': 0, 'Last measurement in raw DN for Processor Board signal “1.9V POL Current”': 1, 'Last measurement in raw DN for Processor Board signal “ProcBd Temp1”': 2, nan: 48, 'Last measurement in raw DN for Processor Board signal “ProcBd Temp2”': 6, 'Last measurement in raw DN for Processor Board signal “1V Voltage”': 10, 'Last measurement in raw DN for Processor Board signal “FPGA Temp”': 11, 'Last measurement in raw DN for Processor Board signal “1.9V Voltage”': 12, 'Last measurement in raw DN for Processor Board signal “3.3V Voltage”': 13, 'Last measurement in raw DN for HVPS Board signal “Detector Voltage”': 14, 'Last measurement in raw DN for HVPS Board signal “Sensor Voltage"': 15, 'Last measurement in raw DN for HVPS Board signal “Target Voltage”': 16, 'Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”': 17, 'Last measurement in raw DN for HVPS Board signal “Rejection Voltage”': 18, 'Last measurement in raw DN for HVPS Board signal “Detector Current”': 19, 'Last measurement in raw DN for HVPS Board signal “Sensor IP”': 20, 'Last measurement in raw DN for HVPS Board signal “Sensor IN”': 21, 'Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”': 22, 'Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”': 23, 'Last measurement in raw DN for LVPS Board signal “N6V”': 24, 'Last measurement in raw DN for LVPS Board signal “P6V”': 25, 'Last measurement in raw DN for LVPS Board signal “P16V”': 26, 'Last measurement in raw DN for LVPS Board signal “P3.3V”': 27, 'Last measurement in raw DN for LVPS Board signal “N5V”': 28, 'Last measurement in raw DN for LVPS Board signal “P5V”': 29, 'Last measurement in raw DN for LVPS Board signal “P3.3_IMON”': 30, 'Last measurement in raw DN for LVPS Board signal “P16V_IMON”': 31, 'Last measurement in raw DN for LVPS Board signal “P6V_IMON”': 32, 'Last measurement in raw DN for LVPS Board signal “N6V_IMON”': 33, 'Last measurement in raw DN for LVPS Board signal “P5V_IMON”': 34, 'Last measurement in raw DN for LVPS Board signal “N5V_IMON”': 35, 'Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”': 36, 'Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”': 37, 'Last measurement in raw DN for LVPS Board signal “THERM_DECON0”': 38, 'Last measurement in raw DN for LVPS Board signal “THERM_DECON1”': 39, 'Last measurement in raw DN for LVPS Board signal “THERM_DAB”': 40, 'Last measurement in raw DN for LVPS Board signal “THERM_LVPS”': 41, 'Last measurement in raw DN for LVPS Board signal “THERM_HVPS”': 45, 'Last measurement in raw DN for LVPS Board signal “P2.5V”': 49, 'Last measurement in raw DN for LVPS Board signal “N2.5V”': 50, 'Last measurement in raw DN for LVPS Board signal “Spare”': 51}
+
+ 
+ ***** var_name being converted for each instrument setting ***** 
+ 
+
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1V POL Current”= [0.0 0.9029253 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1V POL Current”
+var_name = current_1V_pol
+Header info = 812
+Transformed value for current_1V_pol = 733.1753436
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1.9V POL Current”= [0.0 0.9029253 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1.9V POL Current”
+var_name = current_1.9V_pol
+Header info = 1275
+Transformed value for current_1.9V_pol = 1151.2297575
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “ProcBd Temp1”= [162.8276 -0.2668687 0.0003323794 -2.43153e-07 9.034532e-11 -1.327735e-14
+ 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “ProcBd Temp1”
+var_name = temperature_1
+Header info = 1343
+Transformed value for temperature_1 = 50.82742336505278
+Matching row  18
+coeffs for nan= [-104713.9 52.02446 -0.006463374 0.0 0.0 0.0 0.0 0.0]
+var_name = nan
+var_name = None
+KeyError: (3, None) - Could not find entry for None, 48. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “ProcBd Temp2”= [162.8276 -0.2668687 0.0003323794 -2.43153e-07 9.034532e-11 -1.327735e-14
+ 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “ProcBd Temp2”
+var_name = temperature_2
+Header info = 1734
+Transformed value for temperature_2 = 40.364218714026094
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1V Voltage”= [0.0 0.000805861 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1V Voltage”
+var_name = voltage_1V_bus
+Header info = 1242
+Transformed value for voltage_1V_bus = 1.0008793619999998
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “FPGA Temp”= [358.31 -0.1187104 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “FPGA Temp”
+var_name = fpga_temperature
+Header info = 2601
+Transformed value for fpga_temperature = 49.5442496
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1.9V Voltage”= [0.0 0.000805861 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1.9V Voltage”
+var_name = voltage_1.9V_bus
+Header info = 2329
+Transformed value for voltage_1.9V_bus = 1.876850269
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “3.3V Voltage”= [0.0 0.001611722 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “3.3V Voltage”
+var_name = voltage_3.3V_bus
+Header info = 2040
+Transformed value for voltage_3.3V_bus = 3.28791288
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Detector Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Detector Voltage”
+var_name = detector_voltage
+Header info = 1298
+Transformed value for detector_voltage = 1901.8296
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor Voltage"= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor Voltage"
+var_name = sensor_voltage
+Header info = 2011
+Transformed value for sensor_voltage = 2946.5172000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Target Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Target Voltage”
+var_name = target_voltage
+Header info = 1710
+Transformed value for target_voltage = 2505.492
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”
+var_name = reflectron_voltage
+Header info = 135
+Transformed value for reflectron_voltage = 197.80200000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Rejection Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Rejection Voltage”
+var_name = rejection_voltage
+Header info = 2011
+Transformed value for rejection_voltage = 2946.5172000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Detector Current”= [0.0 7.326e-06 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Detector Current”
+var_name = current_hvps_sensor
+Header info = 1851
+Transformed value for current_hvps_sensor = 0.013560426
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor IP”= [0.0 2.4339e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor IP”
+var_name = positive_current_hvps
+Header info = 2702
+Transformed value for positive_current_hvps = 0.065763978
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor IN”= [0.0 2.4339e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor IN”
+var_name = negative_current_hvps
+Header info = 305
+Transformed value for negative_current_hvps = 0.007423394999999999
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”
+var_name = voltage_3V3_ref
+Header info = 2048
+Transformed value for voltage_3V3_ref = 3.30080256
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”
+var_name = voltage_3V3_op_ref
+Header info = 2048
+Transformed value for voltage_3V3_op_ref = 3.30080256
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N6V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N6V”
+var_name = voltage_neg6V_bus
+Header info = 3002
+Transformed value for voltage_neg6V_bus = -6.3888610600000035
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P6V”= [0.0 0.00241758 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P6V”
+var_name = voltage_pos6V_bus
+Header info = 2621
+Transformed value for voltage_pos6V_bus = 6.33647718
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P16V”= [0.0 0.00482711 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P16V”
+var_name = voltage_pos16V_bus
+Header info = 3178
+Transformed value for voltage_pos16V_bus = 15.34055558
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3V”
+var_name = voltage_pos3V3_bus
+Header info = 2056
+Transformed value for voltage_pos3V3_bus = 3.31369632
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N5V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N5V”
+var_name = voltage_neg5V_bus
+Header info = 3156
+Transformed value for voltage_neg5V_bus = -5.023732680000002
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P5V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P5V”
+var_name = voltage_pos5V_bus
+Header info = 3138
+Transformed value for voltage_pos5V_bus = 5.057577360000001
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3_IMON”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3_IMON”
+var_name = current_3V3_bus
+Header info = 1666
+Transformed value for current_3V3_bus = 2.68512552
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P16V_IMON”= [0.0 0.000161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P16V_IMON”
+var_name = current_16V_bus
+Header info = 1186
+Transformed value for current_16V_bus = 0.19114999200000002
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P6V_IMON”= [0.0 8.05861e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P6V_IMON”
+var_name = current_6V_bus
+Header info = 1534
+Transformed value for current_6V_bus = 0.1236190774
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N6V_IMON”= [0.0 -8.05861e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N6V_IMON”
+var_name = current_neg6V_bus
+Header info = 1186
+Transformed value for current_neg6V_bus = -0.0955751146
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P5V_IMON”= [0.0 4.029304e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P5V_IMON”
+var_name = current_5V_bus
+Header info = 1959
+Transformed value for current_5V_bus = 0.07893406536
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N5V_IMON”= [0.0 -2.01465e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N5V_IMON”
+var_name = current_neg5V_bus
+Header info = 3481
+Transformed value for current_neg5V_bus = -0.0701299665
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”
+var_name = current_2V5_bus
+Header info = 454
+Transformed value for current_2V5_bus = 0.73172088
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”= [0.0 -4.0293e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”
+var_name = current_neg2V5_bus
+Header info = 2941
+Transformed value for current_neg2V5_bus = -0.11850171300000001
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DECON0”= [-110.293 0.0665351 0.000305738 -6.32048e-07 5.9934e-10 -2.98784e-13
+ 7.61361e-17 -7.76467e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DECON0”
+var_name = None
+KeyError: (3, None) - Could not find entry for None, 38. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DECON1”= [-150.478 0.376986 -0.00062072 7.73853e-07 -5.81588e-10 2.56368e-13
+ -6.05698e-17 5.96635e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DECON1”
+var_name = None
+KeyError: (3, None) - Could not find entry for None, 39. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DAB”= [-443.248 1.31224 -0.00180422 1.40016e-06 -6.43766e-10 1.7448e-13
+ -2.57695e-17 1.60239e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DAB”
+var_name = None
+KeyError: (3, None) - Could not find entry for None, 40. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_LVPS”= [200.4137 -0.2020699 0.000175403 -9.739547e-08 2.888932e-11 -3.545603e-15
+ 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_LVPS”
+var_name = None
+KeyError: (3, None) - Could not find entry for None, 41. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_HVPS”= [200.4137 -0.2020699 0.000175403 -9.739547e-08 2.888932e-11 -3.545603e-15
+ 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_HVPS”
+var_name = None
+KeyError: (3, None) - Could not find entry for None, 45. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P2.5V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P2.5V”
+var_name = None
+KeyError: (3, None) - Could not find entry for None, 49. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N2.5V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N2.5V”
+var_name = None
+KeyError: (3, None) - Could not find entry for None, 50. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “Spare”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “Spare”
+var_name = spare_signal
+KeyError: (3, 'spare_signal') - Could not find entry for spare_signal, 51. Please check the Var_notes or variable mapping.
+High gain delay = 31 samples.
+Mid gain delay = 31 samples.
+Low gain delay = 65 samples.
+High sampling trigger mode =  0 0 1
+High gain trigger mode enabled.
+For 2306867200, HG Trigger level = 0.15894999999999998, sample settings = 0, 0
+Threshold trigger mode enabled for high gain channel.
+AID = 2415002916
+Event number = 2
+Rice compression enabled = False
+Timestamp = 427973297.8472 seconds since epoch (Midnight January 1st, 2010)
+Trigger time = 2023-07-25 09:28:17.847200+00:00
+3
+3
+3
+3
+3
+3
+3
+3
+3
+3
+3
+3
+3
+{'SHCOARSE': ParsedDataItem(SHCOARSE, raw=427941332, derived=427941332, unit=dn), 'SHFINE': ParsedDataItem(SHFINE, raw=7677, derived=7677, unit=dn), 'IDX__SCI0AID': ParsedDataItem(IDX__SCI0AID, raw=2415002916, derived=2415002916, unit=None), 'IDX__SCI0TYPE': ParsedDataItem(IDX__SCI0TYPE, raw=1, derived=1, unit=None), 'IDX__SCI0CONT': ParsedDataItem(IDX__SCI0CONT, raw=127, derived=127, unit=None), 'IDX__SCI0SPARE1': ParsedDataItem(IDX__SCI0SPARE1, raw=0, derived=0, unit=None), 'IDX__SCI0PACK': ParsedDataItem(IDX__SCI0PACK, raw=1, derived=EN, unit=None), 'IDX__SCI0FRAG': ParsedDataItem(IDX__SCI0FRAG, raw=0, derived=DS, unit=None), 'IDX__SCI0COMP': ParsedDataItem(IDX__SCI0COMP, raw=0, derived=DS, unit=None), 'IDX__SCI0EVTNUM': ParsedDataItem(IDX__SCI0EVTNUM, raw=3, derived=3, unit=None), 'IDX__SCI0CAT': ParsedDataItem(IDX__SCI0CAT, raw=32, derived=32, unit=None), 'IDX__SCI0QUAL': ParsedDataItem(IDX__SCI0QUAL, raw=5, derived=5, unit=None), 'IDX__SCI0FRAGOFF': ParsedDataItem(IDX__SCI0FRAGOFF, raw=0, derived=0, unit=None), 'IDX__SCI0VER': ParsedDataItem(IDX__SCI0VER, raw=9, derived=9, unit=None), 'IDX__SCI0TIME32': ParsedDataItem(IDX__SCI0TIME32, raw=427941134, derived=427941134, unit=None), 'IDX__SCI0SPARE2': ParsedDataItem(IDX__SCI0SPARE2, raw=0, derived=0, unit=None), 'IDX__SCI0SPARE3': ParsedDataItem(IDX__SCI0SPARE3, raw=0, derived=0, unit=None), 'IDX__SCI0SPARE4': ParsedDataItem(IDX__SCI0SPARE4, raw=0, derived=0, unit=None), 'IDX__TXHDRSCIEVTLEN': ParsedDataItem(IDX__TXHDRSCIEVTLEN, raw=8320, derived=8320, unit=None), 'IDX__TXHDRSP00': ParsedDataItem(IDX__TXHDRSP00, raw=0, derived=0, unit=None), 'IDX__TXHDRTIMESEC1': ParsedDataItem(IDX__TXHDRTIMESEC1, raw=6529, derived=6529, unit=None), 'IDX__TXHDRTIMESEC2': ParsedDataItem(IDX__TXHDRTIMESEC2, raw=56590, derived=56590, unit=None), 'IDX__TXHDRTIMESUBS': ParsedDataItem(IDX__TXHDRTIMESUBS, raw=10931, derived=10931, unit=None), 'IDX__TXHDRSP01': ParsedDataItem(IDX__TXHDRSP01, raw=0, derived=0, unit=None), 'IDX__TXHDRTRIGOFFSET': ParsedDataItem(IDX__TXHDRTRIGOFFSET, raw=4, derived=4, unit=None), 'IDX__TXHDRSP02': ParsedDataItem(IDX__TXHDRSP02, raw=0, derived=0, unit=None), 'IDX__TXHDRTRIGID': ParsedDataItem(IDX__TXHDRTRIGID, raw=1, derived=1, unit=None), 'IDX__TXHDREVTNUM': ParsedDataItem(IDX__TXHDREVTNUM, raw=3, derived=3, unit=None), 'IDX__TXHDRBLOCKS': ParsedDataItem(IDX__TXHDRBLOCKS, raw=1073182687, derived=1073182687, unit=None), 'IDX__TXHDRHGTRIGCTRL1': ParsedDataItem(IDX__TXHDRHGTRIGCTRL1, raw=2306867200, derived=2306867200, unit=None), 'IDX__TXHDRHGTRIGCTRL2': ParsedDataItem(IDX__TXHDRHGTRIGCTRL2, raw=0, derived=0, unit=None), 'IDX__TXHDRLGTRIGCTRL1': ParsedDataItem(IDX__TXHDRLGTRIGCTRL1, raw=4294965248, derived=4294965248, unit=None), 'IDX__TXHDRLGTRIGCTRL2': ParsedDataItem(IDX__TXHDRLGTRIGCTRL2, raw=4278255360, derived=4278255360, unit=None), 'IDX__TXHDRMGTRIGCTRL1': ParsedDataItem(IDX__TXHDRMGTRIGCTRL1, raw=4294965248, derived=4294965248, unit=None), 'IDX__TXHDRMGTRIGCTRL2': ParsedDataItem(IDX__TXHDRMGTRIGCTRL2, raw=4278255360, derived=4278255360, unit=None), 'IDX__TXHDRSP03': ParsedDataItem(IDX__TXHDRSP03, raw=0, derived=0, unit=None), 'IDX__TXHDRLSADC': ParsedDataItem(IDX__TXHDRLSADC, raw=1048320, derived=1048320, unit=None), 'IDX__TXHDRPOLSTAT': ParsedDataItem(IDX__TXHDRPOLSTAT, raw=1, derived=NEG, unit=None), 'IDX__TXHDRSP04': ParsedDataItem(IDX__TXHDRSP04, raw=0, derived=0, unit=None), 'IDX__TXHDRPOLCTRL': ParsedDataItem(IDX__TXHDRPOLCTRL, raw=0, derived=POS, unit=None), 'IDX__TXHDRCOINENA': ParsedDataItem(IDX__TXHDRCOINENA, raw=0, derived=DIS, unit=None), 'IDX__TXHDRLSTRIGMODE': ParsedDataItem(IDX__TXHDRLSTRIGMODE, raw=0, derived=DIS, unit=None), 'IDX__TXHDRMGTRIGMODE': ParsedDataItem(IDX__TXHDRMGTRIGMODE, raw=0, derived=0, unit=None), 'IDX__TXHDRLGTRIGMODE': ParsedDataItem(IDX__TXHDRLGTRIGMODE, raw=0, derived=0, unit=None), 'IDX__TXHDRHGTRIGMODE': ParsedDataItem(IDX__TXHDRHGTRIGMODE, raw=1, derived=1, unit=None), 'IDX__TXHDRSP05': ParsedDataItem(IDX__TXHDRSP05, raw=0, derived=0, unit=None), 'IDX__TXHDRSP06': ParsedDataItem(IDX__TXHDRSP06, raw=0, derived=0, unit=None), 'IDX__TXHDRSP07': ParsedDataItem(IDX__TXHDRSP07, raw=2018, derived=2018, unit=None), 'IDX__TXHDRSP08': ParsedDataItem(IDX__TXHDRSP08, raw=0, derived=0, unit=None), 'IDX__TXHDRTOFMAX': ParsedDataItem(IDX__TXHDRTOFMAX, raw=626533375, derived=626533375, unit=None), 'IDX__TXHDRTOFMIN': ParsedDataItem(IDX__TXHDRTOFMIN, raw=521663747, derived=521663747, unit=None), 'IDX__TXHDRLS0MAXMIN': ParsedDataItem(IDX__TXHDRLS0MAXMIN, raw=8534012, derived=8534012, unit=None), 'IDX__TXHDRLS1MAXMIN': ParsedDataItem(IDX__TXHDRLS1MAXMIN, raw=12707164, derived=12707164, unit=None), 'IDX__TXHDRLS2MAXMIN': ParsedDataItem(IDX__TXHDRLS2MAXMIN, raw=8382432, derived=8382432, unit=None), 'IDX__TXHDRFIFODELAY': ParsedDataItem(IDX__TXHDRFIFODELAY, raw=15, derived=15, unit=None), 'IDX__TXHDRSAMPDELAY': ParsedDataItem(IDX__TXHDRSAMPDELAY, raw=32537660, derived=32537660, unit=None), 'IDX__TXHDRTRANSCNT': ParsedDataItem(IDX__TXHDRTRANSCNT, raw=14, derived=14, unit=None), 'IDX__TXHDRPROCHKCH01': ParsedDataItem(IDX__TXHDRPROCHKCH01, raw=83559215, derived=83559215, unit=None), 'IDX__TXHDRPROCHKCH23': ParsedDataItem(IDX__TXHDRPROCHKCH23, raw=113050935, derived=113050935, unit=None), 'IDX__TXHDRPROCHKCH45': ParsedDataItem(IDX__TXHDRPROCHKCH45, raw=170329306, derived=170329306, unit=None), 'IDX__TXHDRPROCHKCH67': ParsedDataItem(IDX__TXHDRPROCHKCH67, raw=133695769, derived=133695769, unit=None), 'IDX__TXHDRHVPSHKCH01': ParsedDataItem(IDX__TXHDRHVPSHKCH01, raw=131794194, derived=131794194, unit=None), 'IDX__TXHDRHVPSHKCH23': ParsedDataItem(IDX__TXHDRHVPSHKCH23, raw=8849069, derived=8849069, unit=None), 'IDX__TXHDRHVPSHKCH45': ParsedDataItem(IDX__TXHDRHVPSHKCH45, raw=121374683, derived=121374683, unit=None), 'IDX__TXHDRHVPSHKCH67': ParsedDataItem(IDX__TXHDRHVPSHKCH67, raw=19991182, derived=19991182, unit=None), 'IDX__TXHDRLVHK0CH01': ParsedDataItem(IDX__TXHDRLVHK0CH01, raw=134219776, derived=134219776, unit=None), 'IDX__TXHDRLVHK0CH23': ParsedDataItem(IDX__TXHDRLVHK0CH23, raw=171772858, derived=171772858, unit=None), 'IDX__TXHDRLVHK0CH45': ParsedDataItem(IDX__TXHDRLVHK0CH45, raw=134745194, derived=134745194, unit=None), 'IDX__TXHDRLVHK0CH67': ParsedDataItem(IDX__TXHDRLVHK0CH67, raw=205655124, derived=205655124, unit=None), 'IDX__TXHDRLVHK1CH01': ParsedDataItem(IDX__TXHDRLVHK1CH01, raw=34080388, derived=34080388, unit=None), 'IDX__TXHDRLVHK1CH23': ParsedDataItem(IDX__TXHDRLVHK1CH23, raw=77727230, derived=77727230, unit=None), 'IDX__TXHDRLVHK1CH45': ParsedDataItem(IDX__TXHDRLVHK1CH45, raw=228132775, derived=228132775, unit=None), 'IDX__TXHDRLVHK1CH67': ParsedDataItem(IDX__TXHDRLVHK1CH67, raw=192807366, derived=192807366, unit=None), 'IDX__TXHDRLVHK2CH01': ParsedDataItem(IDX__TXHDRLVHK2CH01, raw=82773235, derived=82773235, unit=None), 'IDX__TXHDRLVHK2CH23': ParsedDataItem(IDX__TXHDRLVHK2CH23, raw=195889850, derived=195889850, unit=None), 'IDX__TXHDRLVHK2CH45': ParsedDataItem(IDX__TXHDRLVHK2CH45, raw=100994173, derived=100994173, unit=None), 'IDX__TXHDRLVHK2CH67': ParsedDataItem(IDX__TXHDRLVHK2CH67, raw=69017, derived=69017, unit=None), 'IDX__TXHDRSP09': ParsedDataItem(IDX__TXHDRSP09, raw=0, derived=0, unit=None), 'IDX__TXHDRSP10': ParsedDataItem(IDX__TXHDRSP10, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWAIDCOPY': ParsedDataItem(IDX__TXHDRFSWAIDCOPY, raw=2415002916, derived=2415002916, unit=None), 'IDX__TXHDRFSWBINCOPY': ParsedDataItem(IDX__TXHDRFSWBINCOPY, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWMAJOR': ParsedDataItem(IDX__TXHDRFSWMAJOR, raw=2, derived=2, unit=None), 'IDX__TXHDRFSWMINOR': ParsedDataItem(IDX__TXHDRFSWMINOR, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPATCH': ParsedDataItem(IDX__TXHDRFSWPATCH, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWHVSTAT': ParsedDataItem(IDX__TXHDRFSWHVSTAT, raw=3, derived=3, unit=None), 'IDX__TXHDRFSWMEM0': ParsedDataItem(IDX__TXHDRFSWMEM0, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWMEM1': ParsedDataItem(IDX__TXHDRFSWMEM1, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT0': ParsedDataItem(IDX__TXHDRFSWPT0, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT1': ParsedDataItem(IDX__TXHDRFSWPT1, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT2': ParsedDataItem(IDX__TXHDRFSWPT2, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT3': ParsedDataItem(IDX__TXHDRFSWPT3, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT4': ParsedDataItem(IDX__TXHDRFSWPT4, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT5': ParsedDataItem(IDX__TXHDRFSWPT5, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT6': ParsedDataItem(IDX__TXHDRFSWPT6, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT7': ParsedDataItem(IDX__TXHDRFSWPT7, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT8': ParsedDataItem(IDX__TXHDRFSWPT8, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT9': ParsedDataItem(IDX__TXHDRFSWPT9, raw=0, derived=0, unit=None), 'IDX__TXHDRFPGAVER': ParsedDataItem(IDX__TXHDRFPGAVER, raw=539165480, derived=539165480, unit=None), 'IDX__SYNCSCI0PKT': ParsedDataItem(IDX__SYNCSCI0PKT, raw=13107, derived=13107, unit=None), 'IDX__CRCSCI0PKT': ParsedDataItem(IDX__CRCSCI0PKT, raw=9994, derived=9994, unit=None)}
+SHCOARSE = 427941332
+SHFINE = 7677
+IDX__SCI0AID = 2415002916
+IDX__SCI0TYPE = 1
+IDX__SCI0CONT = 127
+IDX__SCI0SPARE1 = 0
+IDX__SCI0PACK = EN
+IDX__SCI0FRAG = DS
+IDX__SCI0COMP = DS
+IDX__SCI0EVTNUM = 3
+IDX__SCI0CAT = 32
+IDX__SCI0QUAL = 5
+IDX__SCI0FRAGOFF = 0
+IDX__SCI0VER = 9
+IDX__SCI0TIME32 = 427941134
+IDX__SCI0SPARE2 = 0
+IDX__SCI0SPARE3 = 0
+IDX__SCI0SPARE4 = 0
+IDX__TXHDRSCIEVTLEN = 8320
+IDX__TXHDRSP00 = 0
+IDX__TXHDRTIMESEC1 = 6529
+IDX__TXHDRTIMESEC2 = 56590
+IDX__TXHDRTIMESUBS = 10931
+IDX__TXHDRSP01 = 0
+IDX__TXHDRTRIGOFFSET = 4
+IDX__TXHDRSP02 = 0
+IDX__TXHDRTRIGID = 1
+IDX__TXHDREVTNUM = 3
+IDX__TXHDRBLOCKS = 1073182687
+IDX__TXHDRHGTRIGCTRL1 = 2306867200
+IDX__TXHDRHGTRIGCTRL2 = 0
+IDX__TXHDRLGTRIGCTRL1 = 4294965248
+IDX__TXHDRLGTRIGCTRL2 = 4278255360
+IDX__TXHDRMGTRIGCTRL1 = 4294965248
+IDX__TXHDRMGTRIGCTRL2 = 4278255360
+IDX__TXHDRSP03 = 0
+IDX__TXHDRLSADC = 1048320
+IDX__TXHDRPOLSTAT = NEG
+IDX__TXHDRSP04 = 0
+IDX__TXHDRPOLCTRL = POS
+IDX__TXHDRCOINENA = DIS
+IDX__TXHDRLSTRIGMODE = DIS
+IDX__TXHDRMGTRIGMODE = 0
+IDX__TXHDRLGTRIGMODE = 0
+IDX__TXHDRHGTRIGMODE = 1
+IDX__TXHDRSP05 = 0
+IDX__TXHDRSP06 = 0
+IDX__TXHDRSP07 = 2018
+IDX__TXHDRSP08 = 0
+IDX__TXHDRTOFMAX = 626533375
+IDX__TXHDRTOFMIN = 521663747
+IDX__TXHDRLS0MAXMIN = 8534012
+IDX__TXHDRLS1MAXMIN = 12707164
+IDX__TXHDRLS2MAXMIN = 8382432
+IDX__TXHDRFIFODELAY = 15
+IDX__TXHDRSAMPDELAY = 32537660
+IDX__TXHDRTRANSCNT = 14
+IDX__TXHDRPROCHKCH01 = 83559215
+IDX__TXHDRPROCHKCH23 = 113050935
+IDX__TXHDRPROCHKCH45 = 170329306
+IDX__TXHDRPROCHKCH67 = 133695769
+IDX__TXHDRHVPSHKCH01 = 131794194
+IDX__TXHDRHVPSHKCH23 = 8849069
+IDX__TXHDRHVPSHKCH45 = 121374683
+IDX__TXHDRHVPSHKCH67 = 19991182
+IDX__TXHDRLVHK0CH01 = 134219776
+IDX__TXHDRLVHK0CH23 = 171772858
+IDX__TXHDRLVHK0CH45 = 134745194
+IDX__TXHDRLVHK0CH67 = 205655124
+IDX__TXHDRLVHK1CH01 = 34080388
+IDX__TXHDRLVHK1CH23 = 77727230
+IDX__TXHDRLVHK1CH45 = 228132775
+IDX__TXHDRLVHK1CH67 = 192807366
+IDX__TXHDRLVHK2CH01 = 82773235
+IDX__TXHDRLVHK2CH23 = 195889850
+IDX__TXHDRLVHK2CH45 = 100994173
+IDX__TXHDRLVHK2CH67 = 69017
+IDX__TXHDRSP09 = 0
+IDX__TXHDRSP10 = 0
+IDX__TXHDRFSWAIDCOPY = 2415002916
+IDX__TXHDRFSWBINCOPY = 0
+IDX__TXHDRFSWMAJOR = 2
+IDX__TXHDRFSWMINOR = 0
+IDX__TXHDRFSWPATCH = 0
+IDX__TXHDRFSWHVSTAT = 3
+IDX__TXHDRFSWMEM0 = 0
+IDX__TXHDRFSWMEM1 = 0
+IDX__TXHDRFSWPT0 = 0
+IDX__TXHDRFSWPT1 = 0
+IDX__TXHDRFSWPT2 = 0
+IDX__TXHDRFSWPT3 = 0
+IDX__TXHDRFSWPT4 = 0
+IDX__TXHDRFSWPT5 = 0
+IDX__TXHDRFSWPT6 = 0
+IDX__TXHDRFSWPT7 = 0
+IDX__TXHDRFSWPT8 = 0
+IDX__TXHDRFSWPT9 = 0
+IDX__TXHDRFPGAVER = 539165480
+IDX__SYNCSCI0PKT = 13107
+IDX__CRCSCI0PKT = 9994
+^*****Event header 4******^
+HS pre trig sampling blocks:  31
+LS pre trig sampling blocks:  7
+HS post trig sampling blocks:  31
+LS post trig sampling blocks:  7
+IDX__TXHDRHVPSHKCH01 = 131794194
+Detector voltage =  1298
+Sensor voltage =  2011
+Target voltage =  1709
+Reflectron voltage =  135
+Rejection voltage =  2011
+Current for HVPS sensor =  1852
+Positive current for HVPS sensor =  2702
+Negative current for HVPS sensor =  305
+Voltage +3.3V reference =  2048
+Voltage +3.3V operational reference =  2048
+Voltage -6V bus =  3002
+Voltage +6V bus =  2621
+Voltage +16V bus =  3178
+Voltage +3.3V bus =  2056
+Voltage -5V bus =  3156
+Voltage +5V bus =  3138
+Current +3.3V bus =  1668
+Current +16V bus =  1186
+Current +6V bus =  1534
+Current -6V bus =  1186
+Current +5V bus =  1959
+Current -5V bus =  3481
+Current +2.5V bus =  454
+Current -2.5V bus =  2942
+Current on the 1V POL =  815
+Current on the 1.9V POL =  1275
+ProcBd Temperature 1 =  1335
+ProcBd Temperature 2 =  1725
+Voltage on 1V bus =  1242
+FPGA Temperature =  2599
+Voltage on 1.9V bus =  2329
+Voltage on 3.3V bus =  2040
+var_to_row = {'Last measurement in raw DN for Processor Board signal “1V POL Current”': 0, 'Last measurement in raw DN for Processor Board signal “1.9V POL Current”': 1, 'Last measurement in raw DN for Processor Board signal “ProcBd Temp1”': 2, nan: 48, 'Last measurement in raw DN for Processor Board signal “ProcBd Temp2”': 6, 'Last measurement in raw DN for Processor Board signal “1V Voltage”': 10, 'Last measurement in raw DN for Processor Board signal “FPGA Temp”': 11, 'Last measurement in raw DN for Processor Board signal “1.9V Voltage”': 12, 'Last measurement in raw DN for Processor Board signal “3.3V Voltage”': 13, 'Last measurement in raw DN for HVPS Board signal “Detector Voltage”': 14, 'Last measurement in raw DN for HVPS Board signal “Sensor Voltage"': 15, 'Last measurement in raw DN for HVPS Board signal “Target Voltage”': 16, 'Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”': 17, 'Last measurement in raw DN for HVPS Board signal “Rejection Voltage”': 18, 'Last measurement in raw DN for HVPS Board signal “Detector Current”': 19, 'Last measurement in raw DN for HVPS Board signal “Sensor IP”': 20, 'Last measurement in raw DN for HVPS Board signal “Sensor IN”': 21, 'Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”': 22, 'Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”': 23, 'Last measurement in raw DN for LVPS Board signal “N6V”': 24, 'Last measurement in raw DN for LVPS Board signal “P6V”': 25, 'Last measurement in raw DN for LVPS Board signal “P16V”': 26, 'Last measurement in raw DN for LVPS Board signal “P3.3V”': 27, 'Last measurement in raw DN for LVPS Board signal “N5V”': 28, 'Last measurement in raw DN for LVPS Board signal “P5V”': 29, 'Last measurement in raw DN for LVPS Board signal “P3.3_IMON”': 30, 'Last measurement in raw DN for LVPS Board signal “P16V_IMON”': 31, 'Last measurement in raw DN for LVPS Board signal “P6V_IMON”': 32, 'Last measurement in raw DN for LVPS Board signal “N6V_IMON”': 33, 'Last measurement in raw DN for LVPS Board signal “P5V_IMON”': 34, 'Last measurement in raw DN for LVPS Board signal “N5V_IMON”': 35, 'Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”': 36, 'Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”': 37, 'Last measurement in raw DN for LVPS Board signal “THERM_DECON0”': 38, 'Last measurement in raw DN for LVPS Board signal “THERM_DECON1”': 39, 'Last measurement in raw DN for LVPS Board signal “THERM_DAB”': 40, 'Last measurement in raw DN for LVPS Board signal “THERM_LVPS”': 41, 'Last measurement in raw DN for LVPS Board signal “THERM_HVPS”': 45, 'Last measurement in raw DN for LVPS Board signal “P2.5V”': 49, 'Last measurement in raw DN for LVPS Board signal “N2.5V”': 50, 'Last measurement in raw DN for LVPS Board signal “Spare”': 51}
+
+ 
+ ***** var_name being converted for each instrument setting ***** 
+ 
+
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1V POL Current”= [0.0 0.9029253 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1V POL Current”
+var_name = current_1V_pol
+Header info = 815
+Transformed value for current_1V_pol = 735.8841195
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1.9V POL Current”= [0.0 0.9029253 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1.9V POL Current”
+var_name = current_1.9V_pol
+Header info = 1275
+Transformed value for current_1.9V_pol = 1151.2297575
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “ProcBd Temp1”= [162.8276 -0.2668687 0.0003323794 -2.43153e-07 9.034532e-11 -1.327735e-14
+ 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “ProcBd Temp1”
+var_name = temperature_1
+Header info = 1335
+Transformed value for temperature_1 = 51.07100613983633
+Matching row  18
+coeffs for nan= [-104713.9 52.02446 -0.006463374 0.0 0.0 0.0 0.0 0.0]
+var_name = nan
+var_name = None
+KeyError: (4, None) - Could not find entry for None, 48. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “ProcBd Temp2”= [162.8276 -0.2668687 0.0003323794 -2.43153e-07 9.034532e-11 -1.327735e-14
+ 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “ProcBd Temp2”
+var_name = temperature_2
+Header info = 1725
+Transformed value for temperature_2 = 40.57630804398127
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1V Voltage”= [0.0 0.000805861 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1V Voltage”
+var_name = voltage_1V_bus
+Header info = 1242
+Transformed value for voltage_1V_bus = 1.0008793619999998
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “FPGA Temp”= [358.31 -0.1187104 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “FPGA Temp”
+var_name = fpga_temperature
+Header info = 2599
+Transformed value for fpga_temperature = 49.781670399999996
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1.9V Voltage”= [0.0 0.000805861 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1.9V Voltage”
+var_name = voltage_1.9V_bus
+Header info = 2329
+Transformed value for voltage_1.9V_bus = 1.876850269
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “3.3V Voltage”= [0.0 0.001611722 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “3.3V Voltage”
+var_name = voltage_3.3V_bus
+Header info = 2040
+Transformed value for voltage_3.3V_bus = 3.28791288
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Detector Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Detector Voltage”
+var_name = detector_voltage
+Header info = 1298
+Transformed value for detector_voltage = 1901.8296
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor Voltage"= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor Voltage"
+var_name = sensor_voltage
+Header info = 2011
+Transformed value for sensor_voltage = 2946.5172000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Target Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Target Voltage”
+var_name = target_voltage
+Header info = 1709
+Transformed value for target_voltage = 2504.0268
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”
+var_name = reflectron_voltage
+Header info = 135
+Transformed value for reflectron_voltage = 197.80200000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Rejection Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Rejection Voltage”
+var_name = rejection_voltage
+Header info = 2011
+Transformed value for rejection_voltage = 2946.5172000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Detector Current”= [0.0 7.326e-06 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Detector Current”
+var_name = current_hvps_sensor
+Header info = 1852
+Transformed value for current_hvps_sensor = 0.013567751999999999
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor IP”= [0.0 2.4339e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor IP”
+var_name = positive_current_hvps
+Header info = 2702
+Transformed value for positive_current_hvps = 0.065763978
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor IN”= [0.0 2.4339e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor IN”
+var_name = negative_current_hvps
+Header info = 305
+Transformed value for negative_current_hvps = 0.007423394999999999
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”
+var_name = voltage_3V3_ref
+Header info = 2048
+Transformed value for voltage_3V3_ref = 3.30080256
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”
+var_name = voltage_3V3_op_ref
+Header info = 2048
+Transformed value for voltage_3V3_op_ref = 3.30080256
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N6V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N6V”
+var_name = voltage_neg6V_bus
+Header info = 3002
+Transformed value for voltage_neg6V_bus = -6.3888610600000035
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P6V”= [0.0 0.00241758 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P6V”
+var_name = voltage_pos6V_bus
+Header info = 2621
+Transformed value for voltage_pos6V_bus = 6.33647718
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P16V”= [0.0 0.00482711 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P16V”
+var_name = voltage_pos16V_bus
+Header info = 3178
+Transformed value for voltage_pos16V_bus = 15.34055558
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3V”
+var_name = voltage_pos3V3_bus
+Header info = 2056
+Transformed value for voltage_pos3V3_bus = 3.31369632
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N5V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N5V”
+var_name = voltage_neg5V_bus
+Header info = 3156
+Transformed value for voltage_neg5V_bus = -5.023732680000002
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P5V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P5V”
+var_name = voltage_pos5V_bus
+Header info = 3138
+Transformed value for voltage_pos5V_bus = 5.057577360000001
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3_IMON”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3_IMON”
+var_name = current_3V3_bus
+Header info = 1668
+Transformed value for current_3V3_bus = 2.6883489600000003
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P16V_IMON”= [0.0 0.000161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P16V_IMON”
+var_name = current_16V_bus
+Header info = 1186
+Transformed value for current_16V_bus = 0.19114999200000002
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P6V_IMON”= [0.0 8.05861e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P6V_IMON”
+var_name = current_6V_bus
+Header info = 1534
+Transformed value for current_6V_bus = 0.1236190774
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N6V_IMON”= [0.0 -8.05861e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N6V_IMON”
+var_name = current_neg6V_bus
+Header info = 1186
+Transformed value for current_neg6V_bus = -0.0955751146
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P5V_IMON”= [0.0 4.029304e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P5V_IMON”
+var_name = current_5V_bus
+Header info = 1959
+Transformed value for current_5V_bus = 0.07893406536
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N5V_IMON”= [0.0 -2.01465e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N5V_IMON”
+var_name = current_neg5V_bus
+Header info = 3481
+Transformed value for current_neg5V_bus = -0.0701299665
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”
+var_name = current_2V5_bus
+Header info = 454
+Transformed value for current_2V5_bus = 0.73172088
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”= [0.0 -4.0293e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”
+var_name = current_neg2V5_bus
+Header info = 2942
+Transformed value for current_neg2V5_bus = -0.118542006
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DECON0”= [-110.293 0.0665351 0.000305738 -6.32048e-07 5.9934e-10 -2.98784e-13
+ 7.61361e-17 -7.76467e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DECON0”
+var_name = None
+KeyError: (4, None) - Could not find entry for None, 38. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DECON1”= [-150.478 0.376986 -0.00062072 7.73853e-07 -5.81588e-10 2.56368e-13
+ -6.05698e-17 5.96635e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DECON1”
+var_name = None
+KeyError: (4, None) - Could not find entry for None, 39. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DAB”= [-443.248 1.31224 -0.00180422 1.40016e-06 -6.43766e-10 1.7448e-13
+ -2.57695e-17 1.60239e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DAB”
+var_name = None
+KeyError: (4, None) - Could not find entry for None, 40. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_LVPS”= [200.4137 -0.2020699 0.000175403 -9.739547e-08 2.888932e-11 -3.545603e-15
+ 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_LVPS”
+var_name = None
+KeyError: (4, None) - Could not find entry for None, 41. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_HVPS”= [200.4137 -0.2020699 0.000175403 -9.739547e-08 2.888932e-11 -3.545603e-15
+ 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_HVPS”
+var_name = None
+KeyError: (4, None) - Could not find entry for None, 45. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P2.5V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P2.5V”
+var_name = None
+KeyError: (4, None) - Could not find entry for None, 49. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N2.5V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N2.5V”
+var_name = None
+KeyError: (4, None) - Could not find entry for None, 50. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “Spare”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “Spare”
+var_name = spare_signal
+KeyError: (4, 'spare_signal') - Could not find entry for spare_signal, 51. Please check the Var_notes or variable mapping.
+High gain delay = 31 samples.
+Mid gain delay = 31 samples.
+Low gain delay = 60 samples.
+High sampling trigger mode =  0 0 1
+High gain trigger mode enabled.
+For 2306867200, HG Trigger level = 0.15894999999999998, sample settings = 0, 0
+Threshold trigger mode enabled for high gain channel.
+AID = 2415002916
+Event number = 3
+Rice compression enabled = False
+Timestamp = 427973311.84734 seconds since epoch (Midnight January 1st, 2010)
+Trigger time = 2023-07-25 09:28:31.847340+00:00
+4
+4
+4
+4
+4
+4
+4
+4
+4
+4
+4
+4
+4
+{'SHCOARSE': ParsedDataItem(SHCOARSE, raw=427941345, derived=427941345, unit=dn), 'SHFINE': ParsedDataItem(SHFINE, raw=7684, derived=7684, unit=dn), 'IDX__SCI0AID': ParsedDataItem(IDX__SCI0AID, raw=2415002916, derived=2415002916, unit=None), 'IDX__SCI0TYPE': ParsedDataItem(IDX__SCI0TYPE, raw=1, derived=1, unit=None), 'IDX__SCI0CONT': ParsedDataItem(IDX__SCI0CONT, raw=127, derived=127, unit=None), 'IDX__SCI0SPARE1': ParsedDataItem(IDX__SCI0SPARE1, raw=0, derived=0, unit=None), 'IDX__SCI0PACK': ParsedDataItem(IDX__SCI0PACK, raw=1, derived=EN, unit=None), 'IDX__SCI0FRAG': ParsedDataItem(IDX__SCI0FRAG, raw=0, derived=DS, unit=None), 'IDX__SCI0COMP': ParsedDataItem(IDX__SCI0COMP, raw=0, derived=DS, unit=None), 'IDX__SCI0EVTNUM': ParsedDataItem(IDX__SCI0EVTNUM, raw=4, derived=4, unit=None), 'IDX__SCI0CAT': ParsedDataItem(IDX__SCI0CAT, raw=32, derived=32, unit=None), 'IDX__SCI0QUAL': ParsedDataItem(IDX__SCI0QUAL, raw=5, derived=5, unit=None), 'IDX__SCI0FRAGOFF': ParsedDataItem(IDX__SCI0FRAGOFF, raw=0, derived=0, unit=None), 'IDX__SCI0VER': ParsedDataItem(IDX__SCI0VER, raw=9, derived=9, unit=None), 'IDX__SCI0TIME32': ParsedDataItem(IDX__SCI0TIME32, raw=427941142, derived=427941142, unit=None), 'IDX__SCI0SPARE2': ParsedDataItem(IDX__SCI0SPARE2, raw=0, derived=0, unit=None), 'IDX__SCI0SPARE3': ParsedDataItem(IDX__SCI0SPARE3, raw=0, derived=0, unit=None), 'IDX__SCI0SPARE4': ParsedDataItem(IDX__SCI0SPARE4, raw=0, derived=0, unit=None), 'IDX__TXHDRSCIEVTLEN': ParsedDataItem(IDX__TXHDRSCIEVTLEN, raw=8320, derived=8320, unit=None), 'IDX__TXHDRSP00': ParsedDataItem(IDX__TXHDRSP00, raw=0, derived=0, unit=None), 'IDX__TXHDRTIMESEC1': ParsedDataItem(IDX__TXHDRTIMESEC1, raw=6529, derived=6529, unit=None), 'IDX__TXHDRTIMESEC2': ParsedDataItem(IDX__TXHDRTIMESEC2, raw=56598, derived=56598, unit=None), 'IDX__TXHDRTIMESUBS': ParsedDataItem(IDX__TXHDRTIMESUBS, raw=14484, derived=14484, unit=None), 'IDX__TXHDRSP01': ParsedDataItem(IDX__TXHDRSP01, raw=0, derived=0, unit=None), 'IDX__TXHDRTRIGOFFSET': ParsedDataItem(IDX__TXHDRTRIGOFFSET, raw=0, derived=0, unit=None), 'IDX__TXHDRSP02': ParsedDataItem(IDX__TXHDRSP02, raw=0, derived=0, unit=None), 'IDX__TXHDRTRIGID': ParsedDataItem(IDX__TXHDRTRIGID, raw=1, derived=1, unit=None), 'IDX__TXHDREVTNUM': ParsedDataItem(IDX__TXHDREVTNUM, raw=4, derived=4, unit=None), 'IDX__TXHDRBLOCKS': ParsedDataItem(IDX__TXHDRBLOCKS, raw=1073182687, derived=1073182687, unit=None), 'IDX__TXHDRHGTRIGCTRL1': ParsedDataItem(IDX__TXHDRHGTRIGCTRL1, raw=2306867200, derived=2306867200, unit=None), 'IDX__TXHDRHGTRIGCTRL2': ParsedDataItem(IDX__TXHDRHGTRIGCTRL2, raw=0, derived=0, unit=None), 'IDX__TXHDRLGTRIGCTRL1': ParsedDataItem(IDX__TXHDRLGTRIGCTRL1, raw=4294965248, derived=4294965248, unit=None), 'IDX__TXHDRLGTRIGCTRL2': ParsedDataItem(IDX__TXHDRLGTRIGCTRL2, raw=4278255360, derived=4278255360, unit=None), 'IDX__TXHDRMGTRIGCTRL1': ParsedDataItem(IDX__TXHDRMGTRIGCTRL1, raw=4294965248, derived=4294965248, unit=None), 'IDX__TXHDRMGTRIGCTRL2': ParsedDataItem(IDX__TXHDRMGTRIGCTRL2, raw=4278255360, derived=4278255360, unit=None), 'IDX__TXHDRSP03': ParsedDataItem(IDX__TXHDRSP03, raw=0, derived=0, unit=None), 'IDX__TXHDRLSADC': ParsedDataItem(IDX__TXHDRLSADC, raw=1048320, derived=1048320, unit=None), 'IDX__TXHDRPOLSTAT': ParsedDataItem(IDX__TXHDRPOLSTAT, raw=1, derived=NEG, unit=None), 'IDX__TXHDRSP04': ParsedDataItem(IDX__TXHDRSP04, raw=0, derived=0, unit=None), 'IDX__TXHDRPOLCTRL': ParsedDataItem(IDX__TXHDRPOLCTRL, raw=0, derived=POS, unit=None), 'IDX__TXHDRCOINENA': ParsedDataItem(IDX__TXHDRCOINENA, raw=0, derived=DIS, unit=None), 'IDX__TXHDRLSTRIGMODE': ParsedDataItem(IDX__TXHDRLSTRIGMODE, raw=0, derived=DIS, unit=None), 'IDX__TXHDRMGTRIGMODE': ParsedDataItem(IDX__TXHDRMGTRIGMODE, raw=0, derived=0, unit=None), 'IDX__TXHDRLGTRIGMODE': ParsedDataItem(IDX__TXHDRLGTRIGMODE, raw=0, derived=0, unit=None), 'IDX__TXHDRHGTRIGMODE': ParsedDataItem(IDX__TXHDRHGTRIGMODE, raw=1, derived=1, unit=None), 'IDX__TXHDRSP05': ParsedDataItem(IDX__TXHDRSP05, raw=0, derived=0, unit=None), 'IDX__TXHDRSP06': ParsedDataItem(IDX__TXHDRSP06, raw=0, derived=0, unit=None), 'IDX__TXHDRSP07': ParsedDataItem(IDX__TXHDRSP07, raw=2018, derived=2018, unit=None), 'IDX__TXHDRSP08': ParsedDataItem(IDX__TXHDRSP08, raw=0, derived=0, unit=None), 'IDX__TXHDRTOFMAX': ParsedDataItem(IDX__TXHDRTOFMAX, raw=543693462, derived=543693462, unit=None), 'IDX__TXHDRTOFMIN': ParsedDataItem(IDX__TXHDRTOFMIN, raw=535295476, derived=535295476, unit=None), 'IDX__TXHDRLS0MAXMIN': ParsedDataItem(IDX__TXHDRLS0MAXMIN, raw=8525824, derived=8525824, unit=None), 'IDX__TXHDRLS1MAXMIN': ParsedDataItem(IDX__TXHDRLS1MAXMIN, raw=9955007, derived=9955007, unit=None), 'IDX__TXHDRLS2MAXMIN': ParsedDataItem(IDX__TXHDRLS2MAXMIN, raw=8710113, derived=8710113, unit=None), 'IDX__TXHDRFIFODELAY': ParsedDataItem(IDX__TXHDRFIFODELAY, raw=16, derived=16, unit=None), 'IDX__TXHDRSAMPDELAY': ParsedDataItem(IDX__TXHDRSAMPDELAY, raw=1073740831, derived=1073740831, unit=None), 'IDX__TXHDRTRANSCNT': ParsedDataItem(IDX__TXHDRTRANSCNT, raw=6, derived=6, unit=None), 'IDX__TXHDRPROCHKCH01': ParsedDataItem(IDX__TXHDRPROCHKCH01, raw=83559214, derived=83559214, unit=None), 'IDX__TXHDRPROCHKCH23': ParsedDataItem(IDX__TXHDRPROCHKCH23, raw=112985398, derived=112985398, unit=None), 'IDX__TXHDRPROCHKCH45': ParsedDataItem(IDX__TXHDRPROCHKCH45, raw=170329306, derived=170329306, unit=None), 'IDX__TXHDRPROCHKCH67': ParsedDataItem(IDX__TXHDRPROCHKCH67, raw=133695769, derived=133695769, unit=None), 'IDX__TXHDRHVPSHKCH01': ParsedDataItem(IDX__TXHDRHVPSHKCH01, raw=131794194, derived=131794194, unit=None), 'IDX__TXHDRHVPSHKCH23': ParsedDataItem(IDX__TXHDRHVPSHKCH23, raw=8849070, derived=8849070, unit=None), 'IDX__TXHDRHVPSHKCH45': ParsedDataItem(IDX__TXHDRHVPSHKCH45, raw=121374683, derived=121374683, unit=None), 'IDX__TXHDRHVPSHKCH67': ParsedDataItem(IDX__TXHDRHVPSHKCH67, raw=19991182, derived=19991182, unit=None), 'IDX__TXHDRLVHK0CH01': ParsedDataItem(IDX__TXHDRLVHK0CH01, raw=134219776, derived=134219776, unit=None), 'IDX__TXHDRLVHK0CH23': ParsedDataItem(IDX__TXHDRLVHK0CH23, raw=171772858, derived=171772858, unit=None), 'IDX__TXHDRLVHK0CH45': ParsedDataItem(IDX__TXHDRLVHK0CH45, raw=134745194, derived=134745194, unit=None), 'IDX__TXHDRLVHK0CH67': ParsedDataItem(IDX__TXHDRLVHK0CH67, raw=205655124, derived=205655124, unit=None), 'IDX__TXHDRLVHK1CH01': ParsedDataItem(IDX__TXHDRLVHK1CH01, raw=34080387, derived=34080387, unit=None), 'IDX__TXHDRLVHK1CH23': ParsedDataItem(IDX__TXHDRLVHK1CH23, raw=77727230, derived=77727230, unit=None), 'IDX__TXHDRLVHK1CH45': ParsedDataItem(IDX__TXHDRLVHK1CH45, raw=228132775, derived=228132775, unit=None), 'IDX__TXHDRLVHK1CH67': ParsedDataItem(IDX__TXHDRLVHK1CH67, raw=192807366, derived=192807366, unit=None), 'IDX__TXHDRLVHK2CH01': ParsedDataItem(IDX__TXHDRLVHK2CH01, raw=82773235, derived=82773235, unit=None), 'IDX__TXHDRLVHK2CH23': ParsedDataItem(IDX__TXHDRLVHK2CH23, raw=195889850, derived=195889850, unit=None), 'IDX__TXHDRLVHK2CH45': ParsedDataItem(IDX__TXHDRLVHK2CH45, raw=101059708, derived=101059708, unit=None), 'IDX__TXHDRLVHK2CH67': ParsedDataItem(IDX__TXHDRLVHK2CH67, raw=69016, derived=69016, unit=None), 'IDX__TXHDRSP09': ParsedDataItem(IDX__TXHDRSP09, raw=0, derived=0, unit=None), 'IDX__TXHDRSP10': ParsedDataItem(IDX__TXHDRSP10, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWAIDCOPY': ParsedDataItem(IDX__TXHDRFSWAIDCOPY, raw=2415002916, derived=2415002916, unit=None), 'IDX__TXHDRFSWBINCOPY': ParsedDataItem(IDX__TXHDRFSWBINCOPY, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWMAJOR': ParsedDataItem(IDX__TXHDRFSWMAJOR, raw=2, derived=2, unit=None), 'IDX__TXHDRFSWMINOR': ParsedDataItem(IDX__TXHDRFSWMINOR, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPATCH': ParsedDataItem(IDX__TXHDRFSWPATCH, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWHVSTAT': ParsedDataItem(IDX__TXHDRFSWHVSTAT, raw=3, derived=3, unit=None), 'IDX__TXHDRFSWMEM0': ParsedDataItem(IDX__TXHDRFSWMEM0, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWMEM1': ParsedDataItem(IDX__TXHDRFSWMEM1, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT0': ParsedDataItem(IDX__TXHDRFSWPT0, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT1': ParsedDataItem(IDX__TXHDRFSWPT1, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT2': ParsedDataItem(IDX__TXHDRFSWPT2, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT3': ParsedDataItem(IDX__TXHDRFSWPT3, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT4': ParsedDataItem(IDX__TXHDRFSWPT4, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT5': ParsedDataItem(IDX__TXHDRFSWPT5, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT6': ParsedDataItem(IDX__TXHDRFSWPT6, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT7': ParsedDataItem(IDX__TXHDRFSWPT7, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT8': ParsedDataItem(IDX__TXHDRFSWPT8, raw=0, derived=0, unit=None), 'IDX__TXHDRFSWPT9': ParsedDataItem(IDX__TXHDRFSWPT9, raw=0, derived=0, unit=None), 'IDX__TXHDRFPGAVER': ParsedDataItem(IDX__TXHDRFPGAVER, raw=539165480, derived=539165480, unit=None), 'IDX__SYNCSCI0PKT': ParsedDataItem(IDX__SYNCSCI0PKT, raw=13107, derived=13107, unit=None), 'IDX__CRCSCI0PKT': ParsedDataItem(IDX__CRCSCI0PKT, raw=9566, derived=9566, unit=None)}
+SHCOARSE = 427941345
+SHFINE = 7684
+IDX__SCI0AID = 2415002916
+IDX__SCI0TYPE = 1
+IDX__SCI0CONT = 127
+IDX__SCI0SPARE1 = 0
+IDX__SCI0PACK = EN
+IDX__SCI0FRAG = DS
+IDX__SCI0COMP = DS
+IDX__SCI0EVTNUM = 4
+IDX__SCI0CAT = 32
+IDX__SCI0QUAL = 5
+IDX__SCI0FRAGOFF = 0
+IDX__SCI0VER = 9
+IDX__SCI0TIME32 = 427941142
+IDX__SCI0SPARE2 = 0
+IDX__SCI0SPARE3 = 0
+IDX__SCI0SPARE4 = 0
+IDX__TXHDRSCIEVTLEN = 8320
+IDX__TXHDRSP00 = 0
+IDX__TXHDRTIMESEC1 = 6529
+IDX__TXHDRTIMESEC2 = 56598
+IDX__TXHDRTIMESUBS = 14484
+IDX__TXHDRSP01 = 0
+IDX__TXHDRTRIGOFFSET = 0
+IDX__TXHDRSP02 = 0
+IDX__TXHDRTRIGID = 1
+IDX__TXHDREVTNUM = 4
+IDX__TXHDRBLOCKS = 1073182687
+IDX__TXHDRHGTRIGCTRL1 = 2306867200
+IDX__TXHDRHGTRIGCTRL2 = 0
+IDX__TXHDRLGTRIGCTRL1 = 4294965248
+IDX__TXHDRLGTRIGCTRL2 = 4278255360
+IDX__TXHDRMGTRIGCTRL1 = 4294965248
+IDX__TXHDRMGTRIGCTRL2 = 4278255360
+IDX__TXHDRSP03 = 0
+IDX__TXHDRLSADC = 1048320
+IDX__TXHDRPOLSTAT = NEG
+IDX__TXHDRSP04 = 0
+IDX__TXHDRPOLCTRL = POS
+IDX__TXHDRCOINENA = DIS
+IDX__TXHDRLSTRIGMODE = DIS
+IDX__TXHDRMGTRIGMODE = 0
+IDX__TXHDRLGTRIGMODE = 0
+IDX__TXHDRHGTRIGMODE = 1
+IDX__TXHDRSP05 = 0
+IDX__TXHDRSP06 = 0
+IDX__TXHDRSP07 = 2018
+IDX__TXHDRSP08 = 0
+IDX__TXHDRTOFMAX = 543693462
+IDX__TXHDRTOFMIN = 535295476
+IDX__TXHDRLS0MAXMIN = 8525824
+IDX__TXHDRLS1MAXMIN = 9955007
+IDX__TXHDRLS2MAXMIN = 8710113
+IDX__TXHDRFIFODELAY = 16
+IDX__TXHDRSAMPDELAY = 1073740831
+IDX__TXHDRTRANSCNT = 6
+IDX__TXHDRPROCHKCH01 = 83559214
+IDX__TXHDRPROCHKCH23 = 112985398
+IDX__TXHDRPROCHKCH45 = 170329306
+IDX__TXHDRPROCHKCH67 = 133695769
+IDX__TXHDRHVPSHKCH01 = 131794194
+IDX__TXHDRHVPSHKCH23 = 8849070
+IDX__TXHDRHVPSHKCH45 = 121374683
+IDX__TXHDRHVPSHKCH67 = 19991182
+IDX__TXHDRLVHK0CH01 = 134219776
+IDX__TXHDRLVHK0CH23 = 171772858
+IDX__TXHDRLVHK0CH45 = 134745194
+IDX__TXHDRLVHK0CH67 = 205655124
+IDX__TXHDRLVHK1CH01 = 34080387
+IDX__TXHDRLVHK1CH23 = 77727230
+IDX__TXHDRLVHK1CH45 = 228132775
+IDX__TXHDRLVHK1CH67 = 192807366
+IDX__TXHDRLVHK2CH01 = 82773235
+IDX__TXHDRLVHK2CH23 = 195889850
+IDX__TXHDRLVHK2CH45 = 101059708
+IDX__TXHDRLVHK2CH67 = 69016
+IDX__TXHDRSP09 = 0
+IDX__TXHDRSP10 = 0
+IDX__TXHDRFSWAIDCOPY = 2415002916
+IDX__TXHDRFSWBINCOPY = 0
+IDX__TXHDRFSWMAJOR = 2
+IDX__TXHDRFSWMINOR = 0
+IDX__TXHDRFSWPATCH = 0
+IDX__TXHDRFSWHVSTAT = 3
+IDX__TXHDRFSWMEM0 = 0
+IDX__TXHDRFSWMEM1 = 0
+IDX__TXHDRFSWPT0 = 0
+IDX__TXHDRFSWPT1 = 0
+IDX__TXHDRFSWPT2 = 0
+IDX__TXHDRFSWPT3 = 0
+IDX__TXHDRFSWPT4 = 0
+IDX__TXHDRFSWPT5 = 0
+IDX__TXHDRFSWPT6 = 0
+IDX__TXHDRFSWPT7 = 0
+IDX__TXHDRFSWPT8 = 0
+IDX__TXHDRFSWPT9 = 0
+IDX__TXHDRFPGAVER = 539165480
+IDX__SYNCSCI0PKT = 13107
+IDX__CRCSCI0PKT = 9566
+^*****Event header 5******^
+HS pre trig sampling blocks:  31
+LS pre trig sampling blocks:  7
+HS post trig sampling blocks:  31
+LS post trig sampling blocks:  7
+IDX__TXHDRHVPSHKCH01 = 131794194
+Detector voltage =  1298
+Sensor voltage =  2011
+Target voltage =  1710
+Reflectron voltage =  135
+Rejection voltage =  2011
+Current for HVPS sensor =  1852
+Positive current for HVPS sensor =  2702
+Negative current for HVPS sensor =  305
+Voltage +3.3V reference =  2048
+Voltage +3.3V operational reference =  2048
+Voltage -6V bus =  3002
+Voltage +6V bus =  2621
+Voltage +16V bus =  3178
+Voltage +3.3V bus =  2056
+Voltage -5V bus =  3156
+Voltage +5V bus =  3138
+Current +3.3V bus =  1667
+Current +16V bus =  1186
+Current +6V bus =  1534
+Current -6V bus =  1186
+Current +5V bus =  1959
+Current -5V bus =  3481
+Current +2.5V bus =  454
+Current -2.5V bus =  2942
+Current on the 1V POL =  814
+Current on the 1.9V POL =  1275
+ProcBd Temperature 1 =  1334
+ProcBd Temperature 2 =  1724
+Voltage on 1V bus =  1242
+FPGA Temperature =  2599
+Voltage on 1.9V bus =  2329
+Voltage on 3.3V bus =  2040
+var_to_row = {'Last measurement in raw DN for Processor Board signal “1V POL Current”': 0, 'Last measurement in raw DN for Processor Board signal “1.9V POL Current”': 1, 'Last measurement in raw DN for Processor Board signal “ProcBd Temp1”': 2, nan: 48, 'Last measurement in raw DN for Processor Board signal “ProcBd Temp2”': 6, 'Last measurement in raw DN for Processor Board signal “1V Voltage”': 10, 'Last measurement in raw DN for Processor Board signal “FPGA Temp”': 11, 'Last measurement in raw DN for Processor Board signal “1.9V Voltage”': 12, 'Last measurement in raw DN for Processor Board signal “3.3V Voltage”': 13, 'Last measurement in raw DN for HVPS Board signal “Detector Voltage”': 14, 'Last measurement in raw DN for HVPS Board signal “Sensor Voltage"': 15, 'Last measurement in raw DN for HVPS Board signal “Target Voltage”': 16, 'Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”': 17, 'Last measurement in raw DN for HVPS Board signal “Rejection Voltage”': 18, 'Last measurement in raw DN for HVPS Board signal “Detector Current”': 19, 'Last measurement in raw DN for HVPS Board signal “Sensor IP”': 20, 'Last measurement in raw DN for HVPS Board signal “Sensor IN”': 21, 'Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”': 22, 'Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”': 23, 'Last measurement in raw DN for LVPS Board signal “N6V”': 24, 'Last measurement in raw DN for LVPS Board signal “P6V”': 25, 'Last measurement in raw DN for LVPS Board signal “P16V”': 26, 'Last measurement in raw DN for LVPS Board signal “P3.3V”': 27, 'Last measurement in raw DN for LVPS Board signal “N5V”': 28, 'Last measurement in raw DN for LVPS Board signal “P5V”': 29, 'Last measurement in raw DN for LVPS Board signal “P3.3_IMON”': 30, 'Last measurement in raw DN for LVPS Board signal “P16V_IMON”': 31, 'Last measurement in raw DN for LVPS Board signal “P6V_IMON”': 32, 'Last measurement in raw DN for LVPS Board signal “N6V_IMON”': 33, 'Last measurement in raw DN for LVPS Board signal “P5V_IMON”': 34, 'Last measurement in raw DN for LVPS Board signal “N5V_IMON”': 35, 'Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”': 36, 'Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”': 37, 'Last measurement in raw DN for LVPS Board signal “THERM_DECON0”': 38, 'Last measurement in raw DN for LVPS Board signal “THERM_DECON1”': 39, 'Last measurement in raw DN for LVPS Board signal “THERM_DAB”': 40, 'Last measurement in raw DN for LVPS Board signal “THERM_LVPS”': 41, 'Last measurement in raw DN for LVPS Board signal “THERM_HVPS”': 45, 'Last measurement in raw DN for LVPS Board signal “P2.5V”': 49, 'Last measurement in raw DN for LVPS Board signal “N2.5V”': 50, 'Last measurement in raw DN for LVPS Board signal “Spare”': 51}
+
+ 
+ ***** var_name being converted for each instrument setting ***** 
+ 
+
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1V POL Current”= [0.0 0.9029253 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1V POL Current”
+var_name = current_1V_pol
+Header info = 814
+Transformed value for current_1V_pol = 734.9811942
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1.9V POL Current”= [0.0 0.9029253 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1.9V POL Current”
+var_name = current_1.9V_pol
+Header info = 1275
+Transformed value for current_1.9V_pol = 1151.2297575
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “ProcBd Temp1”= [162.8276 -0.2668687 0.0003323794 -2.43153e-07 9.034532e-11 -1.327735e-14
+ 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “ProcBd Temp1”
+var_name = temperature_1
+Header info = 1334
+Transformed value for temperature_1 = 51.10153283038074
+Matching row  18
+coeffs for nan= [-104713.9 52.02446 -0.006463374 0.0 0.0 0.0 0.0 0.0]
+var_name = nan
+var_name = None
+KeyError: (5, None) - Could not find entry for None, 48. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “ProcBd Temp2”= [162.8276 -0.2668687 0.0003323794 -2.43153e-07 9.034532e-11 -1.327735e-14
+ 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “ProcBd Temp2”
+var_name = temperature_2
+Header info = 1724
+Transformed value for temperature_2 = 40.59992777130191
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1V Voltage”= [0.0 0.000805861 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1V Voltage”
+var_name = voltage_1V_bus
+Header info = 1242
+Transformed value for voltage_1V_bus = 1.0008793619999998
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “FPGA Temp”= [358.31 -0.1187104 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “FPGA Temp”
+var_name = fpga_temperature
+Header info = 2599
+Transformed value for fpga_temperature = 49.781670399999996
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “1.9V Voltage”= [0.0 0.000805861 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “1.9V Voltage”
+var_name = voltage_1.9V_bus
+Header info = 2329
+Transformed value for voltage_1.9V_bus = 1.876850269
+Matching row  18
+coeffs for Last measurement in raw DN for Processor Board signal “3.3V Voltage”= [0.0 0.001611722 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for Processor Board signal “3.3V Voltage”
+var_name = voltage_3.3V_bus
+Header info = 2040
+Transformed value for voltage_3.3V_bus = 3.28791288
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Detector Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Detector Voltage”
+var_name = detector_voltage
+Header info = 1298
+Transformed value for detector_voltage = 1901.8296
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor Voltage"= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor Voltage"
+var_name = sensor_voltage
+Header info = 2011
+Transformed value for sensor_voltage = 2946.5172000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Target Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Target Voltage”
+var_name = target_voltage
+Header info = 1710
+Transformed value for target_voltage = 2505.492
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Reflectron Voltage”
+var_name = reflectron_voltage
+Header info = 135
+Transformed value for reflectron_voltage = 197.80200000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Rejection Voltage”= [0.0 1.4652 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Rejection Voltage”
+var_name = rejection_voltage
+Header info = 2011
+Transformed value for rejection_voltage = 2946.5172000000002
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Detector Current”= [0.0 7.326e-06 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Detector Current”
+var_name = current_hvps_sensor
+Header info = 1852
+Transformed value for current_hvps_sensor = 0.013567751999999999
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor IP”= [0.0 2.4339e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor IP”
+var_name = positive_current_hvps
+Header info = 2702
+Transformed value for positive_current_hvps = 0.065763978
+Matching row  18
+coeffs for Last measurement in raw DN for HVPS Board signal “Sensor IN”= [0.0 2.4339e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for HVPS Board signal “Sensor IN”
+var_name = negative_current_hvps
+Header info = 305
+Transformed value for negative_current_hvps = 0.007423394999999999
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3VREF_HK”
+var_name = voltage_3V3_ref
+Header info = 2048
+Transformed value for voltage_3V3_ref = 3.30080256
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3VREF_OP”
+var_name = voltage_3V3_op_ref
+Header info = 2048
+Transformed value for voltage_3V3_op_ref = 3.30080256
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N6V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N6V”
+var_name = voltage_neg6V_bus
+Header info = 3002
+Transformed value for voltage_neg6V_bus = -6.3888610600000035
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P6V”= [0.0 0.00241758 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P6V”
+var_name = voltage_pos6V_bus
+Header info = 2621
+Transformed value for voltage_pos6V_bus = 6.33647718
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P16V”= [0.0 0.00482711 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P16V”
+var_name = voltage_pos16V_bus
+Header info = 3178
+Transformed value for voltage_pos16V_bus = 15.34055558
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3V”
+var_name = voltage_pos3V3_bus
+Header info = 2056
+Transformed value for voltage_pos3V3_bus = 3.31369632
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N5V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N5V”
+var_name = voltage_neg5V_bus
+Header info = 3156
+Transformed value for voltage_neg5V_bus = -5.023732680000002
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P5V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P5V”
+var_name = voltage_pos5V_bus
+Header info = 3138
+Transformed value for voltage_pos5V_bus = 5.057577360000001
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P3.3_IMON”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P3.3_IMON”
+var_name = current_3V3_bus
+Header info = 1667
+Transformed value for current_3V3_bus = 2.6867372400000002
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P16V_IMON”= [0.0 0.000161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P16V_IMON”
+var_name = current_16V_bus
+Header info = 1186
+Transformed value for current_16V_bus = 0.19114999200000002
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P6V_IMON”= [0.0 8.05861e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P6V_IMON”
+var_name = current_6V_bus
+Header info = 1534
+Transformed value for current_6V_bus = 0.1236190774
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N6V_IMON”= [0.0 -8.05861e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N6V_IMON”
+var_name = current_neg6V_bus
+Header info = 1186
+Transformed value for current_neg6V_bus = -0.0955751146
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P5V_IMON”= [0.0 4.029304e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P5V_IMON”
+var_name = current_5V_bus
+Header info = 1959
+Transformed value for current_5V_bus = 0.07893406536
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N5V_IMON”= [0.0 -2.01465e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N5V_IMON”
+var_name = current_neg5V_bus
+Header info = 3481
+Transformed value for current_neg5V_bus = -0.0701299665
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P2.5V_IMON”
+var_name = current_2V5_bus
+Header info = 454
+Transformed value for current_2V5_bus = 0.73172088
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”= [0.0 -4.0293e-05 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N2.5V_IMON”
+var_name = current_neg2V5_bus
+Header info = 2942
+Transformed value for current_neg2V5_bus = -0.118542006
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DECON0”= [-110.293 0.0665351 0.000305738 -6.32048e-07 5.9934e-10 -2.98784e-13
+ 7.61361e-17 -7.76467e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DECON0”
+var_name = None
+KeyError: (5, None) - Could not find entry for None, 38. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DECON1”= [-150.478 0.376986 -0.00062072 7.73853e-07 -5.81588e-10 2.56368e-13
+ -6.05698e-17 5.96635e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DECON1”
+var_name = None
+KeyError: (5, None) - Could not find entry for None, 39. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_DAB”= [-443.248 1.31224 -0.00180422 1.40016e-06 -6.43766e-10 1.7448e-13
+ -2.57695e-17 1.60239e-21]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_DAB”
+var_name = None
+KeyError: (5, None) - Could not find entry for None, 40. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_LVPS”= [200.4137 -0.2020699 0.000175403 -9.739547e-08 2.888932e-11 -3.545603e-15
+ 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_LVPS”
+var_name = None
+KeyError: (5, None) - Could not find entry for None, 41. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “THERM_HVPS”= [200.4137 -0.2020699 0.000175403 -9.739547e-08 2.888932e-11 -3.545603e-15
+ 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “THERM_HVPS”
+var_name = None
+KeyError: (5, None) - Could not find entry for None, 45. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “P2.5V”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “P2.5V”
+var_name = None
+KeyError: (5, None) - Could not find entry for None, 49. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “N2.5V”= [-33.0 0.00886447 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “N2.5V”
+var_name = None
+KeyError: (5, None) - Could not find entry for None, 50. Please check the Var_notes or variable mapping.
+Matching row  18
+coeffs for Last measurement in raw DN for LVPS Board signal “Spare”= [0.0 0.00161172 0.0 0.0 0.0 0.0 0.0 0.0]
+var_name = Last measurement in raw DN for LVPS Board signal “Spare”
+var_name = spare_signal
+KeyError: (5, 'spare_signal') - Could not find entry for spare_signal, 51. Please check the Var_notes or variable mapping.
+High gain delay = 1023 samples.
+Mid gain delay = 1023 samples.
+Low gain delay = 31 samples.
+High sampling trigger mode =  0 0 1
+High gain trigger mode enabled.
+For 2306867200, HG Trigger level = 0.15894999999999998, sample settings = 0, 0
+Threshold trigger mode enabled for high gain channel.
+AID = 2415002916
+Event number = 4
+Rice compression enabled = False
+Timestamp = 427973324.84748 seconds since epoch (Midnight January 1st, 2010)
+Trigger time = 2023-07-25 09:28:44.847480+00:00
+5
+5
+5
+5
+5
+5
+5
+5
+5
+5
+5
+5
+Progress: [====================]100% [Elapsed: 0:00:01.419038, 164 pkts/s]
+Parsing waveform for scitype=2
+8189
+Parsing waveform for scitype=4
+8189
+Parsing waveform for scitype=8
+8189
+Parsing waveform for scitype=16
+512
+Parsing waveform for scitype=32
+512
+Parsing waveform for scitype=64
+512
+Parsing waveform for scitype=2
+8189
+Parsing waveform for scitype=4
+8189
+Parsing waveform for scitype=8
+8189
+Parsing waveform for scitype=16
+512
+Parsing waveform for scitype=32
+512
+Parsing waveform for scitype=64
+512
+Parsing waveform for scitype=2
+8189
+Parsing waveform for scitype=4
+8189
+Parsing waveform for scitype=8
+8189
+Parsing waveform for scitype=16
+512
+Parsing waveform for scitype=32
+512
+Parsing waveform for scitype=64
+512
+Parsing waveform for scitype=2
+8189
+Parsing waveform for scitype=4
+8189
+Parsing waveform for scitype=8
+8189
+Parsing waveform for scitype=16
+512
+Parsing waveform for scitype=32
+512
+Parsing waveform for scitype=64
+512
+Parsing waveform for scitype=2
+8189
+Parsing waveform for scitype=4
+8189
+Parsing waveform for scitype=8
+8189
+Parsing waveform for scitype=16
+512
+Parsing waveform for scitype=32
+512
+Parsing waveform for scitype=64
+512
+Length of Channel TOF H = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel TOF L = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel TOF M = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel Target L = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel Target H = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel Ion Grid = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel TOF H = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel TOF L = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel TOF M = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel Target L = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel Target H = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel Ion Grid = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel TOF H = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel TOF L = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel TOF M = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel Target L = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel Target H = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel Ion Grid = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel TOF H = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel TOF L = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel TOF M = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel Target L = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel Target H = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel Ion Grid = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel TOF H = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel TOF L = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel TOF M = 8189
+High sampling trigger time = 11.81923076923077 microseconds.
+Length of Channel Target L = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel Target H = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Length of Channel Ion Grid = 512
+Low sampling trigger time = 63.01538461538462 microseconds.
+Created dataset: /1/Metadata/SHCOARSE with value: 427941291
+Created dataset: /1/Metadata/SHFINE with value: 7655
+Skipping header field IDX__SCI0AID
+Skipping header field IDX__SCI0TYPE
+Skipping header field IDX__SCI0CONT
+Skipping header field IDX__SCI0SPARE1
+Skipping header field IDX__SCI0PACK
+Skipping header field IDX__SCI0FRAG
+Skipping header field IDX__SCI0COMP
+Skipping header field IDX__SCI0EVTNUM
+Skipping header field IDX__SCI0CAT
+Skipping header field IDX__SCI0QUAL
+Skipping header field IDX__SCI0FRAGOFF
+Skipping header field IDX__SCI0VER
+Skipping header field IDX__SCI0TIME32
+Skipping header field IDX__SCI0SPARE2
+Skipping header field IDX__SCI0SPARE3
+Skipping header field IDX__SCI0SPARE4
+Skipping header field IDX__TXHDRSCIEVTLEN
+Skipping header field IDX__TXHDRSP00
+Skipping header field IDX__TXHDRTIMESEC1
+Skipping header field IDX__TXHDRTIMESEC2
+Skipping header field IDX__TXHDRTIMESUBS
+Skipping header field IDX__TXHDRSP01
+Skipping header field IDX__TXHDRTRIGOFFSET
+Skipping header field IDX__TXHDRSP02
+Skipping header field IDX__TXHDRTRIGID
+Skipping header field IDX__TXHDREVTNUM
+Skipping header field IDX__TXHDRBLOCKS
+Skipping header field IDX__TXHDRHGTRIGCTRL1
+Skipping header field IDX__TXHDRHGTRIGCTRL2
+Skipping header field IDX__TXHDRLGTRIGCTRL1
+Skipping header field IDX__TXHDRLGTRIGCTRL2
+Skipping header field IDX__TXHDRMGTRIGCTRL1
+Skipping header field IDX__TXHDRMGTRIGCTRL2
+Skipping header field IDX__TXHDRSP03
+Skipping header field IDX__TXHDRLSADC
+Skipping header field IDX__TXHDRPOLSTAT
+Skipping header field IDX__TXHDRSP04
+Skipping header field IDX__TXHDRPOLCTRL
+Skipping header field IDX__TXHDRCOINENA
+Skipping header field IDX__TXHDRLSTRIGMODE
+Skipping header field IDX__TXHDRMGTRIGMODE
+Skipping header field IDX__TXHDRLGTRIGMODE
+Skipping header field IDX__TXHDRHGTRIGMODE
+Skipping header field IDX__TXHDRSP05
+Skipping header field IDX__TXHDRSP06
+Skipping header field IDX__TXHDRSP07
+Skipping header field IDX__TXHDRSP08
+Skipping header field IDX__TXHDRTOFMAX
+Skipping header field IDX__TXHDRTOFMIN
+Skipping header field IDX__TXHDRLS0MAXMIN
+Skipping header field IDX__TXHDRLS1MAXMIN
+Skipping header field IDX__TXHDRLS2MAXMIN
+Skipping header field IDX__TXHDRFIFODELAY
+Skipping header field IDX__TXHDRSAMPDELAY
+Skipping header field IDX__TXHDRTRANSCNT
+Skipping header field IDX__TXHDRPROCHKCH01
+Skipping header field IDX__TXHDRPROCHKCH23
+Skipping header field IDX__TXHDRPROCHKCH45
+Skipping header field IDX__TXHDRPROCHKCH67
+Skipping header field IDX__TXHDRHVPSHKCH01
+Skipping header field IDX__TXHDRHVPSHKCH23
+Skipping header field IDX__TXHDRHVPSHKCH45
+Skipping header field IDX__TXHDRHVPSHKCH67
+Skipping header field IDX__TXHDRLVHK0CH01
+Skipping header field IDX__TXHDRLVHK0CH23
+Skipping header field IDX__TXHDRLVHK0CH45
+Skipping header field IDX__TXHDRLVHK0CH67
+Skipping header field IDX__TXHDRLVHK1CH01
+Skipping header field IDX__TXHDRLVHK1CH23
+Skipping header field IDX__TXHDRLVHK1CH45
+Skipping header field IDX__TXHDRLVHK1CH67
+Skipping header field IDX__TXHDRLVHK2CH01
+Skipping header field IDX__TXHDRLVHK2CH23
+Skipping header field IDX__TXHDRLVHK2CH45
+Skipping header field IDX__TXHDRLVHK2CH67
+Skipping header field IDX__TXHDRSP09
+Skipping header field IDX__TXHDRSP10
+Skipping header field IDX__TXHDRFSWAIDCOPY
+Skipping header field IDX__TXHDRFSWBINCOPY
+Skipping header field IDX__TXHDRFSWMAJOR
+Skipping header field IDX__TXHDRFSWMINOR
+Skipping header field IDX__TXHDRFSWPATCH
+Skipping header field IDX__TXHDRFSWHVSTAT
+Skipping header field IDX__TXHDRFSWMEM0
+Skipping header field IDX__TXHDRFSWMEM1
+Skipping header field IDX__TXHDRFSWPT0
+Skipping header field IDX__TXHDRFSWPT1
+Skipping header field IDX__TXHDRFSWPT2
+Skipping header field IDX__TXHDRFSWPT3
+Skipping header field IDX__TXHDRFSWPT4
+Skipping header field IDX__TXHDRFSWPT5
+Skipping header field IDX__TXHDRFSWPT6
+Skipping header field IDX__TXHDRFSWPT7
+Skipping header field IDX__TXHDRFSWPT8
+Skipping header field IDX__TXHDRFSWPT9
+Skipping header field IDX__TXHDRFPGAVER
+Skipping header field IDX__SYNCSCI0PKT
+Skipping header field IDX__CRCSCI0PKT
+Created dataset: /1/Metadata/detector_voltage with value: 1901.8296
+Created dataset: /1/Metadata/sensor_voltage with value: 2946.5172000000002
+Created dataset: /1/Metadata/target_voltage with value: 2504.0268
+Created dataset: /1/Metadata/reflectron_voltage with value: 197.80200000000002
+Created dataset: /1/Metadata/rejection_voltage with value: 2946.5172000000002
+Created dataset: /1/Metadata/current_hvps_sensor with value: 0.013560426
+Created dataset: /1/Metadata/positive_current_hvps with value: 0.065763978
+Created dataset: /1/Metadata/negative_current_hvps with value: 0.007399055999999999
+Created dataset: /1/Metadata/voltage_3V3_ref with value: 3.30080256
+Created dataset: /1/Metadata/voltage_3V3_op_ref with value: 3.30080256
+Created dataset: /1/Metadata/voltage_neg6V_bus with value: -6.3888610600000035
+Created dataset: /1/Metadata/voltage_pos6V_bus with value: 6.33647718
+Created dataset: /1/Metadata/voltage_pos16V_bus with value: 15.33572847
+Created dataset: /1/Metadata/voltage_pos3V3_bus with value: 3.31369632
+Created dataset: /1/Metadata/voltage_neg5V_bus with value: -5.023732680000002
+Created dataset: /1/Metadata/voltage_pos5V_bus with value: 5.057577360000001
+Created dataset: /1/Metadata/current_3V3_bus with value: 2.67867864
+Created dataset: /1/Metadata/current_16V_bus with value: 0.19114999200000002
+Created dataset: /1/Metadata/current_6V_bus with value: 0.1235384913
+Created dataset: /1/Metadata/current_neg6V_bus with value: -0.0955751146
+Created dataset: /1/Metadata/current_5V_bus with value: 0.07893406536
+Created dataset: /1/Metadata/current_neg5V_bus with value: -0.0701702595
+Created dataset: /1/Metadata/current_2V5_bus with value: 0.73172088
+Created dataset: /1/Metadata/current_neg2V5_bus with value: -0.11850171300000001
+Created dataset: /1/Metadata/current_1V_pol with value: 725.9519412000001
+Created dataset: /1/Metadata/current_1.9V_pol with value: 1151.2297575
+Created dataset: /1/Metadata/temperature_1 with value: 49.656254234781045
+Created dataset: /1/Metadata/temperature_2 with value: 39.24530287850183
+Created dataset: /1/Metadata/voltage_1V_bus with value: 1.0008793619999998
+Created dataset: /1/Metadata/fpga_temperature with value: 48.357145600000024
+Created dataset: /1/Metadata/voltage_1.9V_bus with value: 1.876850269
+Created dataset: /1/Metadata/voltage_3.3V_bus with value: 3.28791288
+Created dataset: /1/Metadata/TriggerLevel with value: 0.15894999999999998
+Created dataset: /1/Metadata/TriggerMode with value: HGThreshold
+Created dataset: /1/Metadata/Timestamp with value: 1690277270.8469
+Created dataset: /1/Metadata/SpacecraftSeconds with value: 427973270.8469
+Created dataset: /2/Metadata/SHCOARSE with value: 427941305
+Created dataset: /2/Metadata/SHFINE with value: 7663
+Skipping header field IDX__SCI0AID
+Skipping header field IDX__SCI0TYPE
+Skipping header field IDX__SCI0CONT
+Skipping header field IDX__SCI0SPARE1
+Skipping header field IDX__SCI0PACK
+Skipping header field IDX__SCI0FRAG
+Skipping header field IDX__SCI0COMP
+Skipping header field IDX__SCI0EVTNUM
+Skipping header field IDX__SCI0CAT
+Skipping header field IDX__SCI0QUAL
+Skipping header field IDX__SCI0FRAGOFF
+Skipping header field IDX__SCI0VER
+Skipping header field IDX__SCI0TIME32
+Skipping header field IDX__SCI0SPARE2
+Skipping header field IDX__SCI0SPARE3
+Skipping header field IDX__SCI0SPARE4
+Skipping header field IDX__TXHDRSCIEVTLEN
+Skipping header field IDX__TXHDRSP00
+Skipping header field IDX__TXHDRTIMESEC1
+Skipping header field IDX__TXHDRTIMESEC2
+Skipping header field IDX__TXHDRTIMESUBS
+Skipping header field IDX__TXHDRSP01
+Skipping header field IDX__TXHDRTRIGOFFSET
+Skipping header field IDX__TXHDRSP02
+Skipping header field IDX__TXHDRTRIGID
+Skipping header field IDX__TXHDREVTNUM
+Skipping header field IDX__TXHDRBLOCKS
+Skipping header field IDX__TXHDRHGTRIGCTRL1
+Skipping header field IDX__TXHDRHGTRIGCTRL2
+Skipping header field IDX__TXHDRLGTRIGCTRL1
+Skipping header field IDX__TXHDRLGTRIGCTRL2
+Skipping header field IDX__TXHDRMGTRIGCTRL1
+Skipping header field IDX__TXHDRMGTRIGCTRL2
+Skipping header field IDX__TXHDRSP03
+Skipping header field IDX__TXHDRLSADC
+Skipping header field IDX__TXHDRPOLSTAT
+Skipping header field IDX__TXHDRSP04
+Skipping header field IDX__TXHDRPOLCTRL
+Skipping header field IDX__TXHDRCOINENA
+Skipping header field IDX__TXHDRLSTRIGMODE
+Skipping header field IDX__TXHDRMGTRIGMODE
+Skipping header field IDX__TXHDRLGTRIGMODE
+Skipping header field IDX__TXHDRHGTRIGMODE
+Skipping header field IDX__TXHDRSP05
+Skipping header field IDX__TXHDRSP06
+Skipping header field IDX__TXHDRSP07
+Skipping header field IDX__TXHDRSP08
+Skipping header field IDX__TXHDRTOFMAX
+Skipping header field IDX__TXHDRTOFMIN
+Skipping header field IDX__TXHDRLS0MAXMIN
+Skipping header field IDX__TXHDRLS1MAXMIN
+Skipping header field IDX__TXHDRLS2MAXMIN
+Skipping header field IDX__TXHDRFIFODELAY
+Skipping header field IDX__TXHDRSAMPDELAY
+Skipping header field IDX__TXHDRTRANSCNT
+Skipping header field IDX__TXHDRPROCHKCH01
+Skipping header field IDX__TXHDRPROCHKCH23
+Skipping header field IDX__TXHDRPROCHKCH45
+Skipping header field IDX__TXHDRPROCHKCH67
+Skipping header field IDX__TXHDRHVPSHKCH01
+Skipping header field IDX__TXHDRHVPSHKCH23
+Skipping header field IDX__TXHDRHVPSHKCH45
+Skipping header field IDX__TXHDRHVPSHKCH67
+Skipping header field IDX__TXHDRLVHK0CH01
+Skipping header field IDX__TXHDRLVHK0CH23
+Skipping header field IDX__TXHDRLVHK0CH45
+Skipping header field IDX__TXHDRLVHK0CH67
+Skipping header field IDX__TXHDRLVHK1CH01
+Skipping header field IDX__TXHDRLVHK1CH23
+Skipping header field IDX__TXHDRLVHK1CH45
+Skipping header field IDX__TXHDRLVHK1CH67
+Skipping header field IDX__TXHDRLVHK2CH01
+Skipping header field IDX__TXHDRLVHK2CH23
+Skipping header field IDX__TXHDRLVHK2CH45
+Skipping header field IDX__TXHDRLVHK2CH67
+Skipping header field IDX__TXHDRSP09
+Skipping header field IDX__TXHDRSP10
+Skipping header field IDX__TXHDRFSWAIDCOPY
+Skipping header field IDX__TXHDRFSWBINCOPY
+Skipping header field IDX__TXHDRFSWMAJOR
+Skipping header field IDX__TXHDRFSWMINOR
+Skipping header field IDX__TXHDRFSWPATCH
+Skipping header field IDX__TXHDRFSWHVSTAT
+Skipping header field IDX__TXHDRFSWMEM0
+Skipping header field IDX__TXHDRFSWMEM1
+Skipping header field IDX__TXHDRFSWPT0
+Skipping header field IDX__TXHDRFSWPT1
+Skipping header field IDX__TXHDRFSWPT2
+Skipping header field IDX__TXHDRFSWPT3
+Skipping header field IDX__TXHDRFSWPT4
+Skipping header field IDX__TXHDRFSWPT5
+Skipping header field IDX__TXHDRFSWPT6
+Skipping header field IDX__TXHDRFSWPT7
+Skipping header field IDX__TXHDRFSWPT8
+Skipping header field IDX__TXHDRFSWPT9
+Skipping header field IDX__TXHDRFPGAVER
+Skipping header field IDX__SYNCSCI0PKT
+Skipping header field IDX__CRCSCI0PKT
+Created dataset: /2/Metadata/detector_voltage with value: 1901.8296
+Created dataset: /2/Metadata/sensor_voltage with value: 2946.5172000000002
+Created dataset: /2/Metadata/target_voltage with value: 2505.492
+Created dataset: /2/Metadata/reflectron_voltage with value: 197.80200000000002
+Created dataset: /2/Metadata/rejection_voltage with value: 2946.5172000000002
+Created dataset: /2/Metadata/current_hvps_sensor with value: 0.013560426
+Created dataset: /2/Metadata/positive_current_hvps with value: 0.065763978
+Created dataset: /2/Metadata/negative_current_hvps with value: 0.007423394999999999
+Created dataset: /2/Metadata/voltage_3V3_ref with value: 3.30080256
+Created dataset: /2/Metadata/voltage_3V3_op_ref with value: 3.30080256
+Created dataset: /2/Metadata/voltage_neg6V_bus with value: -6.3888610600000035
+Created dataset: /2/Metadata/voltage_pos6V_bus with value: 6.33647718
+Created dataset: /2/Metadata/voltage_pos16V_bus with value: 15.33572847
+Created dataset: /2/Metadata/voltage_pos3V3_bus with value: 3.31369632
+Created dataset: /2/Metadata/voltage_neg5V_bus with value: -5.023732680000002
+Created dataset: /2/Metadata/voltage_pos5V_bus with value: 5.057577360000001
+Created dataset: /2/Metadata/current_3V3_bus with value: 2.67706692
+Created dataset: /2/Metadata/current_16V_bus with value: 0.19098882
+Created dataset: /2/Metadata/current_6V_bus with value: 0.1234579052
+Created dataset: /2/Metadata/current_neg6V_bus with value: -0.0954945285
+Created dataset: /2/Metadata/current_5V_bus with value: 0.07885347928
+Created dataset: /2/Metadata/current_neg5V_bus with value: -0.07010982
+Created dataset: /2/Metadata/current_2V5_bus with value: 0.73172088
+Created dataset: /2/Metadata/current_neg2V5_bus with value: -0.11850171300000001
+Created dataset: /2/Metadata/current_1V_pol with value: 725.9519412000001
+Created dataset: /2/Metadata/current_1.9V_pol with value: 1150.3268322000001
+Created dataset: /2/Metadata/temperature_1 with value: 49.80487314493658
+Created dataset: /2/Metadata/temperature_2 with value: 39.3842700931705
+Created dataset: /2/Metadata/voltage_1V_bus with value: 1.0008793619999998
+Created dataset: /2/Metadata/fpga_temperature with value: 48.47585600000002
+Created dataset: /2/Metadata/voltage_1.9V_bus with value: 1.876850269
+Created dataset: /2/Metadata/voltage_3.3V_bus with value: 3.28791288
+Created dataset: /2/Metadata/TriggerLevel with value: 0.15894999999999998
+Created dataset: /2/Metadata/TriggerMode with value: HGThreshold
+Created dataset: /2/Metadata/Timestamp with value: 1690277284.84706
+Created dataset: /2/Metadata/SpacecraftSeconds with value: 427973284.84705997
+Created dataset: /3/Metadata/SHCOARSE with value: 427941318
+Created dataset: /3/Metadata/SHFINE with value: 7670
+Skipping header field IDX__SCI0AID
+Skipping header field IDX__SCI0TYPE
+Skipping header field IDX__SCI0CONT
+Skipping header field IDX__SCI0SPARE1
+Skipping header field IDX__SCI0PACK
+Skipping header field IDX__SCI0FRAG
+Skipping header field IDX__SCI0COMP
+Skipping header field IDX__SCI0EVTNUM
+Skipping header field IDX__SCI0CAT
+Skipping header field IDX__SCI0QUAL
+Skipping header field IDX__SCI0FRAGOFF
+Skipping header field IDX__SCI0VER
+Skipping header field IDX__SCI0TIME32
+Skipping header field IDX__SCI0SPARE2
+Skipping header field IDX__SCI0SPARE3
+Skipping header field IDX__SCI0SPARE4
+Skipping header field IDX__TXHDRSCIEVTLEN
+Skipping header field IDX__TXHDRSP00
+Skipping header field IDX__TXHDRTIMESEC1
+Skipping header field IDX__TXHDRTIMESEC2
+Skipping header field IDX__TXHDRTIMESUBS
+Skipping header field IDX__TXHDRSP01
+Skipping header field IDX__TXHDRTRIGOFFSET
+Skipping header field IDX__TXHDRSP02
+Skipping header field IDX__TXHDRTRIGID
+Skipping header field IDX__TXHDREVTNUM
+Skipping header field IDX__TXHDRBLOCKS
+Skipping header field IDX__TXHDRHGTRIGCTRL1
+Skipping header field IDX__TXHDRHGTRIGCTRL2
+Skipping header field IDX__TXHDRLGTRIGCTRL1
+Skipping header field IDX__TXHDRLGTRIGCTRL2
+Skipping header field IDX__TXHDRMGTRIGCTRL1
+Skipping header field IDX__TXHDRMGTRIGCTRL2
+Skipping header field IDX__TXHDRSP03
+Skipping header field IDX__TXHDRLSADC
+Skipping header field IDX__TXHDRPOLSTAT
+Skipping header field IDX__TXHDRSP04
+Skipping header field IDX__TXHDRPOLCTRL
+Skipping header field IDX__TXHDRCOINENA
+Skipping header field IDX__TXHDRLSTRIGMODE
+Skipping header field IDX__TXHDRMGTRIGMODE
+Skipping header field IDX__TXHDRLGTRIGMODE
+Skipping header field IDX__TXHDRHGTRIGMODE
+Skipping header field IDX__TXHDRSP05
+Skipping header field IDX__TXHDRSP06
+Skipping header field IDX__TXHDRSP07
+Skipping header field IDX__TXHDRSP08
+Skipping header field IDX__TXHDRTOFMAX
+Skipping header field IDX__TXHDRTOFMIN
+Skipping header field IDX__TXHDRLS0MAXMIN
+Skipping header field IDX__TXHDRLS1MAXMIN
+Skipping header field IDX__TXHDRLS2MAXMIN
+Skipping header field IDX__TXHDRFIFODELAY
+Skipping header field IDX__TXHDRSAMPDELAY
+Skipping header field IDX__TXHDRTRANSCNT
+Skipping header field IDX__TXHDRPROCHKCH01
+Skipping header field IDX__TXHDRPROCHKCH23
+Skipping header field IDX__TXHDRPROCHKCH45
+Skipping header field IDX__TXHDRPROCHKCH67
+Skipping header field IDX__TXHDRHVPSHKCH01
+Skipping header field IDX__TXHDRHVPSHKCH23
+Skipping header field IDX__TXHDRHVPSHKCH45
+Skipping header field IDX__TXHDRHVPSHKCH67
+Skipping header field IDX__TXHDRLVHK0CH01
+Skipping header field IDX__TXHDRLVHK0CH23
+Skipping header field IDX__TXHDRLVHK0CH45
+Skipping header field IDX__TXHDRLVHK0CH67
+Skipping header field IDX__TXHDRLVHK1CH01
+Skipping header field IDX__TXHDRLVHK1CH23
+Skipping header field IDX__TXHDRLVHK1CH45
+Skipping header field IDX__TXHDRLVHK1CH67
+Skipping header field IDX__TXHDRLVHK2CH01
+Skipping header field IDX__TXHDRLVHK2CH23
+Skipping header field IDX__TXHDRLVHK2CH45
+Skipping header field IDX__TXHDRLVHK2CH67
+Skipping header field IDX__TXHDRSP09
+Skipping header field IDX__TXHDRSP10
+Skipping header field IDX__TXHDRFSWAIDCOPY
+Skipping header field IDX__TXHDRFSWBINCOPY
+Skipping header field IDX__TXHDRFSWMAJOR
+Skipping header field IDX__TXHDRFSWMINOR
+Skipping header field IDX__TXHDRFSWPATCH
+Skipping header field IDX__TXHDRFSWHVSTAT
+Skipping header field IDX__TXHDRFSWMEM0
+Skipping header field IDX__TXHDRFSWMEM1
+Skipping header field IDX__TXHDRFSWPT0
+Skipping header field IDX__TXHDRFSWPT1
+Skipping header field IDX__TXHDRFSWPT2
+Skipping header field IDX__TXHDRFSWPT3
+Skipping header field IDX__TXHDRFSWPT4
+Skipping header field IDX__TXHDRFSWPT5
+Skipping header field IDX__TXHDRFSWPT6
+Skipping header field IDX__TXHDRFSWPT7
+Skipping header field IDX__TXHDRFSWPT8
+Skipping header field IDX__TXHDRFSWPT9
+Skipping header field IDX__TXHDRFPGAVER
+Skipping header field IDX__SYNCSCI0PKT
+Skipping header field IDX__CRCSCI0PKT
+Created dataset: /3/Metadata/detector_voltage with value: 1901.8296
+Created dataset: /3/Metadata/sensor_voltage with value: 2946.5172000000002
+Created dataset: /3/Metadata/target_voltage with value: 2505.492
+Created dataset: /3/Metadata/reflectron_voltage with value: 197.80200000000002
+Created dataset: /3/Metadata/rejection_voltage with value: 2946.5172000000002
+Created dataset: /3/Metadata/current_hvps_sensor with value: 0.013560426
+Created dataset: /3/Metadata/positive_current_hvps with value: 0.065763978
+Created dataset: /3/Metadata/negative_current_hvps with value: 0.007423394999999999
+Created dataset: /3/Metadata/voltage_3V3_ref with value: 3.30080256
+Created dataset: /3/Metadata/voltage_3V3_op_ref with value: 3.30080256
+Created dataset: /3/Metadata/voltage_neg6V_bus with value: -6.3888610600000035
+Created dataset: /3/Metadata/voltage_pos6V_bus with value: 6.33647718
+Created dataset: /3/Metadata/voltage_pos16V_bus with value: 15.34055558
+Created dataset: /3/Metadata/voltage_pos3V3_bus with value: 3.31369632
+Created dataset: /3/Metadata/voltage_neg5V_bus with value: -5.023732680000002
+Created dataset: /3/Metadata/voltage_pos5V_bus with value: 5.057577360000001
+Created dataset: /3/Metadata/current_3V3_bus with value: 2.68512552
+Created dataset: /3/Metadata/current_16V_bus with value: 0.19114999200000002
+Created dataset: /3/Metadata/current_6V_bus with value: 0.1236190774
+Created dataset: /3/Metadata/current_neg6V_bus with value: -0.0955751146
+Created dataset: /3/Metadata/current_5V_bus with value: 0.07893406536
+Created dataset: /3/Metadata/current_neg5V_bus with value: -0.0701299665
+Created dataset: /3/Metadata/current_2V5_bus with value: 0.73172088
+Created dataset: /3/Metadata/current_neg2V5_bus with value: -0.11850171300000001
+Created dataset: /3/Metadata/current_1V_pol with value: 733.1753436
+Created dataset: /3/Metadata/current_1.9V_pol with value: 1151.2297575
+Created dataset: /3/Metadata/temperature_1 with value: 50.82742336505278
+Created dataset: /3/Metadata/temperature_2 with value: 40.364218714026094
+Created dataset: /3/Metadata/voltage_1V_bus with value: 1.0008793619999998
+Created dataset: /3/Metadata/fpga_temperature with value: 49.5442496
+Created dataset: /3/Metadata/voltage_1.9V_bus with value: 1.876850269
+Created dataset: /3/Metadata/voltage_3.3V_bus with value: 3.28791288
+Created dataset: /3/Metadata/TriggerLevel with value: 0.15894999999999998
+Created dataset: /3/Metadata/TriggerMode with value: HGThreshold
+Created dataset: /3/Metadata/Timestamp with value: 1690277297.8472
+Created dataset: /3/Metadata/SpacecraftSeconds with value: 427973297.8472
+Created dataset: /4/Metadata/SHCOARSE with value: 427941332
+Created dataset: /4/Metadata/SHFINE with value: 7677
+Skipping header field IDX__SCI0AID
+Skipping header field IDX__SCI0TYPE
+Skipping header field IDX__SCI0CONT
+Skipping header field IDX__SCI0SPARE1
+Skipping header field IDX__SCI0PACK
+Skipping header field IDX__SCI0FRAG
+Skipping header field IDX__SCI0COMP
+Skipping header field IDX__SCI0EVTNUM
+Skipping header field IDX__SCI0CAT
+Skipping header field IDX__SCI0QUAL
+Skipping header field IDX__SCI0FRAGOFF
+Skipping header field IDX__SCI0VER
+Skipping header field IDX__SCI0TIME32
+Skipping header field IDX__SCI0SPARE2
+Skipping header field IDX__SCI0SPARE3
+Skipping header field IDX__SCI0SPARE4
+Skipping header field IDX__TXHDRSCIEVTLEN
+Skipping header field IDX__TXHDRSP00
+Skipping header field IDX__TXHDRTIMESEC1
+Skipping header field IDX__TXHDRTIMESEC2
+Skipping header field IDX__TXHDRTIMESUBS
+Skipping header field IDX__TXHDRSP01
+Skipping header field IDX__TXHDRTRIGOFFSET
+Skipping header field IDX__TXHDRSP02
+Skipping header field IDX__TXHDRTRIGID
+Skipping header field IDX__TXHDREVTNUM
+Skipping header field IDX__TXHDRBLOCKS
+Skipping header field IDX__TXHDRHGTRIGCTRL1
+Skipping header field IDX__TXHDRHGTRIGCTRL2
+Skipping header field IDX__TXHDRLGTRIGCTRL1
+Skipping header field IDX__TXHDRLGTRIGCTRL2
+Skipping header field IDX__TXHDRMGTRIGCTRL1
+Skipping header field IDX__TXHDRMGTRIGCTRL2
+Skipping header field IDX__TXHDRSP03
+Skipping header field IDX__TXHDRLSADC
+Skipping header field IDX__TXHDRPOLSTAT
+Skipping header field IDX__TXHDRSP04
+Skipping header field IDX__TXHDRPOLCTRL
+Skipping header field IDX__TXHDRCOINENA
+Skipping header field IDX__TXHDRLSTRIGMODE
+Skipping header field IDX__TXHDRMGTRIGMODE
+Skipping header field IDX__TXHDRLGTRIGMODE
+Skipping header field IDX__TXHDRHGTRIGMODE
+Skipping header field IDX__TXHDRSP05
+Skipping header field IDX__TXHDRSP06
+Skipping header field IDX__TXHDRSP07
+Skipping header field IDX__TXHDRSP08
+Skipping header field IDX__TXHDRTOFMAX
+Skipping header field IDX__TXHDRTOFMIN
+Skipping header field IDX__TXHDRLS0MAXMIN
+Skipping header field IDX__TXHDRLS1MAXMIN
+Skipping header field IDX__TXHDRLS2MAXMIN
+Skipping header field IDX__TXHDRFIFODELAY
+Skipping header field IDX__TXHDRSAMPDELAY
+Skipping header field IDX__TXHDRTRANSCNT
+Skipping header field IDX__TXHDRPROCHKCH01
+Skipping header field IDX__TXHDRPROCHKCH23
+Skipping header field IDX__TXHDRPROCHKCH45
+Skipping header field IDX__TXHDRPROCHKCH67
+Skipping header field IDX__TXHDRHVPSHKCH01
+Skipping header field IDX__TXHDRHVPSHKCH23
+Skipping header field IDX__TXHDRHVPSHKCH45
+Skipping header field IDX__TXHDRHVPSHKCH67
+Skipping header field IDX__TXHDRLVHK0CH01
+Skipping header field IDX__TXHDRLVHK0CH23
+Skipping header field IDX__TXHDRLVHK0CH45
+Skipping header field IDX__TXHDRLVHK0CH67
+Skipping header field IDX__TXHDRLVHK1CH01
+Skipping header field IDX__TXHDRLVHK1CH23
+Skipping header field IDX__TXHDRLVHK1CH45
+Skipping header field IDX__TXHDRLVHK1CH67
+Skipping header field IDX__TXHDRLVHK2CH01
+Skipping header field IDX__TXHDRLVHK2CH23
+Skipping header field IDX__TXHDRLVHK2CH45
+Skipping header field IDX__TXHDRLVHK2CH67
+Skipping header field IDX__TXHDRSP09
+Skipping header field IDX__TXHDRSP10
+Skipping header field IDX__TXHDRFSWAIDCOPY
+Skipping header field IDX__TXHDRFSWBINCOPY
+Skipping header field IDX__TXHDRFSWMAJOR
+Skipping header field IDX__TXHDRFSWMINOR
+Skipping header field IDX__TXHDRFSWPATCH
+Skipping header field IDX__TXHDRFSWHVSTAT
+Skipping header field IDX__TXHDRFSWMEM0
+Skipping header field IDX__TXHDRFSWMEM1
+Skipping header field IDX__TXHDRFSWPT0
+Skipping header field IDX__TXHDRFSWPT1
+Skipping header field IDX__TXHDRFSWPT2
+Skipping header field IDX__TXHDRFSWPT3
+Skipping header field IDX__TXHDRFSWPT4
+Skipping header field IDX__TXHDRFSWPT5
+Skipping header field IDX__TXHDRFSWPT6
+Skipping header field IDX__TXHDRFSWPT7
+Skipping header field IDX__TXHDRFSWPT8
+Skipping header field IDX__TXHDRFSWPT9
+Skipping header field IDX__TXHDRFPGAVER
+Skipping header field IDX__SYNCSCI0PKT
+Skipping header field IDX__CRCSCI0PKT
+Created dataset: /4/Metadata/detector_voltage with value: 1901.8296
+Created dataset: /4/Metadata/sensor_voltage with value: 2946.5172000000002
+Created dataset: /4/Metadata/target_voltage with value: 2504.0268
+Created dataset: /4/Metadata/reflectron_voltage with value: 197.80200000000002
+Created dataset: /4/Metadata/rejection_voltage with value: 2946.5172000000002
+Created dataset: /4/Metadata/current_hvps_sensor with value: 0.013567751999999999
+Created dataset: /4/Metadata/positive_current_hvps with value: 0.065763978
+Created dataset: /4/Metadata/negative_current_hvps with value: 0.007423394999999999
+Created dataset: /4/Metadata/voltage_3V3_ref with value: 3.30080256
+Created dataset: /4/Metadata/voltage_3V3_op_ref with value: 3.30080256
+Created dataset: /4/Metadata/voltage_neg6V_bus with value: -6.3888610600000035
+Created dataset: /4/Metadata/voltage_pos6V_bus with value: 6.33647718
+Created dataset: /4/Metadata/voltage_pos16V_bus with value: 15.34055558
+Created dataset: /4/Metadata/voltage_pos3V3_bus with value: 3.31369632
+Created dataset: /4/Metadata/voltage_neg5V_bus with value: -5.023732680000002
+Created dataset: /4/Metadata/voltage_pos5V_bus with value: 5.057577360000001
+Created dataset: /4/Metadata/current_3V3_bus with value: 2.6883489600000003
+Created dataset: /4/Metadata/current_16V_bus with value: 0.19114999200000002
+Created dataset: /4/Metadata/current_6V_bus with value: 0.1236190774
+Created dataset: /4/Metadata/current_neg6V_bus with value: -0.0955751146
+Created dataset: /4/Metadata/current_5V_bus with value: 0.07893406536
+Created dataset: /4/Metadata/current_neg5V_bus with value: -0.0701299665
+Created dataset: /4/Metadata/current_2V5_bus with value: 0.73172088
+Created dataset: /4/Metadata/current_neg2V5_bus with value: -0.118542006
+Created dataset: /4/Metadata/current_1V_pol with value: 735.8841195
+Created dataset: /4/Metadata/current_1.9V_pol with value: 1151.2297575
+Created dataset: /4/Metadata/temperature_1 with value: 51.07100613983633
+Created dataset: /4/Metadata/temperature_2 with value: 40.57630804398127
+Created dataset: /4/Metadata/voltage_1V_bus with value: 1.0008793619999998
+Created dataset: /4/Metadata/fpga_temperature with value: 49.781670399999996
+Created dataset: /4/Metadata/voltage_1.9V_bus with value: 1.876850269
+Created dataset: /4/Metadata/voltage_3.3V_bus with value: 3.28791288
+Created dataset: /4/Metadata/TriggerLevel with value: 0.15894999999999998
+Created dataset: /4/Metadata/TriggerMode with value: HGThreshold
+Created dataset: /4/Metadata/Timestamp with value: 1690277311.84734
+Created dataset: /4/Metadata/SpacecraftSeconds with value: 427973311.84734
+Created dataset: /5/Metadata/SHCOARSE with value: 427941345
+Created dataset: /5/Metadata/SHFINE with value: 7684
+Skipping header field IDX__SCI0AID
+Skipping header field IDX__SCI0TYPE
+Skipping header field IDX__SCI0CONT
+Skipping header field IDX__SCI0SPARE1
+Skipping header field IDX__SCI0PACK
+Skipping header field IDX__SCI0FRAG
+Skipping header field IDX__SCI0COMP
+Skipping header field IDX__SCI0EVTNUM
+Skipping header field IDX__SCI0CAT
+Skipping header field IDX__SCI0QUAL
+Skipping header field IDX__SCI0FRAGOFF
+Skipping header field IDX__SCI0VER
+Skipping header field IDX__SCI0TIME32
+Skipping header field IDX__SCI0SPARE2
+Skipping header field IDX__SCI0SPARE3
+Skipping header field IDX__SCI0SPARE4
+Skipping header field IDX__TXHDRSCIEVTLEN
+Skipping header field IDX__TXHDRSP00
+Skipping header field IDX__TXHDRTIMESEC1
+Skipping header field IDX__TXHDRTIMESEC2
+Skipping header field IDX__TXHDRTIMESUBS
+Skipping header field IDX__TXHDRSP01
+Skipping header field IDX__TXHDRTRIGOFFSET
+Skipping header field IDX__TXHDRSP02
+Skipping header field IDX__TXHDRTRIGID
+Skipping header field IDX__TXHDREVTNUM
+Skipping header field IDX__TXHDRBLOCKS
+Skipping header field IDX__TXHDRHGTRIGCTRL1
+Skipping header field IDX__TXHDRHGTRIGCTRL2
+Skipping header field IDX__TXHDRLGTRIGCTRL1
+Skipping header field IDX__TXHDRLGTRIGCTRL2
+Skipping header field IDX__TXHDRMGTRIGCTRL1
+Skipping header field IDX__TXHDRMGTRIGCTRL2
+Skipping header field IDX__TXHDRSP03
+Skipping header field IDX__TXHDRLSADC
+Skipping header field IDX__TXHDRPOLSTAT
+Skipping header field IDX__TXHDRSP04
+Skipping header field IDX__TXHDRPOLCTRL
+Skipping header field IDX__TXHDRCOINENA
+Skipping header field IDX__TXHDRLSTRIGMODE
+Skipping header field IDX__TXHDRMGTRIGMODE
+Skipping header field IDX__TXHDRLGTRIGMODE
+Skipping header field IDX__TXHDRHGTRIGMODE
+Skipping header field IDX__TXHDRSP05
+Skipping header field IDX__TXHDRSP06
+Skipping header field IDX__TXHDRSP07
+Skipping header field IDX__TXHDRSP08
+Skipping header field IDX__TXHDRTOFMAX
+Skipping header field IDX__TXHDRTOFMIN
+Skipping header field IDX__TXHDRLS0MAXMIN
+Skipping header field IDX__TXHDRLS1MAXMIN
+Skipping header field IDX__TXHDRLS2MAXMIN
+Skipping header field IDX__TXHDRFIFODELAY
+Skipping header field IDX__TXHDRSAMPDELAY
+Skipping header field IDX__TXHDRTRANSCNT
+Skipping header field IDX__TXHDRPROCHKCH01
+Skipping header field IDX__TXHDRPROCHKCH23
+Skipping header field IDX__TXHDRPROCHKCH45
+Skipping header field IDX__TXHDRPROCHKCH67
+Skipping header field IDX__TXHDRHVPSHKCH01
+Skipping header field IDX__TXHDRHVPSHKCH23
+Skipping header field IDX__TXHDRHVPSHKCH45
+Skipping header field IDX__TXHDRHVPSHKCH67
+Skipping header field IDX__TXHDRLVHK0CH01
+Skipping header field IDX__TXHDRLVHK0CH23
+Skipping header field IDX__TXHDRLVHK0CH45
+Skipping header field IDX__TXHDRLVHK0CH67
+Skipping header field IDX__TXHDRLVHK1CH01
+Skipping header field IDX__TXHDRLVHK1CH23
+Skipping header field IDX__TXHDRLVHK1CH45
+Skipping header field IDX__TXHDRLVHK1CH67
+Skipping header field IDX__TXHDRLVHK2CH01
+Skipping header field IDX__TXHDRLVHK2CH23
+Skipping header field IDX__TXHDRLVHK2CH45
+Skipping header field IDX__TXHDRLVHK2CH67
+Skipping header field IDX__TXHDRSP09
+Skipping header field IDX__TXHDRSP10
+Skipping header field IDX__TXHDRFSWAIDCOPY
+Skipping header field IDX__TXHDRFSWBINCOPY
+Skipping header field IDX__TXHDRFSWMAJOR
+Skipping header field IDX__TXHDRFSWMINOR
+Skipping header field IDX__TXHDRFSWPATCH
+Skipping header field IDX__TXHDRFSWHVSTAT
+Skipping header field IDX__TXHDRFSWMEM0
+Skipping header field IDX__TXHDRFSWMEM1
+Skipping header field IDX__TXHDRFSWPT0
+Skipping header field IDX__TXHDRFSWPT1
+Skipping header field IDX__TXHDRFSWPT2
+Skipping header field IDX__TXHDRFSWPT3
+Skipping header field IDX__TXHDRFSWPT4
+Skipping header field IDX__TXHDRFSWPT5
+Skipping header field IDX__TXHDRFSWPT6
+Skipping header field IDX__TXHDRFSWPT7
+Skipping header field IDX__TXHDRFSWPT8
+Skipping header field IDX__TXHDRFSWPT9
+Skipping header field IDX__TXHDRFPGAVER
+Skipping header field IDX__SYNCSCI0PKT
+Skipping header field IDX__CRCSCI0PKT
+Created dataset: /5/Metadata/detector_voltage with value: 1901.8296
+Created dataset: /5/Metadata/sensor_voltage with value: 2946.5172000000002
+Created dataset: /5/Metadata/target_voltage with value: 2505.492
+Created dataset: /5/Metadata/reflectron_voltage with value: 197.80200000000002
+Created dataset: /5/Metadata/rejection_voltage with value: 2946.5172000000002
+Created dataset: /5/Metadata/current_hvps_sensor with value: 0.013567751999999999
+Created dataset: /5/Metadata/positive_current_hvps with value: 0.065763978
+Created dataset: /5/Metadata/negative_current_hvps with value: 0.007423394999999999
+Created dataset: /5/Metadata/voltage_3V3_ref with value: 3.30080256
+Created dataset: /5/Metadata/voltage_3V3_op_ref with value: 3.30080256
+Created dataset: /5/Metadata/voltage_neg6V_bus with value: -6.3888610600000035
+Created dataset: /5/Metadata/voltage_pos6V_bus with value: 6.33647718
+Created dataset: /5/Metadata/voltage_pos16V_bus with value: 15.34055558
+Created dataset: /5/Metadata/voltage_pos3V3_bus with value: 3.31369632
+Created dataset: /5/Metadata/voltage_neg5V_bus with value: -5.023732680000002
+Created dataset: /5/Metadata/voltage_pos5V_bus with value: 5.057577360000001
+Created dataset: /5/Metadata/current_3V3_bus with value: 2.6867372400000002
+Created dataset: /5/Metadata/current_16V_bus with value: 0.19114999200000002
+Created dataset: /5/Metadata/current_6V_bus with value: 0.1236190774
+Created dataset: /5/Metadata/current_neg6V_bus with value: -0.0955751146
+Created dataset: /5/Metadata/current_5V_bus with value: 0.07893406536
+Created dataset: /5/Metadata/current_neg5V_bus with value: -0.0701299665
+Created dataset: /5/Metadata/current_2V5_bus with value: 0.73172088
+Created dataset: /5/Metadata/current_neg2V5_bus with value: -0.118542006
+Created dataset: /5/Metadata/current_1V_pol with value: 734.9811942
+Created dataset: /5/Metadata/current_1.9V_pol with value: 1151.2297575
+Created dataset: /5/Metadata/temperature_1 with value: 51.10153283038074
+Created dataset: /5/Metadata/temperature_2 with value: 40.59992777130191
+Created dataset: /5/Metadata/voltage_1V_bus with value: 1.0008793619999998
+Created dataset: /5/Metadata/fpga_temperature with value: 49.781670399999996
+Created dataset: /5/Metadata/voltage_1.9V_bus with value: 1.876850269
+Created dataset: /5/Metadata/voltage_3.3V_bus with value: 3.28791288
+Created dataset: /5/Metadata/TriggerLevel with value: 0.15894999999999998
+Created dataset: /5/Metadata/TriggerMode with value: HGThreshold
+Created dataset: /5/Metadata/Timestamp with value: 1690277324.84748
+Created dataset: /5/Metadata/SpacecraftSeconds with value: 427973324.84748
+Auto-assigned 15 mass line(s) with 51 detected peaks
+Auto-assigned 9 mass line(s) with 17 detected peaks
+Auto-assigned 6 mass line(s) with 9 detected peaks
+Auto-assigned 1 mass line(s) with 1 detected peaks
+Auto-assigned 9 mass line(s) with 46 detected peaks
+No accelerator match found for event 1
+No accelerator match found for event 2
+No accelerator match found for event 3
+No accelerator match found for event 4
+No accelerator match found for event 5
