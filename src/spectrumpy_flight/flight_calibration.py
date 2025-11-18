@@ -1348,8 +1348,10 @@ class FlightCalibrationAnalyzer:
 
             self._plot_data_inventory(pdf)
             self._plot_data_provenance(pdf)
+            self._plot_timestamp_alignment(pdf)
             self._plot_impact_rate_series(pdf)
             self._plot_impact_charge_histograms(pdf)
+            self._plot_global_measurement_histograms(pdf)
             self._plot_speed_efficiency_trends(pdf)
             self._plot_rise_time_by_location(pdf)
             self._plot_spectrum_vs_spectrumpy(pdf)
@@ -1695,6 +1697,143 @@ class FlightCalibrationAnalyzer:
         pdf.savefig(fig)
         plt.close(fig)
 
+    def _plot_timestamp_alignment(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        if not self.events:
+            return
+        instrument_epochs: list[float] = []
+        integer_timestamps: list[float] = []
+        offsets_s: list[float] = []
+        for record in self.events:
+            instrument_value = getattr(record, "instrument_epoch_ms", None)
+            accelerator_value = getattr(record, "accelerator_timestamp_ms", None)
+            if instrument_value is not None and math.isfinite(instrument_value):
+                instrument_epochs.append(float(instrument_value))
+            if accelerator_value is not None and math.isfinite(accelerator_value):
+                integer_timestamps.append(float(accelerator_value))
+            if (
+                instrument_value is not None
+                and accelerator_value is not None
+                and math.isfinite(instrument_value)
+                and math.isfinite(accelerator_value)
+            ):
+                offsets_s.append((float(instrument_value) - float(accelerator_value)) / 1000.0)
+        if not instrument_epochs or not integer_timestamps:
+            return
+        def _ms_to_date_num(value: float) -> float | None:
+            try:
+                dt = datetime.fromtimestamp(value / 1000.0, tz=timezone.utc)
+            except Exception:
+                return None
+            numeric = mdates.date2num(dt)
+            if not math.isfinite(numeric):
+                return None
+            return float(numeric)
+
+        inst_dates = np.asarray(
+            [converted for value in instrument_epochs if (converted := _ms_to_date_num(value)) is not None],
+            dtype=float,
+        )
+        accel_dates = np.asarray(
+            [converted for value in integer_timestamps if (converted := _ms_to_date_num(value)) is not None],
+            dtype=float,
+        )
+        if inst_dates.size == 0 or accel_dates.size == 0:
+            return
+        combined = np.concatenate([inst_dates, accel_dates])
+        finite_mask = np.isfinite(combined)
+        combined = combined[finite_mask]
+        if combined.size == 0:
+            return
+        lo = float(np.min(combined))
+        hi = float(np.max(combined))
+        if not math.isfinite(lo) or not math.isfinite(hi):
+            return
+        if math.isclose(lo, hi):
+            bin_edges = 40
+        else:
+            bin_count = min(160, max(40, combined.size // 50 * 10 or 40))
+            bin_edges = np.linspace(lo, hi, bin_count)
+        fig = plt.figure(figsize=(10, 7))
+        fig.suptitle("Timestamp provenance diagnostics", fontsize=16)
+        grid = fig.add_gridspec(2, 1, height_ratios=(0.65, 0.35), hspace=0.35)
+        ax_time = fig.add_subplot(grid[0])
+        ax_time.hist(
+            inst_dates,
+            bins=bin_edges,
+            color="#0b5394",
+            alpha=0.65,
+            label="Metadata/Epoch",
+        )
+        ax_time.hist(
+            accel_dates,
+            bins=bin_edges,
+            color="#990000",
+            alpha=0.55,
+            label="Accelerator IntegerTimestamp",
+        )
+        ax_time.set_ylabel("Count")
+        ax_time.set_xlabel("UTC timestamp")
+        ax_time.xaxis_date()
+        ax_time.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
+        fig.autofmt_xdate()
+        ax_time.grid(True, alpha=0.3)
+        ax_time.legend(loc="upper left")
+        ax_delta = fig.add_subplot(grid[1])
+        offset_arr = np.asarray([value for value in offsets_s if np.isfinite(value)], dtype=float)
+        if offset_arr.size > 0:
+            delta_lo = float(np.min(offset_arr))
+            delta_hi = float(np.max(offset_arr))
+            if math.isclose(delta_lo, delta_hi):
+                delta_bins = 30
+            else:
+                delta_bins = min(120, max(30, offset_arr.size // 40 * 10 or 30))
+            ax_delta.hist(
+                offset_arr,
+                bins=delta_bins,
+                color="#134f5c",
+                alpha=0.85,
+                edgecolor="#0f0f0f",
+                linewidth=0.4,
+            )
+            ax_delta.axvline(0.0, color="#990000", linestyle="--", linewidth=1.0, alpha=0.8)
+            stats = _format_stats(offset_arr)
+            summary_parts = []
+            if "median" in stats:
+                summary_parts.append(f"median {stats['median']:+.2f} s")
+            if "mean" in stats and "std" in stats:
+                summary_parts.append(f"μ {stats['mean']:+.2f} s, σ {stats['std']:.2f} s")
+            summary_parts.append(f"N={stats.get('count', 0)}")
+            ax_delta.text(
+                0.02,
+                0.92,
+                " | ".join(summary_parts),
+                transform=ax_delta.transAxes,
+                ha="left",
+                va="top",
+                fontsize=10,
+            )
+        else:
+            ax_delta.text(
+                0.5,
+                0.5,
+                "No overlapping timestamps were available to compare.",
+                ha="center",
+                va="center",
+                fontsize=11,
+            )
+        ax_delta.set_xlabel("Instrument epoch − IntegerTimestamp (s)")
+        ax_delta.set_ylabel("Count")
+        ax_delta.grid(True, alpha=0.3)
+        caption = (
+            r"\textit{Figure: Instrument packet Metadata/Epoch values compared with the IntegerTimestamp "
+            r"entries used for accelerator matching. All timestamps are converted to UTC for direct "
+            r"comparison and the residual panel highlights systematic offsets.}"
+        )
+        fig.text(0.5, 0.01, caption, ha="center", fontsize=9)
+        pdf.savefig(fig)
+        plt.close(fig)
+
     def _plot_rise_time_by_location(self, pdf: PdfPages) -> None:
         assert plt is not None
         groups: dict[str, list[tuple[float, float, float, float]]] = defaultdict(list)
@@ -2019,6 +2158,166 @@ class FlightCalibrationAnalyzer:
                 row = idx // cols
                 col = idx % cols
                 axes[row, col].axis("off")
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _plot_global_measurement_histograms(self, pdf: PdfPages) -> None:
+        assert plt is not None
+        if not self.events:
+            return
+        metrics = [
+            {
+                "title": "Target H 10–90% rise time",
+                "extractor": lambda record: record.target_rise_time_us,
+                "xlabel": "Rise time (μs)",
+                "scale": 1.0,
+                "log": True,
+                "positive": True,
+            },
+            {
+                "title": "Instrument mass estimate",
+                "extractor": lambda record: record.instrument_mass_estimate_kg,
+                "xlabel": "Mass (ng)",
+                "scale": 1e9,
+                "log": True,
+                "positive": True,
+            },
+            {
+                "title": "Instrument velocity estimate",
+                "extractor": lambda record: record.instrument_velocity_estimate_mps,
+                "xlabel": r"Velocity (km s$^{-1}$)",
+                "scale": 1e-3,
+                "log": False,
+                "positive": True,
+            },
+            {
+                "title": "Target H velocity (fit)",
+                "extractor": lambda record: record.target_velocity_fit_mps,
+                "xlabel": r"Velocity (km s$^{-1}$)",
+                "scale": 1e-3,
+                "log": False,
+                "positive": True,
+            },
+            {
+                "title": "Target H velocity (rise)",
+                "extractor": lambda record: record.target_velocity_rise_mps,
+                "xlabel": r"Velocity (km s$^{-1}$)",
+                "scale": 1e-3,
+                "log": False,
+                "positive": True,
+            },
+            {
+                "title": "Target H velocity (ratio)",
+                "extractor": lambda record: record.target_velocity_ratio_mps,
+                "xlabel": r"Velocity (km s$^{-1}$)",
+                "scale": 1e-3,
+                "log": False,
+                "positive": True,
+            },
+            {
+                "title": "Target H charge yield",
+                "extractor": lambda record: record.charge_yield_by_channel.get("Target H"),
+                "xlabel": "Charge yield",
+                "scale": 1.0,
+                "log": False,
+                "positive": True,
+            },
+            {
+                "title": "Collection efficiency",
+                "extractor": lambda record: record.collection_efficiency,
+                "xlabel": "η",
+                "scale": 1.0,
+                "log": False,
+                "positive": True,
+            },
+        ]
+        cols = 2
+        rows = math.ceil(len(metrics) / cols)
+        fig, axes = plt.subplots(rows, cols, figsize=(8.5, 11))
+        axes = np.atleast_2d(axes)
+        fig.suptitle("Global instrument telemetry distributions", fontsize=16)
+        any_data = False
+        for idx, spec in enumerate(metrics):
+            row = idx // cols
+            col = idx % cols
+            ax = axes[row, col]
+            values: list[float] = []
+            extractor = spec["extractor"]
+            scale = float(spec["scale"])
+            positive_only = bool(spec["positive"])
+            for record in self.events:
+                raw_value = extractor(record)
+                if raw_value is None:
+                    continue
+                try:
+                    numeric = float(raw_value) * scale
+                except Exception:
+                    continue
+                if not np.isfinite(numeric):
+                    continue
+                if positive_only and numeric <= 0.0:
+                    continue
+                values.append(numeric)
+            arr = np.asarray(values, dtype=float)
+            if arr.size == 0:
+                ax.axis("off")
+                continue
+            any_data = True
+            lo = float(np.min(arr))
+            hi = float(np.max(arr))
+            log_scale = bool(spec["log"])
+            if log_scale and lo > 0 and hi / lo > 5:
+                bins = np.logspace(np.log10(lo), np.log10(hi), 40)
+                ax.set_xscale("log")
+            else:
+                bins = 40
+            ax.hist(
+                arr,
+                bins=bins,
+                color="#0b5394",
+                alpha=0.82,
+                edgecolor="#0f0f0f",
+                linewidth=0.4,
+            )
+            ax.set_title(spec["title"])
+            ax.set_xlabel(spec["xlabel"])
+            ax.set_ylabel("Count")
+            ax.grid(True, which="both", alpha=0.3)
+            stats = _format_stats(arr)
+            summary: list[str] = []
+            median = stats.get("median")
+            if isinstance(median, (int, float)) and np.isfinite(float(median)):
+                summary.append(f"median={float(median):.2f}")
+            mean = stats.get("mean")
+            std = stats.get("std")
+            if isinstance(mean, (int, float)) and isinstance(std, (int, float)):
+                if np.isfinite(float(mean)) and np.isfinite(float(std)):
+                    summary.append(f"μ={float(mean):.2f} σ={float(std):.2f}")
+            summary.append(f"N={stats.get('count', 0)}")
+            ax.text(
+                0.97,
+                0.95,
+                "\n".join(summary),
+                transform=ax.transAxes,
+                ha="right",
+                va="top",
+                fontsize=9,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8, linewidth=0.5),
+            )
+        total_axes = rows * cols
+        if total_axes > len(metrics):
+            for idx in range(len(metrics), total_axes):
+                row = idx // cols
+                col = idx % cols
+                axes[row, col].axis("off")
+        if not any_data:
+            plt.close(fig)
+            return
+        caption = (
+            r"\textit{Figure: High-statistics histograms of SpectrumPY-derived quantities. "
+            r"All events contribute regardless of accelerator matching to emphasise intrinsic instrument behaviour.}"
+        )
+        fig.text(0.5, 0.01, caption, ha="center", fontsize=9)
         pdf.savefig(fig)
         plt.close(fig)
 
