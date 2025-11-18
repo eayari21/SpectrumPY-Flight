@@ -191,6 +191,18 @@ def create_dataset_if_not_exists(hdf5_file, dataset_path, data, *, dtype=None):
     return hdf5_file.create_dataset(dataset_path, data=data)
 
 
+def _ensure_dataset_aliases(hdf5_file, dataset_path, aliases):
+    """Create soft links so legacy dataset names resolve to the new path."""
+
+    for alias in aliases:
+        if alias in hdf5_file:
+            continue
+        group_path = os.path.dirname(alias)
+        if group_path and group_path != '/':
+            hdf5_file.require_group(group_path)
+        hdf5_file[alias] = h5py.SoftLink(dataset_path)
+
+
 _FILENAME_EPOCH_PATTERN = re.compile(r"(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})")
 
 
@@ -2863,7 +2875,20 @@ class IDEXEvent:
                     chi_sq = target_fit.get('chi_sq', np.nan)
                     red_chi = target_fit.get('red_chi', np.nan)
 
-                    create_dataset_if_not_exists(h, f"/{event_key}/Analysis/{channel} Fit Parameters", data=np.asarray(param, dtype=float))
+                    param_path = f"/{event_key}/Analysis/{channel} Fit Parameters"
+                    create_dataset_if_not_exists(
+                        h,
+                        param_path,
+                        data=np.asarray(param, dtype=float),
+                    )
+                    _ensure_dataset_aliases(
+                        h,
+                        param_path,
+                        (
+                            f"/{event_key}/Analysis/{channel}FitParams",
+                            f"/{event_key}/Analysis/{channel}FitParameters",
+                        ),
+                    )
                     create_dataset_if_not_exists(h, f"/{event_key}/Analysis/{channel} Fit Time", data=np.asarray(fit_time, dtype=float))
                     create_dataset_if_not_exists(h, f"/{event_key}/Analysis/{channel} Fit Result", data=np.asarray(fit_curve, dtype=float))
                     create_dataset_if_not_exists(h, f"/{event_key}/Analysis/{channel} Filtered Signal", data=np.asarray(filtered_signal, dtype=float))
@@ -3048,10 +3073,16 @@ class IDEXEvent:
                         else np.nan
                     )
                     channel_analysis['impact_charge'] = impact_value
+                    impact_path = f"/{event_key}/Analysis/{channel_name} Impact Charge"
                     create_dataset_if_not_exists(
                         h,
-                        f"/{event_key}/Analysis/{channel_name} Impact Charge",
+                        impact_path,
                         data=np.array([impact_value], dtype=float),
+                    )
+                    _ensure_dataset_aliases(
+                        h,
+                        impact_path,
+                        (f"/{event_key}/Analysis/{channel_name}ImpactCharge",),
                     )
 
                     if channel_name in {'Target L', 'Target H'}:
@@ -3097,10 +3128,19 @@ class IDEXEvent:
                             channel_analysis['collection_efficiency'] = float(ratio)
                         else:
                             channel_analysis['collection_efficiency'] = np.nan
+                        mass_path = f"/{event_key}/Analysis/{channel_name} Dust Mass Estimate"
                         create_dataset_if_not_exists(
                             h,
-                            f"/{event_key}/Analysis/{channel_name} Dust Mass Estimate",
+                            mass_path,
                             data=np.array([mass_value], dtype=float),
+                        )
+                        _ensure_dataset_aliases(
+                            h,
+                            mass_path,
+                            (
+                                f"/{event_key}/Analysis/{channel_name}MassEstimate",
+                                f"/{event_key}/Analysis/{channel_name}DustMassEstimate",
+                            ),
                         )
                         create_dataset_if_not_exists(
                             h,
