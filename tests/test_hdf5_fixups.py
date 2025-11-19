@@ -51,3 +51,25 @@ def test_fixups_backfill_flag_datasets(tmp_path):
             dataset = flags[name]
             assert dataset.shape == (0,)
             assert dataset.dtype.kind in {"O", "S"}
+
+
+def test_fixups_backfill_impact_charge_datasets(tmp_path):
+    decoded_path = tmp_path / "ois_output_impact_missing.h5"
+    with h5py.File(decoded_path, "w") as handle:
+        analysis = handle.require_group("1/Analysis")
+        analysis.create_dataset("Ion GridImpactCharge", data=np.array([1.23], dtype=float))
+
+    ensure_legacy_analysis_compatibility([tmp_path])
+
+    with h5py.File(decoded_path, "r") as handle:
+        analysis = handle["1/Analysis"]
+
+        canonical = analysis["Ion Grid Impact Charge"][()]
+        assert canonical.tolist() == [pytest.approx(1.23)]
+        assert isinstance(
+            analysis.get("Ion GridImpactCharge", getlink=True), h5py.SoftLink
+        )
+
+        placeholder = analysis["Target H Impact Charge"][()]
+        assert placeholder.shape == (1,)
+        assert np.isnan(placeholder[0])
