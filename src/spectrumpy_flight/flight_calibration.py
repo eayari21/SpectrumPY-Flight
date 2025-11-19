@@ -2158,6 +2158,7 @@ class FlightCalibrationAnalyzer:
                 row = idx // cols
                 col = idx % cols
                 axes[row, col].axis("off")
+        fig.tight_layout(rect=(0.03, 0.03, 0.97, 0.95))
         pdf.savefig(fig)
         plt.close(fig)
 
@@ -2313,6 +2314,7 @@ class FlightCalibrationAnalyzer:
         if not any_data:
             plt.close(fig)
             return
+        fig.tight_layout(rect=(0.03, 0.08, 0.97, 0.95))
         caption = (
             r"\textit{Figure: High-statistics histograms of SpectrumPY-derived quantities. "
             r"All events contribute regardless of accelerator matching to emphasise intrinsic instrument behaviour.}"
