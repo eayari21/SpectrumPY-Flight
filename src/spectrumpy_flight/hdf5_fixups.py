@@ -48,7 +48,6 @@ class _FixupResult:
 
 
 _processed_files: set[Path] = set()
-_fixups_ran = False
 
 
 def _iter_candidate_files(base: Path) -> Iterable[Path]:
@@ -144,11 +143,6 @@ def _apply_fixups(path: Path) -> _FixupResult:
 
 def ensure_legacy_analysis_compatibility(paths: Iterable[Path]) -> None:
     """Back-fill missing analysis datasets within decoded olivine HDF5 files."""
-
-    global _fixups_ran
-    if _fixups_ran:
-        return
-    _fixups_ran = True
 
     for base in paths:
         for candidate in _iter_candidate_files(base):
