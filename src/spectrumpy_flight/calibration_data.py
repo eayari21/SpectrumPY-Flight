@@ -9,7 +9,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence, TYPE_CHECKING
+from typing import Iterable, Mapping, Sequence, TYPE_CHECKING, Dict, List, Tuple
 
 import numpy as np
 
@@ -45,6 +45,105 @@ __all__ = [
 
 
 EXCEL_EPOCH = datetime(1899, 12, 30)
+
+
+_TIMEZONE_OFFSETS = {
+    "UTC": 0,
+    "GMT": 0,
+    "MST": -7,
+    "MDT": -6,
+}
+
+
+@dataclass(frozen=True)
+class AlignmentResult:
+    """Describes the best alignment between instrument and lookup timestamps."""
+
+    lookup_timezone: str
+    tolerance_seconds: float
+    matches: List[Tuple[int, int, float]]
+
+
+def _parse_lookup_timestamp(value: str) -> datetime:
+    """Parse a timestamp like ``20231213123120.712000000`` into UTC."""
+
+    text = value.strip()
+    if not text:
+        raise ValueError("Empty lookup timestamp")
+    if "." in text:
+        main, frac = text.split(".", 1)
+    else:
+        main, frac = text, ""
+    dt = datetime.strptime(main, "%Y%m%d%H%M%S")
+    digits = "".join(ch for ch in frac if ch.isdigit())
+    digits = (digits + "000000")[:6]
+    microseconds = int(digits) if digits else 0
+    return dt.replace(microsecond=microseconds)
+
+
+def _convert_lookup_strings(values: Sequence[str], timezone_name: str) -> List[float]:
+    """Convert lookup timestamp strings into epoch seconds."""
+
+    offset_hours = _TIMEZONE_OFFSETS.get(timezone_name, 0)
+    tz = timezone(timedelta(hours=offset_hours))
+    epochs: List[float] = []
+    for text in values:
+        if not text:
+            continue
+        dt = _parse_lookup_timestamp(text)
+        epochs.append(dt.replace(tzinfo=tz).timestamp())
+    return epochs
+
+
+def _greedy_match_sorted(
+    instrument_epoch: Sequence[float],
+    lookup_epoch: Sequence[float],
+    tolerance_seconds: float,
+) -> List[Tuple[int, int, float]]:
+    """Perform a 1:1 greedy match between two sorted sequences."""
+
+    inst_order = sorted(range(len(instrument_epoch)), key=lambda idx: instrument_epoch[idx])
+    lookup_order = sorted(range(len(lookup_epoch)), key=lambda idx: lookup_epoch[idx])
+    matches: List[Tuple[int, int, float]] = []
+    i = j = 0
+    while i < len(inst_order) and j < len(lookup_order):
+        inst_idx = inst_order[i]
+        lookup_idx = lookup_order[j]
+        diff = lookup_epoch[lookup_idx] - instrument_epoch[inst_idx]
+        if abs(diff) <= tolerance_seconds:
+            matches.append((inst_idx, lookup_idx, diff))
+            i += 1
+            j += 1
+            continue
+        if instrument_epoch[inst_idx] < lookup_epoch[lookup_idx] - tolerance_seconds:
+            i += 1
+        else:
+            j += 1
+    return matches
+
+
+def _find_best_alignment(
+    instrument_epoch: Sequence[float],
+    lookup_strings: Sequence[str],
+    tolerance_seconds: float,
+) -> AlignmentResult | None:
+    """Try all timezone combinations and retain the most matches."""
+
+    if not instrument_epoch or not lookup_strings:
+        return None
+    best: AlignmentResult | None = None
+    for lookup_tz in _TIMEZONE_OFFSETS:
+        lookup_epoch = _convert_lookup_strings(lookup_strings, lookup_tz)
+        if not lookup_epoch:
+            continue
+        matches = _greedy_match_sorted(instrument_epoch, lookup_epoch, tolerance_seconds)
+        if best is None or len(matches) > len(best.matches):
+            best = AlignmentResult(
+                lookup_timezone=lookup_tz,
+                tolerance_seconds=tolerance_seconds,
+                matches=matches,
+            )
+    return best
 
 
 def _ensure_sql_support() -> bool:
@@ -369,6 +468,7 @@ class AcceleratorMatchFinder:
         self._server_successes = 0
         self._calibration_matrix = CalibrationMatrix()
         self._fm_windows_ms = self._load_dust_windows()
+        self._csv_lookup_strings: list[str] = []
         self._csv_records = self._load_csv_records()
         self._csv_timestamps = np.array(
             [record["timestamp_ms"] for record in self._csv_records], dtype=float
@@ -376,7 +476,9 @@ class AcceleratorMatchFinder:
 
     def _load_csv_records(self) -> list[dict[str, float | str | None]]:
         records: list[dict[str, float | str | None]] = []
+        lookup_strings: list[str] = []
         if not self.csv_path.exists():
+            self._csv_lookup_strings = lookup_strings
             return records
         lookup = self._calibration_matrix.lookup
         with self.csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
@@ -398,6 +500,10 @@ class AcceleratorMatchFinder:
                 experiment_description = (row.get("Current Experiment Description") or "").strip()
                 dust_type = (row.get("Dust Type") or "").strip()
                 group_id = (row.get("Current Group ID") or "").strip()
+                lookup_string = (row.get("UTC Timestamp") or row.get("Local Timestamp") or "").strip()
+                if (not lookup_string) and math.isfinite(timestamp_ms):
+                    dt = datetime.fromtimestamp(timestamp_ms / 1000.0, tz=timezone.utc)
+                    lookup_string = dt.strftime("%Y%m%d%H%M%S.%f")
                 campaign: str | None = None
                 calibration_entry: CalibrationEntry | None = None
                 calibration_window: tuple[float, float] | None = None
@@ -439,7 +545,11 @@ class AcceleratorMatchFinder:
                         "calibration_window": calibration_window,
                     }
                 )
+                lookup_strings.append(lookup_string)
         records.sort(key=lambda item: item["timestamp_ms"])
+        if lookup_strings and len(lookup_strings) != len(records):
+            lookup_strings = lookup_strings[: len(records)]
+        self._csv_lookup_strings = lookup_strings
         return records
 
     def _load_dust_windows(self) -> list[tuple[float, float, str]]:
@@ -497,6 +607,14 @@ class AcceleratorMatchFinder:
             schedule_label=schedule_label,
             calibration_entry=calibration_entry,
         )
+
+    def _match_from_record_index(self, index: int) -> AcceleratorMatch:
+        record = self._csv_records[index]
+        record_time = float(record["timestamp_ms"])
+        schedule_label = self._schedule_label_for_time(record_time)
+        if schedule_label is None and self._fm_windows_ms:
+            schedule_label = self._schedule_label_for_time(record_time)
+        return self._create_match_from_record(record, schedule_label)
 
     def search(
         self,
@@ -717,4 +835,45 @@ class AcceleratorMatchFinder:
             restrict_velocity=restrict_velocity,
         )
         return matches[0] if matches else None
+
+    def precompute_instrument_matches(
+        self,
+        instrument_timestamps_ms: Sequence[Tuple[int, float]],
+        *,
+        tolerance_seconds: float = 1.0,
+    ) -> Dict[int, AcceleratorMatch]:
+        """Bulk match instrument timestamps against the lookup table."""
+
+        if not instrument_timestamps_ms or not self._csv_lookup_strings:
+            return {}
+        valid: List[Tuple[int, float]] = []
+        for event_idx, timestamp_ms in instrument_timestamps_ms:
+            try:
+                numeric = float(timestamp_ms)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(numeric):
+                continue
+            try:
+                idx = int(event_idx)
+            except (TypeError, ValueError):
+                continue
+            valid.append((idx, numeric))
+        if not valid:
+            return {}
+        instrument_epoch = [timestamp / 1000.0 for _event, timestamp in valid]
+        alignment = _find_best_alignment(
+            instrument_epoch,
+            self._csv_lookup_strings,
+            tolerance_seconds,
+        )
+        if alignment is None:
+            return {}
+        matches: Dict[int, AcceleratorMatch] = {}
+        for inst_idx, lookup_idx, _delta in alignment.matches:
+            if inst_idx >= len(valid) or lookup_idx >= len(self._csv_records):
+                continue
+            event_index = valid[inst_idx][0]
+            matches[event_index] = self._match_from_record_index(lookup_idx)
+        return matches
 

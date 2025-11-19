@@ -3103,11 +3103,14 @@ class SQLMatchDialog(QDialog):
         if criteria is None:
             return
 
+        sql_error: str | None = None
         try:
             results, sql, params = query_dust_events(criteria)
         except Exception as exc:
-            QMessageBox.critical(self, "SQL query failed", f"Unable to execute the query:\n{exc}")
-            return
+            results = []
+            sql = ""
+            params = {}
+            sql_error = str(exc)
 
         for result in results:
             result.metadata.setdefault("Source", "server")
@@ -3160,7 +3163,18 @@ class SQLMatchDialog(QDialog):
             self.matches_table.selectRow(0)
         else:
             self.apply_button.setEnabled(False)
-            self.details_browser.setText("No results were returned for the current criteria.")
+            if sql_error:
+                self.details_browser.setText(
+                    "SQL query failed; no CSV matches were found either."
+                )
+            else:
+                self.details_browser.setText(
+                    "No results were returned for the current criteria."
+                )
+        if sql_error and combined:
+            self.details_browser.setText(
+                "SQL query failed; displaying CSV lookup matches only."
+            )
 
     def _populate_table(self) -> None:
         self.matches_table.setRowCount(len(self._matches))
