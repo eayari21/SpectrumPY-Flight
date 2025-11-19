@@ -27,16 +27,16 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 # ---------------------------------------------------------------------------
 # Support execution both as part of the ``spectrumpy_flight`` package and when
 # dynamically loaded from disk (e.g. via :func:`importlib.util.spec_from_file`).
-# ``HDF_Explorer`` uses the latter approach which means ``__package__`` is empty
-# unless we normalise it here.  Ensuring ``__package__`` points at the parent
-# package keeps intra-package imports working without polluting ``sys.path``.
+# ``HDF_Explorer`` uses the latter approach which means ``__package__`` can be
+# empty unless we normalise ``sys.path`` here.  Keeping the parent directory on
+# ``sys.path`` lets us rely on absolute imports without mutating ``__package__``
+# (which was the source of ``__package__ != __spec__.parent`` warnings).
 # ---------------------------------------------------------------------------
-if not __package__:
-    package_root = Path(__file__).resolve().parent
-    parent_dir = str(package_root.parent)
+if __package__ in (None, ""):
+    package_root = Path(__file__).resolve().parent.parent
+    parent_dir = str(package_root)
     if parent_dir not in sys.path:
         sys.path.insert(0, parent_dir)
-    __package__ = "spectrumpy_flight"
 
 import html
 import textwrap
@@ -54,17 +54,17 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import QueuePool
 
-from .idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
-from .paths import default_hdf5_dir
+from spectrumpy_flight.idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
+from spectrumpy_flight.paths import default_hdf5_dir
 
 try:
     # Preferred on modern stacks
-    from scipy.special import erfc as _erfc  # type: ignore
+    from scipy.special import erfc as _compat_erfc  # type: ignore
 except Exception:
     # Fallback: vectorize Python's math.erfc
     from math import erfc as _math_erfc
 
-    def _erfc(x: Union[np.ndarray, float, int]) -> np.ndarray:
+    def _compat_erfc(x: Union[np.ndarray, float, int]) -> np.ndarray:
         arr = np.asarray(x, dtype=float)
         if arr.ndim == 0:
             return np.array(_math_erfc(float(arr)))
@@ -73,31 +73,30 @@ except Exception:
 # --- end shim ---
 
 
-
-def _erfc(values: np.ndarray) -> np.ndarray:
+def _erfc(values: Union[np.ndarray, float, int]) -> np.ndarray:
     """Return the complementary error function for *values*."""
 
     return _compat_erfc(values)
 
-from .HDF_View import launch_hdf_viewer
-from .dust_composition import launch_dust_composition_window
-from .dust_estimator_gui import launch_dust_estimator_window
-from .calibration_data import AcceleratorMatch, AcceleratorMatchFinder
-from .mass_calibration import TOFMassCal
-from .noise_analysis import ChannelMeta, launch_noise_analysis_window
-from .plot_style import apply_plot_style
+from spectrumpy_flight.HDF_View import launch_hdf_viewer
+from spectrumpy_flight.dust_composition import launch_dust_composition_window
+from spectrumpy_flight.dust_estimator_gui import launch_dust_estimator_window
+from spectrumpy_flight.calibration_data import AcceleratorMatch, AcceleratorMatchFinder
+from spectrumpy_flight.mass_calibration import TOFMassCal
+from spectrumpy_flight.noise_analysis import ChannelMeta, launch_noise_analysis_window
+from spectrumpy_flight.plot_style import apply_plot_style
 try:  # pragma: no cover - optional dependency, loaded lazily
-    from .HDF_View import launch_hdf_viewer
+    from spectrumpy_flight.HDF_View import launch_hdf_viewer
 except Exception:  # pragma: no cover
     launch_hdf_viewer = None
 
 try:  # pragma: no cover - optional dependency, loaded lazily
-    from .CDF_View import launch_cdf_viewer
+    from spectrumpy_flight.CDF_View import launch_cdf_viewer
 except Exception:  # pragma: no cover
     launch_cdf_viewer = None
 
 try:  # pragma: no cover - optional dependency
-    from .IDEX_Definitions_View import launch_variable_definitions_viewer
+    from spectrumpy_flight.IDEX_Definitions_View import launch_variable_definitions_viewer
 except Exception:  # pragma: no cover
     launch_variable_definitions_viewer = None
 
