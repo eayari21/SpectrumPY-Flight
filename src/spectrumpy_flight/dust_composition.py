@@ -1600,7 +1600,11 @@ SPECIES_BY_LABEL: Dict[str, float] = {name: mass for name, mass in SPECIES_CHOIC
 
 
 def _species_display(label: str, mass: float) -> str:
-    return f"{label}\u2003\u2003{mass:.3f} amu"
+    base = f"{label}\u2003\u2003{mass:.3f} amu"
+    fraction = _lookup_terrestrial_abundance(label)
+    if fraction is None:
+        return base
+    return f"{base}\u2003\u2003{_format_isotope_fraction(fraction)}% natural"
 
 
 def _populate_species_combo(
