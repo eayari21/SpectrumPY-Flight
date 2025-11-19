@@ -9,6 +9,7 @@ import pytest
 h5py = pytest.importorskip("h5py")
 pytest.importorskip("matplotlib")
 
+from spectrumpy_flight.calibration_data import AcceleratorMatchFinder
 from spectrumpy_flight.flight_calibration import (
     FlightCalibrationAnalyzer,
     generate_flight_calibration_report,
@@ -189,3 +190,21 @@ def test_collect_decodes_missing_hdf(populated_hdf5, data_root: Path):
     analyzer.collect(data_root)
     assert analyzer.events
     assert not analyzer.missing_hdf
+
+
+def test_precompute_accelerator_matches_handles_timezone():
+    finder = AcceleratorMatchFinder(use_server=False)
+    assert finder._csv_records, "Lookup table should provide accelerator records."
+    sample_records = finder._csv_records[:5]
+    assert sample_records
+    offset_ms = 7 * 3_600_000  # Simulate MST->UTC correction
+    instrument_times = [
+        (idx, float(record["timestamp_ms"]) + offset_ms)
+        for idx, record in enumerate(sample_records)
+    ]
+    matches = finder.precompute_instrument_matches(
+        instrument_times,
+        tolerance_seconds=2.0,
+    )
+    assert matches
+    assert set(matches) == set(range(len(sample_records)))

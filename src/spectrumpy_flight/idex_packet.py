@@ -113,6 +113,12 @@ def _get_fallback_match_finder() -> Optional[AcceleratorMatchFinder]:
             _FALLBACK_MATCH_FINDER = None
     return _FALLBACK_MATCH_FINDER
 
+
+@dataclass
+class PrecomputedAcceleratorMatches:
+    matches: Dict[int, AcceleratorMatch]
+    tolerance_ms: float
+
 MASS_STRETCH_MIN = 1.3
 MASS_STRETCH_MAX = 1.6
 DEFAULT_MAX_AUTO_MASS_LINES = 15
@@ -1292,6 +1298,26 @@ def _event_timestamp_ms(header: Dict[Tuple[int, str], Any], event_key: str) -> O
         return None
 
 
+def _collect_event_timestamps(header: Dict[Tuple[int, str], Any]) -> List[Tuple[int, float]]:
+    timestamps: List[Tuple[int, float]] = []
+    for (event_idx, field), value in header.items():
+        if field != "Timestamp":
+            continue
+        try:
+            idx = int(event_idx)
+        except Exception:
+            continue
+        try:
+            timestamp_ms = float(value) * 1000.0
+        except Exception:
+            continue
+        if not math.isfinite(timestamp_ms):
+            continue
+        timestamps.append((idx, float(timestamp_ms)))
+    timestamps.sort(key=lambda item: item[0])
+    return timestamps
+
+
 def _event_velocity_kmps(channels: Dict[str, Dict[str, Any]]) -> Optional[float]:
     for channel_name in ('Target H', 'Target L', 'Ion Grid', 'TOF H', 'TOF M', 'TOF L'):
         channel = channels.get(channel_name)
@@ -1315,6 +1341,7 @@ def _attempt_sql_match(
     event_key: str,
     header: Dict[Tuple[int, str], Any],
     channels: Dict[str, Dict[str, Any]],
+    precomputed: Optional[PrecomputedAcceleratorMatches] = None,
 ) -> None:
     time_ms = _event_timestamp_ms(header, event_key)
     velocity_kmps = _event_velocity_kmps(channels)
@@ -1324,6 +1351,10 @@ def _attempt_sql_match(
 
     chosen_match: Optional[SQLMatchResult] = None
     chosen_criteria: Optional[SQLMatchCriteria] = None
+    try:
+        event_index = int(event_key)
+    except Exception:
+        event_index = None
 
     if _sql_match_available():
         def _run_query(criteria: SQLMatchCriteria) -> List[SQLMatchResult]:
@@ -1374,6 +1405,25 @@ def _attempt_sql_match(
                 if candidate is not None:
                     chosen_match = candidate
                     chosen_criteria = velocity_only
+
+    if (
+        chosen_match is None
+        and time_ms is not None
+        and precomputed is not None
+        and event_index is not None
+    ):
+        match = precomputed.matches.get(event_index)
+        if match is not None:
+            chosen_match = _sql_result_from_accelerator_match(match)
+            chosen_criteria = SQLMatchCriteria(
+                time_ms=time_ms,
+                time_window_ms=precomputed.tolerance_ms,
+                velocity_kmps=(match.velocity_mps / 1000.0)
+                if match.velocity_mps is not None
+                else None,
+                restrict_time=True,
+                restrict_velocity=match.velocity_mps is not None,
+            )
 
     if chosen_match is None and time_ms is not None:
         finder = _get_fallback_match_finder()
@@ -2983,6 +3033,24 @@ class IDEXEvent:
                     else:
                         flag_group.create_dataset(name, shape=(0,), dtype=string_dtype)
 
+            precomputed_matches: Optional[PrecomputedAcceleratorMatches] = None
+            finder_for_batch = _get_fallback_match_finder()
+            if finder_for_batch is not None and AcceleratorMatch is not None:
+                instrument_times = _collect_event_timestamps(self.header)
+                tolerance_seconds = max(
+                    finder_for_batch.time_tolerance_ms / 1000.0,
+                    0.5,
+                )
+                bulk_matches = finder_for_batch.precompute_instrument_matches(
+                    instrument_times,
+                    tolerance_seconds=tolerance_seconds,
+                )
+                if bulk_matches:
+                    precomputed_matches = PrecomputedAcceleratorMatches(
+                        matches=bulk_matches,
+                        tolerance_ms=tolerance_seconds * 1000.0,
+                    )
+
             for event_key, info in event_results.items():
                 channels = info.get('channels', {})
                 high_analysis = channels.get('TOF H')
@@ -3217,7 +3285,13 @@ class IDEXEvent:
                             data=np.array([np.nan], dtype=float),
                         )
 
-                _attempt_sql_match(h, event_key, self.header, channels)
+                _attempt_sql_match(
+                    h,
+                    event_key,
+                    self.header,
+                    channels,
+                    precomputed_matches,
+                )
 
 # ||
 # ||
