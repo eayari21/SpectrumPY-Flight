@@ -3093,9 +3093,19 @@ class FlightCalibrationAnalyzer:
         xlabel: str,
         bins: int = 40,
         log: bool = False,
+        clip_quantiles: tuple[float, float] | None = None,
     ) -> None:
         assert plt is not None
         arr = np.asarray([v for v in values if np.isfinite(v)], dtype=float)
+        if clip_quantiles and arr.size:
+            low_q, high_q = clip_quantiles
+            if not 0.0 <= low_q < high_q <= 1.0:
+                raise ValueError("clip_quantiles must satisfy 0 <= low < high <= 1")
+            lo, hi = np.quantile(arr, [low_q, high_q])
+            if np.isfinite(lo) and np.isfinite(hi) and lo < hi:
+                clipped = arr[(arr >= lo) & (arr <= hi)]
+                if clipped.size:
+                    arr = clipped
         fig, ax = plt.subplots(figsize=(8, 6))
         if arr.size:
             ax.hist(arr, bins=bins, color="#0b5394", alpha=0.75)
@@ -3114,7 +3124,13 @@ class FlightCalibrationAnalyzer:
         if not values:
             return
         title = f"Mass resolution distribution — {material}"
-        self._plot_histogram(pdf, values, title, "m/Δm")
+        self._plot_histogram(
+            pdf,
+            values,
+            title,
+            "m/Δm",
+            clip_quantiles=(0.01, 0.99),
+        )
 
     def _plot_snr(self, pdf: PdfPages, material: str, records: Sequence[EventRecord]) -> None:
         for channel in ("TOF H", "Ion Grid", "Target L", "Target H"):
