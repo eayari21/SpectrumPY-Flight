@@ -3,6 +3,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 h5py = pytest.importorskip("h5py")
@@ -12,8 +13,28 @@ from spectrumpy_flight.flight_calibration import (
     FlightCalibrationAnalyzer,
     generate_flight_calibration_report,
     load_dust_schedule,
+    _read_text,
 )
 from spectrumpy_flight import drive_idex_packet
+
+
+class _DummyDataset:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __getitem__(self, key):
+        assert key == ()
+        return self.payload
+
+
+def test_read_text_decodes_numpy_byte_arrays():
+    dataset = _DummyDataset(np.array([b"2023_12_13_run0"]))
+    assert _read_text(dataset) == "2023_12_13_run0"
+
+
+def test_read_text_handles_nested_sequences():
+    dataset = _DummyDataset([[b"  cfg-04  "]])
+    assert _read_text(dataset) == "cfg-04"
 
 
 @pytest.fixture(scope="session")
