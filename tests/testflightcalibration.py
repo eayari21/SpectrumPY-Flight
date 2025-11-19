@@ -18,7 +18,17 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 from typing import Iterable, Sequence
+
+# Ensure ``spectrumpy_flight`` can be imported when executing the script directly
+# via ``python tests/testflightcalibration.py``.  Python sets ``sys.path[0]`` to
+# the directory containing the script (``tests/``), so the repository root is
+# not automatically available on ``sys.path``.  Inject it manually before
+# importing project modules so the helper works without installing the package.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 try:  # pragma: no cover - makes pytest ignore the helper module
     import pytest
