@@ -129,19 +129,46 @@ def _read_scalar(dataset) -> float | None:
 def _read_text(dataset) -> str | None:
     if dataset is None:
         return None
+
+    def _coerce(value: object) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, bytes):
+            try:
+                text_value = value.decode("utf-8")
+            except Exception:
+                text_value = value.decode("latin1", "ignore")
+            text_value = text_value.strip()
+            return text_value or None
+        if isinstance(value, str):
+            text_value = value.strip()
+            return text_value or None
+        if isinstance(value, np.ndarray):
+            if value.size == 0:
+                return None
+            if value.ndim == 0:
+                return _coerce(value.item())
+            for entry in value.flat:
+                text_value = _coerce(entry)
+                if text_value:
+                    return text_value
+            return None
+        if isinstance(value, np.generic):
+            return _coerce(value.item())
+        if isinstance(value, (list, tuple, set)):
+            for entry in value:
+                text_value = _coerce(entry)
+                if text_value:
+                    return text_value
+            return None
+        text_value = str(value).strip()
+        return text_value or None
+
     try:
         value = dataset[()]
     except Exception:
         return None
-    if isinstance(value, bytes):
-        try:
-            text = value.decode("utf-8")
-        except Exception:
-            text = value.decode("latin1", "ignore")
-    else:
-        text = str(value)
-    text = text.strip()
-    return text or None
+    return _coerce(value)
 
 
 def _ensure_matplotlib() -> None:
