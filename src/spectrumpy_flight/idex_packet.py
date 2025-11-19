@@ -3105,6 +3105,7 @@ class IDEXEvent:
                         (f"/{event_key}/Analysis/{channel_name}ImpactCharge",),
                     )
 
+                    mass_dataset = f"/{event_key}/Analysis/{channel_name} Dust Mass Estimate"
                     if channel_name in {'Target L', 'Target H'}:
                         rise_time = channel_analysis.get('rise_time')
                         ratio = _collection_efficiency_ratio(ion_charge, charge_c)
@@ -3148,15 +3149,14 @@ class IDEXEvent:
                             channel_analysis['collection_efficiency'] = float(ratio)
                         else:
                             channel_analysis['collection_efficiency'] = np.nan
-                        mass_path = f"/{event_key}/Analysis/{channel_name} Dust Mass Estimate"
                         create_dataset_if_not_exists(
                             h,
-                            mass_path,
+                            mass_dataset,
                             data=np.array([mass_value], dtype=float),
                         )
                         _ensure_dataset_aliases(
                             h,
-                            mass_path,
+                            mass_dataset,
                             (
                                 f"/{event_key}/Analysis/{channel_name}MassEstimate",
                                 f"/{event_key}/Analysis/{channel_name}DustMassEstimate",
@@ -3200,8 +3200,16 @@ class IDEXEvent:
                     else:
                         create_dataset_if_not_exists(
                             h,
-                            f"/{event_key}/Analysis/{channel_name} Dust Mass Estimate",
+                            mass_dataset,
                             data=np.array([np.nan], dtype=float),
+                        )
+                        _ensure_dataset_aliases(
+                            h,
+                            mass_dataset,
+                            (
+                                f"/{event_key}/Analysis/{channel_name}MassEstimate",
+                                f"/{event_key}/Analysis/{channel_name}DustMassEstimate",
+                            ),
                         )
                         create_dataset_if_not_exists(
                             h,
