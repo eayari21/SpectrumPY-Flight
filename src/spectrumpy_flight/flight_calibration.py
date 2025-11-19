@@ -14,6 +14,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import re
 from typing import Mapping, Sequence, cast
 
 import numpy as np
@@ -154,6 +155,7 @@ def _ensure_matplotlib() -> None:
 _EXPERIMENT_PATTERN = re.compile(r"(20\d{2})[_-](\d{2})[_-](\d{2})[_\-]run(\d+)", re.IGNORECASE)
 _RUN_PATTERN = re.compile(r"run\s*(\d+)", re.IGNORECASE)
 _DATE_PATTERN = re.compile(r"(20\d{2})[-_/](\d{2})[-_/](\d{2})")
+_UNKNOWN_SPECIES_PATTERN = re.compile(r"^line\s*\d+\b", re.IGNORECASE)
 
 
 def _experiment_name_candidates(
@@ -200,6 +202,14 @@ _RSF_PRESETS: list[tuple[str, dict[str, float]]] = [
     ("Olivine Fo91, Hyperdust (this work)", {"Mg": 4.97, "Si": 1.0, "Fe": 1.32}),
     ("TOF SIMS (Stephan 2001)", {"Mg": 5.10, "Si": 1.0, "Fe": 2.40}),
 ]
+
+_RSF_MATERIAL_PRESETS: dict[str, str] = {
+    "olivine": "Olivine Fo91, Hyperdust (this work)",
+    "forsterite": "Olivine Fo91, Hyperdust (this work)",
+    "fayalite": "Olivine Fo91, Hyperdust (this work)",
+    "pyroxene": "Orthopyroxene, LAMA (Sternglass 1971)",
+    "orthopyroxene": "Orthopyroxene, LAMA (Sternglass 1971)",
+}
 
 
 @dataclass
@@ -264,6 +274,16 @@ def _decode_species(value: object) -> str:
     return str(value).strip()
 
 
+def _is_unknown_species(name: str) -> bool:
+    text = name.strip()
+    if not text:
+        return True
+    lowered = text.lower()
+    if lowered == "unknown":
+        return True
+    return _UNKNOWN_SPECIES_PATTERN.match(lowered) is not None
+
+
 def _mass_lines_to_areas(table: np.ndarray) -> dict[str, float]:
     areas: dict[str, float] = {}
     for row in table:
@@ -317,6 +337,84 @@ def _ternary_to_cartesian(point: tuple[float, float, float]) -> tuple[float, flo
     x = 0.5 * (2 * si + fe)
     y = (math.sqrt(3) / 2.0) * fe
     return float(x), float(y)
+
+
+def _event_velocity(record: EventRecord) -> float | None:
+    candidates = (
+        record.accelerator_velocity_mps,
+        record.instrument_velocity_estimate_mps,
+        record.target_velocity_fit_mps,
+        record.target_velocity_rise_mps,
+        record.target_velocity_ratio_mps,
+    )
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        try:
+            numeric = float(candidate)
+        except Exception:
+            continue
+        if np.isfinite(numeric):
+            return numeric
+    return None
+
+
+def _event_mass_line_fractions(
+    record: EventRecord,
+    *,
+    require_multiple: bool = False,
+    exclude_unknown: bool = False,
+) -> dict[str, float] | None:
+    if not record.mass_line_areas:
+        return None
+    if exclude_unknown and any(_is_unknown_species(name) for name in record.mass_line_species):
+        return None
+    filtered: dict[str, float] = {}
+    for species, area in record.mass_line_areas.items():
+        if exclude_unknown and _is_unknown_species(species):
+            return None
+        if not np.isfinite(area) or area <= 0.0:
+            continue
+        filtered[species] = filtered.get(species, 0.0) + float(area)
+    if not filtered:
+        return None
+    if require_multiple and len(filtered) < 2:
+        return None
+    total = sum(filtered.values())
+    if total <= 0.0:
+        return None
+    return {species: area / total for species, area in filtered.items()}
+
+
+def _velocity_bin_edges(velocities: np.ndarray, sample_count: int) -> np.ndarray | None:
+    valid = velocities[np.isfinite(velocities)]
+    if valid.size == 0:
+        return None
+    min_velocity = float(np.min(valid))
+    max_velocity = float(np.max(valid))
+    if not np.isfinite(min_velocity) or not np.isfinite(max_velocity):
+        return None
+    if math.isclose(min_velocity, max_velocity):
+        return np.array([min_velocity - 0.5, max_velocity + 0.5])
+    base_bins = int(math.sqrt(max(sample_count, 1)))
+    base_bins = max(1, base_bins)
+    bin_count = min(20, base_bins)
+    bin_edges = np.linspace(min_velocity, max_velocity, bin_count + 1)
+    if np.unique(bin_edges).size <= 1:
+        return np.array([min_velocity - 0.5, max_velocity + 0.5])
+    return bin_edges
+
+
+def _material_rsf(material: str) -> tuple[str, Mapping[str, float]] | None:
+    text = material.strip().lower()
+    if not text:
+        return None
+    for keyword, preset_label in _RSF_MATERIAL_PRESETS.items():
+        if keyword in text:
+            for label, rsf in _RSF_PRESETS:
+                if label == preset_label:
+                    return label, rsf
+    return None
 
 
 def _format_stats(values: Sequence[float]) -> dict[str, float | int]:
@@ -1180,6 +1278,22 @@ class FlightCalibrationAnalyzer:
             ternary_points = [
                 record.ternary_point for record in records if record.ternary_point is not None
             ]
+            abundance_samples: dict[str, list[float]] = {}
+            for record in records:
+                fractions = _event_mass_line_fractions(
+                    record,
+                    require_multiple=True,
+                    exclude_unknown=True,
+                )
+                if not fractions:
+                    continue
+                for species, fraction in fractions.items():
+                    abundance_samples.setdefault(species, []).append(float(fraction))
+            abundance_summary = {
+                species: _format_stats(values)
+                for species, values in abundance_samples.items()
+                if values
+            }
 
             resolution_stats = _format_stats(resolutions)
             ce_stats = _format_stats(ce_values)
@@ -1203,6 +1317,7 @@ class FlightCalibrationAnalyzer:
                 "mass_ratio": mass_ratio_stats,
                 "velocity_ratio": velocity_ratio_stats,
                 "ternary_point_count": len(ternary_points),
+                "mass_line_abundances": abundance_summary,
             }
 
         matched_events = sum(1 for record in self.events if record.has_accelerator_match)
@@ -1383,8 +1498,19 @@ class FlightCalibrationAnalyzer:
                 self._plot_collection_efficiency(pdf, material, records)
                 self._plot_mass_velocity(pdf, material, records)
                 self._plot_ternary(pdf, material, records)
+                rsf_entry = _material_rsf(material)
+                if rsf_entry is not None:
+                    rsf_label, rsf = rsf_entry
+                    self._plot_ternary(
+                        pdf,
+                        material,
+                        records,
+                        rsf_label=rsf_label,
+                        rsf=rsf,
+                    )
                 try:
                     self._plot_mass_line_probabilities(pdf, material, records)
+                    self._plot_mass_line_fractions(pdf, material, records)
                     self._plot_mass_line_yields(pdf, material, records)
                 except Exception:
                     continue
@@ -3203,16 +3329,36 @@ class FlightCalibrationAnalyzer:
             )
 
     def _plot_ternary(
-        self, pdf: PdfPages, material: str, records: Sequence[EventRecord]
+        self,
+        pdf: PdfPages,
+        material: str,
+        records: Sequence[EventRecord],
+        *,
+        rsf_label: str | None = None,
+        rsf: Mapping[str, float] | None = None,
     ) -> None:
         assert plt is not None
-        points = [record.ternary_point for record in records if record.ternary_point is not None]
+        if rsf is None:
+            points = [
+                record.ternary_point
+                for record in records
+                if record.ternary_point is not None
+            ]
+        else:
+            points = [
+                _ternary_with_rsf(record.mass_line_areas, rsf)
+                for record in records
+            ]
+            points = [point for point in points if point is not None]
         if not points:
             return
 
         cartesian = np.array([_ternary_to_cartesian(point) for point in points])
         fig, ax = plt.subplots(figsize=(7, 6))
-        ax.set_title(f"Mg–Si–Fe ternary diagram — {material}")
+        title = f"Mg–Si–Fe ternary diagram — {material}"
+        if rsf_label:
+            title += f"\nRSF applied: {rsf_label}"
+        ax.set_title(title)
         triangle = np.array([[0, 0], [1, 0], [0.5, math.sqrt(3) / 2], [0, 0]])
         ax.plot(triangle[:, 0], triangle[:, 1], color="black")
         ax.scatter(cartesian[:, 0], cartesian[:, 1], alpha=0.6, color="#38761d")
@@ -3221,8 +3367,32 @@ class FlightCalibrationAnalyzer:
         ax.text(0, -0.05, "Mg", ha="center")
         ax.text(1, -0.05, "Si", ha="center")
         ax.text(0.5, math.sqrt(3) / 2 + 0.03, "Fe", ha="center")
+        legend_added = False
+        if rsf_label and "olivine" in rsf_label.lower() and cartesian.size:
+            centroid = np.mean(cartesian, axis=0)
+            ax.scatter(
+                [centroid[0]],
+                [centroid[1]],
+                color="#cc0000",
+                marker="*",
+                s=90,
+                label="Olivine centroid",
+                zorder=5,
+            )
+            ax.text(
+                centroid[0],
+                centroid[1] + 0.035,
+                "Olivine",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                color="#cc0000",
+            )
+            legend_added = True
         ax.set_xlim(-0.05, 1.05)
         ax.set_ylim(-0.05, math.sqrt(3) / 2 + 0.05)
+        if legend_added:
+            ax.legend(loc="lower left", fontsize="small")
         pdf.savefig(fig)
         plt.close(fig)
 
@@ -3233,21 +3403,10 @@ class FlightCalibrationAnalyzer:
 
         events: list[tuple[float, set[str]]] = []
         for record in records:
-            velocity = record.accelerator_velocity_mps
-            if velocity is None or not np.isfinite(velocity):
-                velocity = record.instrument_velocity_estimate_mps
-            if velocity is None or not np.isfinite(velocity):
-                for candidate in (
-                    record.target_velocity_fit_mps,
-                    record.target_velocity_rise_mps,
-                    record.target_velocity_ratio_mps,
-                ):
-                    if candidate is not None and np.isfinite(candidate):
-                        velocity = float(candidate)
-                        break
-            if velocity is None or not np.isfinite(velocity):
+            velocity = _event_velocity(record)
+            if velocity is None:
                 continue
-            species = set(record.mass_line_species)
+            species = {name for name in record.mass_line_species if name}
             events.append((float(velocity), species))
 
         if not events:
@@ -3265,29 +3424,9 @@ class FlightCalibrationAnalyzer:
         if velocities.size == 0:
             return
 
-        finite_mask = np.isfinite(velocities)
-        if not np.any(finite_mask):
+        bin_edges = _velocity_bin_edges(velocities, len(events))
+        if bin_edges is None:
             return
-        velocities = velocities[finite_mask]
-        if velocities.size == 0:
-            return
-
-        min_velocity = float(np.min(velocities))
-        max_velocity = float(np.max(velocities))
-
-        if not np.isfinite(min_velocity) or not np.isfinite(max_velocity):
-            return
-
-        if math.isclose(min_velocity, max_velocity):
-            bin_edges = np.array([min_velocity - 0.5, max_velocity + 0.5])
-        else:
-            base_bins = int(math.sqrt(len(events)))
-            if base_bins < 1:
-                base_bins = 1
-            bin_count = min(20, max(1, base_bins))
-            bin_edges = np.linspace(min_velocity, max_velocity, bin_count + 1)
-            if np.unique(bin_edges).size <= 1:
-                bin_edges = np.array([min_velocity - 0.5, max_velocity + 0.5])
         bin_count = max(1, len(bin_edges) - 1)
 
         counts_total = np.zeros(bin_count, dtype=float)
@@ -3346,6 +3485,98 @@ class FlightCalibrationAnalyzer:
         pdf.savefig(fig)
         plt.close(fig)
 
+    def _plot_mass_line_fractions(
+        self, pdf: PdfPages, material: str, records: Sequence[EventRecord]
+    ) -> None:
+        assert plt is not None
+
+        events: list[tuple[float, dict[str, float]]] = []
+        species_counter: Counter[str] = Counter()
+        for record in records:
+            velocity = _event_velocity(record)
+            if velocity is None:
+                continue
+            fractions = _event_mass_line_fractions(
+                record,
+                require_multiple=True,
+                exclude_unknown=True,
+            )
+            if not fractions:
+                continue
+            events.append((velocity, fractions))
+            species_counter.update(fractions.keys())
+
+        if not events:
+            return
+
+        eligible_species = [name for name, count in species_counter.items() if count >= 5]
+        if not eligible_species:
+            return
+
+        velocities = np.array([velocity for velocity, _ in events], dtype=float)
+        if velocities.size == 0:
+            return
+        bin_edges = _velocity_bin_edges(velocities, len(events))
+        if bin_edges is None:
+            return
+        bin_count = max(1, len(bin_edges) - 1)
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+
+        bin_event_counts = np.zeros(bin_count, dtype=float)
+        fraction_sums: dict[str, np.ndarray] = {
+            name: np.zeros(bin_count, dtype=float) for name in eligible_species
+        }
+
+        for velocity, fractions in events:
+            idx = np.searchsorted(bin_edges, velocity, side="right") - 1
+            if idx < 0:
+                idx = 0
+            elif idx >= bin_count:
+                idx = bin_count - 1
+            bin_event_counts[idx] += 1.0
+            for name in eligible_species:
+                if name in fractions:
+                    fraction_sums[name][idx] += float(fractions[name])
+
+        valid_bins = bin_event_counts > 0
+        if not np.any(valid_bins):
+            return
+
+        averaged = [
+            np.divide(
+                fraction_sums[name],
+                bin_event_counts,
+                out=np.zeros_like(bin_event_counts),
+                where=bin_event_counts > 0,
+            )
+            for name in eligible_species
+        ]
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.stackplot(
+            bin_centers[valid_bins],
+            *[series[valid_bins] for series in averaged],
+            labels=eligible_species,
+            alpha=0.8,
+        )
+        ax.set_ylim(0.0, 1.05)
+        ax.set_xlabel("Impact velocity (m/s)")
+        ax.set_ylabel("Average fractional abundance")
+        ax.set_title(
+            f"Mass line fractional abundance vs. impact velocity — {material}"
+        )
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="upper right", fontsize="small")
+        fig.text(
+            0.5,
+            0.01,
+            "Spectra with single or unknown lines excluded.",
+            ha="center",
+            fontsize=9,
+        )
+        pdf.savefig(fig)
+        plt.close(fig)
+
     def _plot_mass_line_yields(
         self, pdf: PdfPages, material: str, records: Sequence[EventRecord]
     ) -> None:
@@ -3355,19 +3586,8 @@ class FlightCalibrationAnalyzer:
         species_counts: Counter[str] = Counter()
 
         for record in records:
-            velocity = record.accelerator_velocity_mps
-            if velocity is None or not np.isfinite(velocity):
-                velocity = record.instrument_velocity_estimate_mps
-            if velocity is None or not np.isfinite(velocity):
-                for candidate in (
-                    record.target_velocity_fit_mps,
-                    record.target_velocity_rise_mps,
-                    record.target_velocity_ratio_mps,
-                ):
-                    if candidate is not None and np.isfinite(candidate):
-                        velocity = float(candidate)
-                        break
-            if velocity is None or not np.isfinite(velocity):
+            velocity = _event_velocity(record)
+            if velocity is None:
                 continue
             mass_kg = record.accelerator_mass_kg
             if mass_kg is None or not np.isfinite(mass_kg) or mass_kg <= 0.0:
