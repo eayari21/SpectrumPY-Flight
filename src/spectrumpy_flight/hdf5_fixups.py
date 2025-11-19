@@ -41,6 +41,7 @@ _LEGACY_SUFFIXES = (
 )
 _MASS_DATASET_SUFFIX = " Dust Mass Estimate"
 _MASS_ALIAS_SUFFIXES = ("MassEstimate", "DustMassEstimate")
+_FLAG_DATASETS = ("FailedFits", "SaturatedChannels", "Notes")
 
 
 @dataclass(frozen=True)
@@ -156,6 +157,27 @@ def _ensure_mass_estimates(handle: "h5py.File", event_key: str) -> int:
     return created
 
 
+def _ensure_flag_datasets(handle: "h5py.File", event_key: str) -> int:
+    """Ensure each event exposes the standard analysis flag datasets."""
+
+    analysis_path = f"{event_key}/Analysis"
+    if analysis_path not in handle:
+        return 0
+
+    analysis_group = handle[analysis_path]
+    flag_group = analysis_group.require_group("Flags")
+    string_dtype = h5py.string_dtype(encoding="utf-8")
+
+    created = 0
+    for name in _FLAG_DATASETS:
+        if name in flag_group:
+            continue
+        flag_group.create_dataset(name, shape=(0,), dtype=string_dtype)
+        created += 1
+
+    return created
+
+
 def _apply_fixups(path: Path) -> _FixupResult:
     """Ensure *path* exposes the standard analysis dataset layout."""
 
@@ -169,6 +191,7 @@ def _apply_fixups(path: Path) -> _FixupResult:
                 continue
             created += _ensure_fit_params(handle, event_key)
             created += _ensure_mass_estimates(handle, event_key)
+            created += _ensure_flag_datasets(handle, event_key)
 
     return _FixupResult(path, datasets_created=created)
 

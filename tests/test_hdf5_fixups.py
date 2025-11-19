@@ -35,3 +35,23 @@ def test_fixups_create_canonical_fit_params(tmp_path):
         # an empty placeholder so downstream tooling can rely on the path.
         placeholder = analysis["Target HFitParams"][()]
         assert placeholder.size == 0
+
+
+def test_fixups_create_flag_datasets(tmp_path):
+    decoded_path = tmp_path / "ois_output_00000000_000001.h5"
+    _write_legacy_file(decoded_path)
+
+    # Explicitly drop the flag datasets to mirror older decoded files.
+    with h5py.File(decoded_path, "r+") as handle:
+        flags_path = "1/Analysis/Flags"
+        if flags_path in handle:
+            del handle[flags_path]
+
+    ensure_legacy_analysis_compatibility([tmp_path])
+
+    with h5py.File(decoded_path, "r") as handle:
+        flags = handle["1/Analysis/Flags"]
+        for dataset in ("FailedFits", "SaturatedChannels", "Notes"):
+            assert dataset in flags
+            values = flags[dataset][()]
+            assert values.size == 0
