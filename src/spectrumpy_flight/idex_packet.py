@@ -2866,6 +2866,7 @@ class IDEXEvent:
                             del channel_group['Fits']
 
                 target_fit = analysis['target_fit']
+                param_path = f"/{event_key}/Analysis/{channel} Fit Parameters"
                 if target_fit is not None:
                     param = target_fit.get('params', np.array([]))
                     fit_time = target_fit.get('time', np.array([]))
@@ -2875,7 +2876,6 @@ class IDEXEvent:
                     chi_sq = target_fit.get('chi_sq', np.nan)
                     red_chi = target_fit.get('red_chi', np.nan)
 
-                    param_path = f"/{event_key}/Analysis/{channel} Fit Parameters"
                     create_dataset_if_not_exists(
                         h,
                         param_path,
@@ -2902,6 +2902,21 @@ class IDEXEvent:
                             continue
                         dataset_path = f"/{event_key}/Analysis/{channel} {suffix}"
                         create_dataset_if_not_exists(h, dataset_path, data=np.array([value], dtype=float))
+                else:
+                    # Even when a channel was captured but no valid fit was produced,
+                    # downstream tooling (and the regression tests) expect the fit
+                    # parameter dataset and its aliases to exist.  Create an empty
+                    # placeholder so consumers can rely on the path being present.
+                    empty = np.asarray([], dtype=float)
+                    create_dataset_if_not_exists(h, param_path, data=empty)
+                    _ensure_dataset_aliases(
+                        h,
+                        param_path,
+                        (
+                            f"/{event_key}/Analysis/{channel}FitParams",
+                            f"/{event_key}/Analysis/{channel}FitParameters",
+                        ),
+                    )
 
             for event_key, saturated in event_saturation_flags.items():
                 create_dataset_if_not_exists(
