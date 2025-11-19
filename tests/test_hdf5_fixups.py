@@ -37,21 +37,17 @@ def test_fixups_create_canonical_fit_params(tmp_path):
         assert placeholder.size == 0
 
 
-def test_fixups_create_flag_datasets(tmp_path):
-    decoded_path = tmp_path / "ois_output_00000000_000001.h5"
-    _write_legacy_file(decoded_path)
-
-    # Explicitly drop the flag datasets to mirror older decoded files.
-    with h5py.File(decoded_path, "r+") as handle:
-        flags_path = "1/Analysis/Flags"
-        if flags_path in handle:
-            del handle[flags_path]
+def test_fixups_backfill_flag_datasets(tmp_path):
+    decoded_path = tmp_path / "ois_output_flags_missing.h5"
+    with h5py.File(decoded_path, "w") as handle:
+        handle.require_group("1/Analysis")
 
     ensure_legacy_analysis_compatibility([tmp_path])
 
     with h5py.File(decoded_path, "r") as handle:
         flags = handle["1/Analysis/Flags"]
-        for dataset in ("FailedFits", "SaturatedChannels", "Notes"):
-            assert dataset in flags
-            values = flags[dataset][()]
-            assert values.size == 0
+        for name in ("FailedFits", "SaturatedChannels", "Notes"):
+            assert name in flags
+            dataset = flags[name]
+            assert dataset.shape == (0,)
+            assert dataset.dtype.kind in {"O", "S"}

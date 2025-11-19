@@ -158,21 +158,21 @@ def _ensure_mass_estimates(handle: "h5py.File", event_key: str) -> int:
 
 
 def _ensure_flag_datasets(handle: "h5py.File", event_key: str) -> int:
-    """Ensure each event exposes the standard analysis flag datasets."""
+    """Create empty flag datasets for *event_key* when missing."""
 
     analysis_path = f"{event_key}/Analysis"
     if analysis_path not in handle:
         return 0
 
     analysis_group = handle[analysis_path]
-    flag_group = analysis_group.require_group("Flags")
-    string_dtype = h5py.string_dtype(encoding="utf-8")
+    flags_group = analysis_group.require_group("Flags")
 
     created = 0
+    string_dtype = h5py.string_dtype(encoding="utf-8")
     for name in _FLAG_DATASETS:
-        if name in flag_group:
+        if name in flags_group:
             continue
-        flag_group.create_dataset(name, shape=(0,), dtype=string_dtype)
+        flags_group.create_dataset(name, shape=(0,), dtype=string_dtype)
         created += 1
 
     return created

@@ -129,19 +129,46 @@ def _read_scalar(dataset) -> float | None:
 def _read_text(dataset) -> str | None:
     if dataset is None:
         return None
+
+    def _coerce(value: object) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, bytes):
+            try:
+                text_value = value.decode("utf-8")
+            except Exception:
+                text_value = value.decode("latin1", "ignore")
+            text_value = text_value.strip()
+            return text_value or None
+        if isinstance(value, str):
+            text_value = value.strip()
+            return text_value or None
+        if isinstance(value, np.ndarray):
+            if value.size == 0:
+                return None
+            if value.ndim == 0:
+                return _coerce(value.item())
+            for entry in value.flat:
+                text_value = _coerce(entry)
+                if text_value:
+                    return text_value
+            return None
+        if isinstance(value, np.generic):
+            return _coerce(value.item())
+        if isinstance(value, (list, tuple, set)):
+            for entry in value:
+                text_value = _coerce(entry)
+                if text_value:
+                    return text_value
+            return None
+        text_value = str(value).strip()
+        return text_value or None
+
     try:
         value = dataset[()]
     except Exception:
         return None
-    if isinstance(value, bytes):
-        try:
-            text = value.decode("utf-8")
-        except Exception:
-            text = value.decode("latin1", "ignore")
-    else:
-        text = str(value)
-    text = text.strip()
-    return text or None
+    return _coerce(value)
 
 
 def _ensure_matplotlib() -> None:
@@ -331,6 +358,19 @@ def _format_stats(values: Sequence[float]) -> dict[str, float | int]:
         "min": float(np.min(arr)),
         "max": float(np.max(arr)),
     }
+
+
+def _format_significant(value: float | None, digits: int = 2) -> str:
+    if value is None:
+        return "—"
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if not np.isfinite(numeric):
+        return "—"
+    digits = max(1, digits)
+    return format(numeric, f".{digits}g")
 
 
 def _format_numeric(value: float | None, precision: int = 2, *, scale: float = 1.0) -> str:
@@ -2158,6 +2198,7 @@ class FlightCalibrationAnalyzer:
                 row = idx // cols
                 col = idx % cols
                 axes[row, col].axis("off")
+        fig.tight_layout(rect=(0.03, 0.03, 0.97, 0.95))
         pdf.savefig(fig)
         plt.close(fig)
 
@@ -2287,12 +2328,16 @@ class FlightCalibrationAnalyzer:
             summary: list[str] = []
             median = stats.get("median")
             if isinstance(median, (int, float)) and np.isfinite(float(median)):
-                summary.append(f"median={float(median):.2f}")
+                summary.append(
+                    f"median={_format_significant(float(median), digits=2)}"
+                )
             mean = stats.get("mean")
             std = stats.get("std")
             if isinstance(mean, (int, float)) and isinstance(std, (int, float)):
                 if np.isfinite(float(mean)) and np.isfinite(float(std)):
-                    summary.append(f"μ={float(mean):.2f} σ={float(std):.2f}")
+                    mean_fmt = _format_significant(float(mean), digits=2)
+                    std_fmt = _format_significant(float(std), digits=2)
+                    summary.append(f"μ={mean_fmt} σ={std_fmt}")
             summary.append(f"N={stats.get('count', 0)}")
             ax.text(
                 0.97,
@@ -2313,6 +2358,7 @@ class FlightCalibrationAnalyzer:
         if not any_data:
             plt.close(fig)
             return
+        fig.tight_layout(rect=(0.03, 0.08, 0.97, 0.95))
         caption = (
             r"\textit{Figure: High-statistics histograms of SpectrumPY-derived quantities. "
             r"All events contribute regardless of accelerator matching to emphasise intrinsic instrument behaviour.}"
