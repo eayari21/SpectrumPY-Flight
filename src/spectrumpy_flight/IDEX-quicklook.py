@@ -11,6 +11,7 @@ import os
 os.environ.pop("QT_DEBUG_PLUGINS", None)
 import sys
 import argparse
+import importlib
 import tempfile
 import io
 import base64
@@ -3617,6 +3618,11 @@ class MainWindow(QMainWindow):
         self.view_structure_action.setShortcut("Ctrl+B")
         self.view_structure_action.triggered.connect(self.action_view_structure)
 
+        self.open_hdf_explorer_action = QAction("Open HDF Explorer", self)
+        self.open_hdf_explorer_action.setShortcut("Ctrl+Shift+H")
+        self.open_hdf_explorer_action.setStatusTip("Launch the standalone HDF Explorer for this file")
+        self.open_hdf_explorer_action.triggered.connect(self.action_open_hdf_explorer)
+
         self.open_variable_definitions_action = QAction("Variable Definitions…", self)
         self.open_variable_definitions_action.setEnabled(launch_variable_definitions_viewer is not None)
         self.open_variable_definitions_action.triggered.connect(self.action_open_variable_definitions)
@@ -3713,6 +3719,7 @@ class MainWindow(QMainWindow):
 
         view_menu = menubar.addMenu("&View")
         view_menu.addAction(self.view_structure_action)
+        view_menu.addAction(self.open_hdf_explorer_action)
         view_menu.addAction(self.open_variable_definitions_action)
         view_menu.addAction(self.open_dust_estimator_action)
         view_menu.addAction(self.open_noise_analysis_action)
@@ -3935,6 +3942,7 @@ class MainWindow(QMainWindow):
         act_reload.triggered.connect(self.reload_current)
         tb.addAction(act_reload)
         tb.addAction(self.view_structure_action)
+        tb.addAction(self.open_hdf_explorer_action)
         if launch_variable_definitions_viewer is not None:
             tb.addAction(self.open_variable_definitions_action)
         tb.addSeparator()
@@ -4240,6 +4248,66 @@ class MainWindow(QMainWindow):
                 self._child_windows.remove(viewer)
 
         viewer.destroyed.connect(_cleanup)
+
+    def action_open_hdf_explorer(self) -> None:
+        if not self._filename:
+            QMessageBox.information(
+                self,
+                "No File Loaded",
+                "Open an HDF5 file to launch the HDF Explorer.",
+            )
+            return
+
+        suffix = Path(self._filename).suffix.lower()
+        if suffix not in {".h5", ".hdf5"}:
+            QMessageBox.information(
+                self,
+                "Unsupported File",
+                "The HDF Explorer is only available for HDF5 products.",
+            )
+            return
+
+        try:
+            explorer_module = importlib.import_module("spectrumpy_flight.HDF_Explorer")
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Viewer Error",
+                f"Unable to import the HDF Explorer module:\n{exc}",
+            )
+            return
+
+        explorer_class = getattr(explorer_module, "HDFDataExplorer", None)
+        if explorer_class is None:
+            QMessageBox.critical(
+                self,
+                "Viewer Error",
+                "The HDF Explorer entry point is unavailable in this installation.",
+            )
+            return
+
+        try:
+            window = explorer_class(self._filename)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Viewer Error",
+                f"Unable to launch the HDF Explorer:\n{exc}",
+            )
+            return
+
+        window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        window.show()
+        window.raise_()
+        window.activateWindow()
+
+        self._child_windows.append(window)
+
+        def _cleanup(*_args):
+            if window in self._child_windows:
+                self._child_windows.remove(window)
+
+        window.destroyed.connect(_cleanup)
 
     def action_open_variable_definitions(self):
         if launch_variable_definitions_viewer is None:

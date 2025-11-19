@@ -15,7 +15,9 @@ import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
+
+import argparse
 
 import re
 import traceback
@@ -935,6 +937,8 @@ class HDFDataExplorer(QWidget):
         if logo_path is not None:
             self.setWindowIcon(QIcon(str(logo_path)))
 
+        self._explicit_filenames: Optional[Set[str]] = None
+
         if source_path is None:
             resolved = default_hdf5_dir()
         else:
@@ -944,6 +948,7 @@ class HDFDataExplorer(QWidget):
 
         if resolved.is_file():
             self.hdf5_folder = resolved.parent
+            self._explicit_filenames = {resolved.name.lower()}
         else:
             self.hdf5_folder = resolved
 
@@ -1482,6 +1487,9 @@ class HDFDataExplorer(QWidget):
         for filename in sorted(os.listdir(self.hdf5_folder)):
             file_path = self.hdf5_folder / filename
             lower = filename.lower()
+
+            if self._explicit_filenames is not None and lower not in self._explicit_filenames:
+                continue
 
             if lower.endswith((".h5", ".hdf5")):
                 try:
@@ -2598,14 +2606,28 @@ class HDFDataExplorer(QWidget):
 # --- Entrypoint ------------------------------------------------------------
 
 
-def main() -> None:
+def main(argv: Optional[Sequence[str]] = None) -> None:
+    parser = argparse.ArgumentParser(
+        description="Explore SpectrumPY HDF5 analysis products with the interactive dashboard.",
+    )
+    parser.add_argument(
+        "source",
+        nargs="?",
+        help="Path to an HDF5 file or a directory containing analysis products.",
+    )
+    args = parser.parse_args(list(argv or []))
+
     app = QApplication(sys.argv)
     logo_path = _find_logo_path()
     if logo_path is not None:
         app.setWindowIcon(QIcon(str(logo_path)))
 
-    folder = default_hdf5_dir()
-    window = HDFDataExplorer(folder)
+    if args.source:
+        target = Path(args.source).expanduser()
+    else:
+        target = default_hdf5_dir()
+
+    window = HDFDataExplorer(target)
     window.resize(1100, 900)
     window.show()
 
@@ -2613,4 +2635,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
