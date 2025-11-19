@@ -39,6 +39,8 @@ _LEGACY_SUFFIXES = (
     " Parameters",
     " Params",
 )
+_MASS_DATASET_SUFFIX = " Dust Mass Estimate"
+_MASS_ALIAS_SUFFIXES = ("MassEstimate", "DustMassEstimate")
 
 
 @dataclass(frozen=True)
@@ -125,6 +127,35 @@ def _ensure_fit_params(handle: "h5py.File", event_key: str) -> int:
     return created
 
 
+def _ensure_mass_estimates(handle: "h5py.File", event_key: str) -> int:
+    """Ensure canonical mass estimate aliases exist for *event_key*."""
+
+    analysis_path = f"{event_key}/Analysis"
+    if analysis_path not in handle:
+        return 0
+
+    analysis_group = handle[analysis_path]
+    created = 0
+
+    for channel in _CHANNELS:
+        dataset_name = f"{channel}{_MASS_DATASET_SUFFIX}"
+        if dataset_name in analysis_group:
+            dataset = analysis_group[dataset_name]
+        else:
+            data = np.array([np.nan], dtype=float)
+            dataset = analysis_group.create_dataset(dataset_name, data=data, dtype=data.dtype)
+            created += 1
+
+        dataset_path = dataset.name
+        for alias_suffix in _MASS_ALIAS_SUFFIXES:
+            alias_name = f"{analysis_path}/{channel}{alias_suffix}"
+            if alias_name in handle:
+                continue
+            handle[alias_name] = h5py.SoftLink(dataset_path)
+
+    return created
+
+
 def _apply_fixups(path: Path) -> _FixupResult:
     """Ensure *path* exposes the standard analysis dataset layout."""
 
@@ -137,6 +168,7 @@ def _apply_fixups(path: Path) -> _FixupResult:
             if not isinstance(handle.get(event_key), h5py.Group):
                 continue
             created += _ensure_fit_params(handle, event_key)
+            created += _ensure_mass_estimates(handle, event_key)
 
     return _FixupResult(path, datasets_created=created)
 
