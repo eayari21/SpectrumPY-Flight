@@ -42,6 +42,8 @@ _LEGACY_SUFFIXES = (
 _MASS_DATASET_SUFFIX = " Dust Mass Estimate"
 _MASS_ALIAS_SUFFIXES = ("MassEstimate", "DustMassEstimate")
 _FLAG_DATASETS = ("FailedFits", "SaturatedChannels", "Notes")
+_IMPACT_DATASET_SUFFIX = " Impact Charge"
+_IMPACT_ALIAS_SUFFIX = "ImpactCharge"
 
 
 @dataclass(frozen=True)
@@ -157,6 +159,44 @@ def _ensure_mass_estimates(handle: "h5py.File", event_key: str) -> int:
     return created
 
 
+def _ensure_impact_charges(handle: "h5py.File", event_key: str) -> int:
+    """Back-fill canonical impact charge datasets for *event_key*."""
+
+    analysis_path = f"{event_key}/Analysis"
+    if analysis_path not in handle:
+        return 0
+
+    analysis_group = handle[analysis_path]
+    created = 0
+
+    for channel in _CHANNELS:
+        canonical_name = f"{channel}{_IMPACT_DATASET_SUFFIX}"
+        alias_name = f"{channel}{_IMPACT_ALIAS_SUFFIX}"
+
+        if canonical_name in analysis_group:
+            dataset = analysis_group[canonical_name]
+        else:
+            legacy_dataset = analysis_group.get(alias_name)
+            if legacy_dataset is not None:
+                data = legacy_dataset[()]
+                dtype = legacy_dataset.dtype
+            else:
+                data = np.array([np.nan], dtype=float)
+                dtype = data.dtype
+
+            dataset = analysis_group.create_dataset(canonical_name, data=data, dtype=dtype)
+            if alias_name in analysis_group:
+                del analysis_group[alias_name]
+            created += 1
+
+        dataset_path = dataset.name
+        alias_path = f"{analysis_path}/{alias_name}"
+        if alias_path not in handle:
+            handle[alias_path] = h5py.SoftLink(dataset_path)
+
+    return created
+
+
 def _ensure_flag_datasets(handle: "h5py.File", event_key: str) -> int:
     """Create empty flag datasets for *event_key* when missing."""
 
@@ -191,6 +231,7 @@ def _apply_fixups(path: Path) -> _FixupResult:
                 continue
             created += _ensure_fit_params(handle, event_key)
             created += _ensure_mass_estimates(handle, event_key)
+            created += _ensure_impact_charges(handle, event_key)
             created += _ensure_flag_datasets(handle, event_key)
 
     return _FixupResult(path, datasets_created=created)
