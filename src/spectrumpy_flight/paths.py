@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from . import package_path
+from .hdf5_fixups import ensure_legacy_analysis_compatibility
 
 __all__ = ["DEFAULT_HDF5_ENV", "default_hdf5_dir", "hdf5_search_paths"]
 
@@ -109,5 +110,7 @@ def hdf5_search_paths() -> list[Path]:
             continue
         seen.add(resolved)
         unique_paths.append(path)
+
+    ensure_legacy_analysis_compatibility(unique_paths)
 
     return unique_paths
