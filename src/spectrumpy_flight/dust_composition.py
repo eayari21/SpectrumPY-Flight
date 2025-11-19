@@ -1473,6 +1473,109 @@ SPECIES_CHOICES: List[Tuple[str, float]] = [
     ("CaAl2Si2O8", 278.203),
 ]
 
+# Natural terrestrial isotope abundances (fractional) sourced from the
+# CRC Handbook of Chemistry and Physics (104th ed., 2023-2024).
+TERRESTRIAL_ISOTOPE_ABUNDANCE: Dict[str, float] = {
+    "1H": 0.999885,
+    "2H": 0.000115,
+    "3He": 1.34e-4,
+    "4He": 0.999866,
+    "12C": 0.9893,
+    "13C": 0.0107,
+    "14N": 0.99636,
+    "15N": 0.00364,
+    "16O": 0.99757,
+    "17O": 0.00038,
+    "18O": 0.00205,
+    "23Na": 1.0,
+    "24Mg": 0.7899,
+    "25Mg": 0.10,
+    "26Mg": 0.1101,
+    "27Al": 1.0,
+    "28Si": 0.9223,
+    "29Si": 0.0467,
+    "30Si": 0.031,
+    "31P": 1.0,
+    "32S": 0.9499,
+    "33S": 0.0075,
+    "34S": 0.0425,
+    "36S": 0.0001,
+    "35Cl": 0.7578,
+    "37Cl": 0.2422,
+    "39K": 0.93258,
+    "41K": 0.0673,
+    "40Ca": 0.96941,
+    "44Ca": 0.02086,
+    "45Sc": 1.0,
+    "47Ti": 0.0744,
+    "48Ti": 0.7372,
+    "49Ti": 0.0541,
+    "50Ti": 0.0518,
+    "50Cr": 0.04345,
+    "52Cr": 0.83789,
+    "53Cr": 0.09501,
+    "54Cr": 0.02365,
+    "55Mn": 1.0,
+    "54Fe": 0.05845,
+    "56Fe": 0.91754,
+    "57Fe": 0.02119,
+    "58Fe": 0.00282,
+    "58Ni": 0.68077,
+    "60Ni": 0.26223,
+    "61Ni": 0.0114,
+    "62Ni": 0.03635,
+    "64Ni": 0.00925,
+    "63Cu": 0.6917,
+    "65Cu": 0.3083,
+    "64Zn": 0.4863,
+    "66Zn": 0.2790,
+    "67Zn": 0.0410,
+    "68Zn": 0.1875,
+    "70Zn": 0.0062,
+}
+
+_ISOTOPE_TOKEN_PATTERN = re.compile(r"\d{1,3}[A-Z][a-z]?")
+
+
+def _extract_isotope_token(label: Optional[str]) -> Optional[str]:
+    """Return the best-effort isotope label (e.g. ``56Fe``) from *label*."""
+
+    if not label:
+        return None
+    cleaned = unicodedata.normalize("NFKC", str(label)).strip()
+    if not cleaned:
+        return None
+    if cleaned in TERRESTRIAL_ISOTOPE_ABUNDANCE:
+        return cleaned
+    match = _ISOTOPE_TOKEN_PATTERN.search(cleaned)
+    if match:
+        token = match.group(0)
+        if token in TERRESTRIAL_ISOTOPE_ABUNDANCE:
+            return token
+    return None
+
+
+def _lookup_terrestrial_abundance(label: Optional[str]) -> Optional[float]:
+    """Lookup the terrestrial isotopic fraction for *label* if available."""
+
+    token = _extract_isotope_token(label)
+    if token is None:
+        return None
+    return TERRESTRIAL_ISOTOPE_ABUNDANCE.get(token)
+
+
+def _format_isotope_fraction(fraction: float) -> str:
+    """Return a human-friendly string for an isotopic fraction."""
+
+    percent = fraction * 100.0
+    if percent >= 0.1:
+        return f"{percent:.2f}"
+    if percent >= 0.01:
+        return f"{percent:.3f}"
+    if percent >= 0.001:
+        return f"{percent:.4f}"
+    return f"{percent:.2e}"
+
 _ATOMIC_SPECIES_PATTERN = re.compile(r"^\d*[A-Z][a-z]?(?:[+-]\d+)?$")
 
 
@@ -4536,7 +4639,7 @@ class DustCompositionWindow(QMainWindow):
         layout = QVBoxLayout(box)
         layout.setSpacing(6)
         self.mass_table = QTableWidget(box)
-        self.mass_table.setColumnCount(7)
+        self.mass_table.setColumnCount(8)
         self.mass_table.setHorizontalHeaderLabels([
             "Label",
             "Mass (amu)",
@@ -4545,6 +4648,7 @@ class DustCompositionWindow(QMainWindow):
             "λ (µs⁻¹)",
             "A (DN·µs)",
             "Abundance (%)",
+            "Terrestrial (%)",
         ])
         header = self.mass_table.horizontalHeader()
         header.setStretchLastSection(True)
@@ -5646,9 +5750,28 @@ class DustCompositionWindow(QMainWindow):
                     item = QTableWidgetItem()
                     self.mass_table.setItem(row, col, item)
                 item.setText(str(value))
-                if col == 6:
+                if col >= 6:
                     flags = item.flags()
                     item.setFlags(flags & ~Qt.ItemFlag.ItemIsEditable)
+            terrestrial_fraction = None
+            if line.assigned_species:
+                terrestrial_fraction = _lookup_terrestrial_abundance(line.assigned_species)
+            if terrestrial_fraction is None:
+                terrestrial_fraction = _lookup_terrestrial_abundance(line.label)
+            natural_item = self.mass_table.item(row, 7)
+            if natural_item is None:
+                natural_item = QTableWidgetItem()
+                self.mass_table.setItem(row, 7, natural_item)
+            if terrestrial_fraction is None:
+                natural_item.setText("—")
+                natural_item.setToolTip("Terrestrial reference unavailable for this line.")
+            else:
+                natural_item.setText(_format_isotope_fraction(terrestrial_fraction))
+                natural_item.setToolTip(
+                    "Relative terrestrial abundance for the assigned isotope (CRC Handbook)."
+                )
+            flags = natural_item.flags()
+            natural_item.setFlags(flags & ~Qt.ItemFlag.ItemIsEditable)
         self.mass_table.resizeColumnsToContents()
         self._block_selection_signals = True
         if self._selected_line_id is not None:
