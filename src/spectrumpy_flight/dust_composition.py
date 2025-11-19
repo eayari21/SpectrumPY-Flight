@@ -2084,13 +2084,22 @@ class InspectMassLineDialog(QDialog):
         self.figure.clear()
         ax = self.figure.add_subplot(111)
         self._axis = ax
-        ax.scatter(time_data, signal_plot, s=22, c="#1f77b4", alpha=0.75, label="Waveform")
+        ax.scatter(
+            time_data,
+            signal_plot,
+            s=22,
+            c="#1f77b4",
+            alpha=0.75,
+            label="Waveform",
+            zorder=2,
+        )
         ax.plot(
             fit_time,
             fit_plot,
             color="#d62728",
             linewidth=2.2,
             label=config.legend_label,
+            zorder=3,
         )
         ax.set_xlabel("Time (µs)")
         ax.set_ylabel("Signal (DN – baseline)")
