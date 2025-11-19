@@ -333,6 +333,19 @@ def _format_stats(values: Sequence[float]) -> dict[str, float | int]:
     }
 
 
+def _format_significant(value: float | None, digits: int = 2) -> str:
+    if value is None:
+        return "—"
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if not np.isfinite(numeric):
+        return "—"
+    digits = max(1, digits)
+    return format(numeric, f".{digits}g")
+
+
 def _format_numeric(value: float | None, precision: int = 2, *, scale: float = 1.0) -> str:
     if value is None:
         return "—"
@@ -2287,12 +2300,16 @@ class FlightCalibrationAnalyzer:
             summary: list[str] = []
             median = stats.get("median")
             if isinstance(median, (int, float)) and np.isfinite(float(median)):
-                summary.append(f"median={float(median):.2f}")
+                summary.append(
+                    f"median={_format_significant(float(median), digits=2)}"
+                )
             mean = stats.get("mean")
             std = stats.get("std")
             if isinstance(mean, (int, float)) and isinstance(std, (int, float)):
                 if np.isfinite(float(mean)) and np.isfinite(float(std)):
-                    summary.append(f"μ={float(mean):.2f} σ={float(std):.2f}")
+                    mean_fmt = _format_significant(float(mean), digits=2)
+                    std_fmt = _format_significant(float(std), digits=2)
+                    summary.append(f"μ={mean_fmt} σ={std_fmt}")
             summary.append(f"N={stats.get('count', 0)}")
             ax.text(
                 0.97,
