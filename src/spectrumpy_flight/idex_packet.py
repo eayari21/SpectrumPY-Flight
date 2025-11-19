@@ -2866,7 +2866,18 @@ class IDEXEvent:
                             del channel_group['Fits']
 
                 target_fit = analysis['target_fit']
-                param_path = f"/{event_key}/Analysis/{channel} Fit Parameters"
+                # Older HDF5 layouts stored the fit parameters using a
+                # whitespace-separated name (``"Ion Grid Fit Parameters"``).
+                # Downstream tooling – including the olivine regression tests –
+                # expects to find a compact alias (``"Ion GridFitParams"``).
+                # Store the authoritative dataset at the alias-friendly path
+                # and create soft links for the legacy names so both access
+                # patterns remain valid.
+                param_path = f"/{event_key}/Analysis/{channel}FitParams"
+                legacy_param_aliases = (
+                    f"/{event_key}/Analysis/{channel} Fit Parameters",
+                    f"/{event_key}/Analysis/{channel}FitParameters",
+                )
                 if target_fit is not None:
                     param = target_fit.get('params', np.array([]))
                     fit_time = target_fit.get('time', np.array([]))
@@ -2884,10 +2895,7 @@ class IDEXEvent:
                     _ensure_dataset_aliases(
                         h,
                         param_path,
-                        (
-                            f"/{event_key}/Analysis/{channel}FitParams",
-                            f"/{event_key}/Analysis/{channel}FitParameters",
-                        ),
+                        legacy_param_aliases,
                     )
                     create_dataset_if_not_exists(h, f"/{event_key}/Analysis/{channel} Fit Time", data=np.asarray(fit_time, dtype=float))
                     create_dataset_if_not_exists(h, f"/{event_key}/Analysis/{channel} Fit Result", data=np.asarray(fit_curve, dtype=float))
@@ -2912,10 +2920,7 @@ class IDEXEvent:
                     _ensure_dataset_aliases(
                         h,
                         param_path,
-                        (
-                            f"/{event_key}/Analysis/{channel}FitParams",
-                            f"/{event_key}/Analysis/{channel}FitParameters",
-                        ),
+                        legacy_param_aliases,
                     )
 
             for event_key, saturated in event_saturation_flags.items():
