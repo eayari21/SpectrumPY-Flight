@@ -38,8 +38,9 @@ file, and exposes shortcuts to the HDF Plotter and full Quicklook GUI.
 
 ### 1.3 Preparing your environment
 
-1. Activate your Python environment with GUI dependencies (`PySide6`/`PyQt6`,
-   `matplotlib`, `numpy`, `h5py`, `cdflib`).
+1. Activate your Python environment with GUI dependencies. The
+   `spectrumpy[quicklook]` extra installs PySide6, qtawesome, and the SQL adapters
+   in one step; add `pyqt` to the extras list if you prefer those bindings.
 2. Ensure the mission directory structure exists: `Data/`, `HDF5/`, `CDF/`, and
    `Plots/`. Automation scripts and the launcher expect these folders when
    opening dialogs and exporting results.【F:ImpactBook.py†L124-L143】【F:combine_target_signals.py†L30-L149】

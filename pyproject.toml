@@ -13,7 +13,6 @@ authors = [
     { name = "Ethan Ayari" },
 ]
 dependencies = [
-    "PySide6>=6.6",
     "numpy>=1.23",
     "scipy>=1.9",
     "pandas>=1.4",
@@ -24,10 +23,7 @@ dependencies = [
     "bitstring>=4.0",
     "cdflib>=0.4",
     "requests>=2.28",
-    "SQLAlchemy>=1.4",
-    "PyMySQL>=1.0",
     "psutil>=5.9",
-    "qtawesome>=1.1",
 ]
 keywords = ["IDEX", "spectrometry", "science", "telemetry"]
 classifiers = [
@@ -40,9 +36,19 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+quicklook = [
+    "PySide6>=6.6",
+    "qtawesome>=1.1",
+    "SQLAlchemy>=1.4",
+    "PyMySQL>=1.0",
+]
 pyqt = ["PyQt6>=6.5"]
 gpu = ["cupy>=12.0"]
-database = ["mysql-connector-python>=8.0"]
+database = [
+    "SQLAlchemy>=1.4",
+    "PyMySQL>=1.0",
+    "mysql-connector-python>=8.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/eayari21/4_Flight"
