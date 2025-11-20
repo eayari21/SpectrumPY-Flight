@@ -2233,29 +2233,42 @@ class FlightCalibrationAnalyzer:
             if target_array is not None:
                 speeds = target_array[:, 0]
                 rises = target_array[:, 1]
-                charges = np.clip(target_array[:, 2], 0.0, None)
-                ce = np.clip(target_array[:, 3], 0.0, None)
-                target_scatter = ax.scatter(
-                    speeds,
-                    rises,
-                    c=charges,
-                    cmap="plasma",
-                    s=40 + 60 * ce,
-                    alpha=0.85,
-                    edgecolor="white",
-                    linewidth=0.3,
-                )
-                colorbar_ref = target_scatter
-                if speeds.size >= 2 and np.unique(speeds).size > 1:
-                    coeffs = np.polyfit(speeds, rises, deg=1)
-                    xs = np.linspace(float(np.min(speeds)), float(np.max(speeds)), 200)
-                    ax.plot(
-                        xs,
-                        coeffs[0] * xs + coeffs[1],
-                        color="#444444",
-                        linestyle="--",
-                        linewidth=1.0,
+                positive_mask = (speeds > 0) & (rises > 0)
+                if not np.all(positive_mask):
+                    target_array = target_array[positive_mask]
+                    speeds = target_array[:, 0]
+                    rises = target_array[:, 1]
+                if speeds.size == 0:
+                    target_array = None
+                else:
+                    charges = np.clip(target_array[:, 2], 0.0, None)
+                    ce = np.clip(target_array[:, 3], 0.0, None)
+                    target_scatter = ax.scatter(
+                        speeds,
+                        rises,
+                        c=charges,
+                        cmap="plasma",
+                        s=40 + 60 * ce,
+                        alpha=0.85,
+                        edgecolor="white",
+                        linewidth=0.3,
                     )
+                    colorbar_ref = target_scatter
+                    if speeds.size >= 2 and np.unique(speeds).size > 1:
+                        log_speeds = np.log10(speeds)
+                        log_rises = np.log10(rises)
+                        coeffs = np.polyfit(log_speeds, log_rises, deg=1)
+                        xs_log = np.linspace(
+                            float(np.min(log_speeds)), float(np.max(log_speeds)), 200
+                        )
+                        ys_log = coeffs[0] * xs_log + coeffs[1]
+                        ax.plot(
+                            10 ** xs_log,
+                            10 ** ys_log,
+                            color="#444444",
+                            linestyle="--",
+                            linewidth=1.0,
+                        )
             ion_array = (
                 np.asarray(samples["ion"], dtype=float)
                 if samples["ion"]
@@ -2265,18 +2278,26 @@ class FlightCalibrationAnalyzer:
             if ion_array is not None:
                 ion_speeds = ion_array[:, 0]
                 ion_rises = ion_array[:, 1]
-                ion_scatter = ax.scatter(
-                    ion_speeds,
-                    ion_rises,
-                    marker="^",
-                    color="#2a9d8f",
-                    alpha=0.85,
-                    edgecolor="white",
-                    linewidth=0.3,
-                )
+                positive_mask = (ion_speeds > 0) & (ion_rises > 0)
+                if not np.all(positive_mask):
+                    ion_array = ion_array[positive_mask]
+                    ion_speeds = ion_array[:, 0]
+                    ion_rises = ion_array[:, 1]
+                if ion_speeds.size > 0:
+                    ion_scatter = ax.scatter(
+                        ion_speeds,
+                        ion_rises,
+                        marker="^",
+                        color="#2a9d8f",
+                        alpha=0.85,
+                        edgecolor="white",
+                        linewidth=0.3,
+                    )
             ax.set_title(
                 f"Target {location} (n={len(samples['target'])}, ion={len(samples['ion'])})"
             )
+            ax.set_xscale("log")
+            ax.set_yscale("log")
             ax.set_xlabel("Impact speed (km/s)")
             ax.set_ylabel("Rise time (µs)")
             ax.grid(True, alpha=0.3)
