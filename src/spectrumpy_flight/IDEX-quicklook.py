@@ -831,12 +831,22 @@ def _latex_to_html(latex: str) -> str:
                 if command in ("left", "right"):
                     i = j
                     continue
-                if command in ("operatorname", "text", "mathrm"):
+                if command in (
+                    "operatorname",
+                    "text",
+                    "mathrm",
+                    "mathcal",
+                    "mathbf",
+                    "mathbin",
+                    "texttt",
+                ):
                     if j < length and latex[j] == "{":
                         content, new_index = _extract_braced(latex, j)
                         rendered = html.escape(content)
-                        if command in {"operatorname", "mathrm"}:
+                        if command in {"operatorname", "mathrm", "mathcal", "mathbf", "mathbin"}:
                             rendered = f"<span class=\"latex-operator\">{rendered}</span>"
+                        elif command == "texttt":
+                            rendered = f"<code>{rendered}</code>"
                         result.append(rendered)
                         i = new_index
                         continue
@@ -875,8 +885,34 @@ def _latex_to_html(latex: str) -> str:
                 if command == "end":
                     i = j
                     continue
-                if command in {"exp", "sin", "cos", "tan", "log", "ln", "min", "max", "sup", "inf"}:
-                    result.append(command)
+                if command in {
+                    "exp",
+                    "sin",
+                    "cos",
+                    "tan",
+                    "log",
+                    "ln",
+                    "min",
+                    "max",
+                    "sup",
+                    "inf",
+                    "sum",
+                    "int",
+                    "approx",
+                    "gg",
+                    "in",
+                    "partial",
+                }:
+                    symbol_map = {
+                        "sum": "&sum;",
+                        "int": "&int;",
+                        "approx": "&asymp;",
+                        "gg": "&gg;",
+                        "in": "&isin;",
+                        "partial": "&part;",
+                    }
+                    rendered = symbol_map.get(command, command)
+                    result.append(rendered)
                     i = j
                     continue
                 if command in {"left", "right", "big", "Big", "bigg", "Bigg", "bigl", "bigr", "biggl", "biggr", "Bigl", "Bigr", "Biggl", "Biggr"}:
