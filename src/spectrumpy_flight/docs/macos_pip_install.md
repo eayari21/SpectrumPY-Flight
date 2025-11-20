@@ -47,15 +47,24 @@ dependencies isolated from the system interpreter.
 
 ## 3. Install Spectrumpy-Flight from PyPI
 
-With the environment activated, install the published package. The default
-installation pulls in PySide6 for the Qt GUI bindings. If you prefer the PyQt6
-bindings, use the optional extra shown below.
+With the environment activated, install the published package.
 
-```bash
-python -m pip install spectrumpy
-# or, to install with the PyQt6 bindings instead of PySide6
-python -m pip install "spectrumpy[pyqt]"
-```
+* **Command-line analysis only.** Keeps the wheel minimal while still shipping
+  all lookup tables and scientific dependencies:
+  ```bash
+  python -m pip install spectrumpy
+  ```
+* **Full Quicklook tooling.** Pulls in PySide6, qtawesome, and the SQL adapters
+  so the Spectrum Launcher, Quicklook viewer, and accelerator matching tabs work
+  immediately:
+  ```bash
+  python -m pip install "spectrumpy[quicklook]"
+  ```
+* **Prefer PyQt bindings.** Combine with the Quicklook extra when you want to
+  run on PyQt instead of PySide:
+  ```bash
+  python -m pip install "spectrumpy[quicklook,pyqt]"
+  ```
 
 ### Optional dependencies
 
@@ -65,7 +74,8 @@ python -m pip install "spectrumpy[pyqt]"
   ```
   Choose the CuPy build that matches your CUDA toolkit if you install it
   separately.
-* MySQL-compatible database connectors for legacy telemetry archives:
+* MySQL-compatible database connectors for legacy telemetry archives without the
+  GUI stack:
   ```bash
   python -m pip install "spectrumpy[database]"
   ```

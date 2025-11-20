@@ -48,21 +48,30 @@ the repository checkout:
 python -m pip install spectrumpy
 ```
 
+The default install remains lightweight so packet analysis scripts such as
+`idex_packet.py` and `drive_idex_packet.py` work on headless hosts without
+Qt. Add the GUI and SQL helpers in a single step when you want to run the
+Quicklook tooling:
+
+```
+python -m pip install "spectrumpy[quicklook]"
+```
+
 macOS-specific preparation steps are covered in
 [`src/spectrumpy_flight/docs/macos_pip_install.md`](src/spectrumpy_flight/docs/macos_pip_install.md). The document explains
 how to prepare Homebrew Python environments, optional extras, and Qt security
 prompts for first-time launches on Ventura and newer systems.【F:src/spectrumpy_flight/docs/macos_pip_install.md†L1-L83】
 
 Optional extras match the bundled feature sets declared in `pyproject.toml`.
-For example, request the PyQt GUI backend or GPU acceleration support with:
+Combine extras when needed (`spectrumpy[quicklook,pyqt,gpu,database]`) to pull in
+all secondary dependencies listed in the metadata.【F:pyproject.toml†L32-L52】
 
-```
-python -m pip install "spectrumpy[pyqt]"
-python -m pip install "spectrumpy[gpu]"
-```
-
-Combine extras when needed (`spectrumpy[pyqt,gpu,database]`) to pull in
-all secondary dependencies listed in the metadata.【F:pyproject.toml†L32-L43】
+| Extra | Included dependencies | When to use |
+| --- | --- | --- |
+| `quicklook` | PySide6 + qtawesome for the Qt GUI, SQLAlchemy + PyMySQL for accelerator matching | Enables the Spectrum Launcher, Quicklook viewer, and other GUI entry points on a clean environment. |
+| `pyqt` | PyQt6 | Swap to the PyQt bindings instead of PySide6 (can be combined with `quicklook`). |
+| `gpu` | CuPy | Accelerate packet decoding on CUDA-capable hosts. |
+| `database` | SQLAlchemy, PyMySQL, MySQL connector | Install database adapters without the GUI stack (used for legacy telemetry archives). |
 
 SpectrumPY ships lean wheels so `pip install spectrumpy` stays well under
 PyPI's size limits. Sample telemetry captures and pre-generated CDF products
