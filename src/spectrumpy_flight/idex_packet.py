@@ -1963,7 +1963,6 @@ class IDEXEvent:
         idex_packet_generator = idex_parser.generator(idex_binary_data,
                                                     # skip_header_bits=64,
                                                     skip_header_bits=32,  # For sciData
-                                                    show_progress=True,
                                                     yield_unrecognized_packet_errors=True)
     
 
