@@ -599,6 +599,21 @@ def _format_numeric(value: float | None, precision: int = 2, *, scale: float = 1
     return f"{numeric:.{precision}f}"
 
 
+def _format_signed_numeric(
+    value: float | None, precision: int = 2, *, scale: float = 1.0
+) -> str:
+    if value is None:
+        return "—"
+    try:
+        numeric = float(value)
+    except Exception:
+        return "—"
+    if not np.isfinite(numeric):
+        return "—"
+    numeric *= scale
+    return f"{numeric:+.{precision}f}"
+
+
 _SPEED_RANGE_PATTERN = re.compile(r"\d+(?:\.\d+)?")
 
 
@@ -2347,37 +2362,27 @@ class FlightCalibrationAnalyzer:
                 continue
             record_lookup.setdefault(key, record)
         comparisons: list[dict[str, object]] = []
+        event_details: list[dict[str, object]] = []
         missing: list[tuple[str, int]] = []
         for key, ref in reference.items():
             record = record_lookup.get(key)
-            if record is None:
-                missing.append(key)
-                continue
-            fractions = _event_mass_line_fractions(record)
-            if not fractions:
-                continue
-            observed_percent = {
-                species: 100.0 * float(value)
-                for species, value in fractions.items()
-                if np.isfinite(value)
-            }
-            differences = []
             abundances = cast(dict[str, float], ref.get("abundances", {}))
-            for species in _BECCA_SPECIES_ORDER:
-                reference_value = float(abundances.get(species, 0.0))
-                observed_value = float(observed_percent.get(species, 0.0))
-                differences.append(observed_value - reference_value)
-            diff_array = np.asarray(differences, dtype=float)
-            max_abs_diff = (
-                float(np.max(np.abs(diff_array))) if diff_array.size else float("nan")
-            )
-            rmse = (
-                float(math.sqrt(np.mean(diff_array**2))) if diff_array.size else float("nan")
+            fractions = _event_mass_line_fractions(record) if record else None
+            observed_percent = (
+                {
+                    species: 100.0 * float(value)
+                    for species, value in fractions.items()
+                    if np.isfinite(value)
+                }
+                if fractions
+                else {}
             )
             stretch_ref = float(ref.get("stretch_ns", float("nan")))
             observed_stretch_ns = (
                 record.mass_stretch_us * 1000.0
-                if record.mass_stretch_us is not None and np.isfinite(record.mass_stretch_us)
+                if record is not None
+                and record.mass_stretch_us is not None
+                and np.isfinite(record.mass_stretch_us)
                 else float("nan")
             )
             stretch_diff = (
@@ -2385,12 +2390,41 @@ class FlightCalibrationAnalyzer:
                 if np.isfinite(observed_stretch_ns) and np.isfinite(stretch_ref)
                 else float("nan")
             )
-            comparisons.append(
+            if record is None:
+                missing.append(key)
+            if observed_percent:
+                differences = []
+                for species in _BECCA_SPECIES_ORDER:
+                    reference_value = float(abundances.get(species, 0.0))
+                    observed_value = float(observed_percent.get(species, 0.0))
+                    differences.append(observed_value - reference_value)
+                diff_array = np.asarray(differences, dtype=float)
+                max_abs_diff = (
+                    float(np.max(np.abs(diff_array))) if diff_array.size else float("nan")
+                )
+                rmse = (
+                    float(math.sqrt(np.mean(diff_array**2)))
+                    if diff_array.size
+                    else float("nan")
+                )
+                comparisons.append(
+                    {
+                        "key": key,
+                        "max_abs_diff": max_abs_diff,
+                        "rmse": rmse,
+                        "stretch_diff_ns": stretch_diff,
+                    }
+                )
+            event_details.append(
                 {
                     "key": key,
-                    "max_abs_diff": max_abs_diff,
-                    "rmse": rmse,
-                    "stretch_diff_ns": stretch_diff,
+                    "dust": ref.get("dust"),
+                    "reference_abundances": abundances,
+                    "observed_abundances": observed_percent,
+                    "stretch_expected": stretch_ref,
+                    "stretch_observed": observed_stretch_ns,
+                    "stretch_diff": stretch_diff,
+                    "has_record": record is not None,
                 }
             )
         if not comparisons:
@@ -2464,6 +2498,94 @@ class FlightCalibrationAnalyzer:
         table.scale(1.0, 1.2)
         pdf.savefig(fig)
         plt.close(fig)
+
+        for detail in sorted(event_details, key=lambda entry: entry["key"]):
+            raw_name, event_id = detail["key"]  # type: ignore[index]
+            fig = plt.figure(figsize=(11, 8.5))
+            fig.suptitle(
+                f"Becca reference comparison – {raw_name} event {event_id}", fontsize=16
+            )
+            ax = fig.add_subplot(111)
+            ax.axis("off")
+
+            dust_label = detail.get("dust") or "—"
+            if not detail.get("has_record"):
+                note = (
+                    "No matching flight event was found in this dataset; only reference values "
+                    "are available for review."
+                )
+            else:
+                note = (
+                    "Observed abundances are relative percentages of the event mass line areas."
+                )
+            ax.text(
+                0.02,
+                0.94,
+                f"Dust type: {dust_label}\n{note}\nStretch tolerance: ±0.2 ns",
+                va="top",
+                ha="left",
+                fontsize=9,
+            )
+
+            observed_abundances = cast(dict[str, float], detail.get("observed_abundances", {}))
+            reference_abundances = cast(
+                dict[str, float], detail.get("reference_abundances", {})
+            )
+            stretch_observed = cast(float, detail.get("stretch_observed", float("nan")))
+            stretch_expected = cast(float, detail.get("stretch_expected", float("nan")))
+            stretch_diff = cast(float, detail.get("stretch_diff", float("nan")))
+            stretch_valid = np.isfinite(stretch_diff) and abs(stretch_diff) <= 0.2
+            stretch_status = (
+                "VALID"
+                if stretch_valid
+                else ("No measurement" if not np.isfinite(stretch_diff) else "Outside tolerance")
+            )
+
+            rows: list[list[str]] = [
+                [
+                    "Stretch (ns)",
+                    _format_numeric(stretch_observed, precision=6),
+                    _format_numeric(stretch_expected, precision=6),
+                    _format_signed_numeric(stretch_diff, precision=6),
+                    stretch_status,
+                ]
+            ]
+
+            for species in _BECCA_SPECIES_ORDER:
+                reference_value = float(reference_abundances.get(species, 0.0))
+                observed_value = observed_abundances.get(species)
+                diff = None
+                if observed_value is not None and np.isfinite(reference_value):
+                    diff = observed_value - reference_value
+                rows.append(
+                    [
+                        species,
+                        _format_numeric(observed_value, precision=6),
+                        _format_numeric(reference_value, precision=6),
+                        _format_signed_numeric(diff, precision=6),
+                        "",
+                    ]
+                )
+
+            detail_table = ax.table(
+                cellText=rows,
+                colLabels=[
+                    "Species / Metric",
+                    "Observed (%)",
+                    "Reference (%)",
+                    "Δ (obs-ref) (%)",
+                    "Status",
+                ],
+                loc="center",
+                cellLoc="center",
+                colLoc="center",
+                bbox=[0.0, 0.0, 1.0, 0.88],
+            )
+            detail_table.auto_set_font_size(False)
+            detail_table.set_fontsize(8)
+            detail_table.scale(1.0, 1.15)
+            pdf.savefig(fig)
+            plt.close(fig)
 
     def _plot_spectrum_vs_spectrumpy(self, pdf: PdfPages) -> None:
         assert plt is not None
