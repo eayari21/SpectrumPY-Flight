@@ -4171,7 +4171,9 @@ class FlightCalibrationAnalyzer:
         if not events:
             return
 
-        eligible_species = [name for name, count in species_counter.items() if count >= 5]
+        eligible_species = sorted(
+            [name for name, count in species_counter.items() if count >= 5]
+        )
         if not eligible_species:
             return
 
@@ -4215,10 +4217,12 @@ class FlightCalibrationAnalyzer:
         ]
 
         fig, ax = plt.subplots(figsize=(8, 6))
+        colors = plt.get_cmap("tab20", len(eligible_species)).colors
         ax.stackplot(
             bin_centers[valid_bins],
             *[series[valid_bins] for series in averaged],
             labels=eligible_species,
+            colors=colors,
             alpha=0.8,
         )
         ax.set_ylim(0.0, 1.05)
