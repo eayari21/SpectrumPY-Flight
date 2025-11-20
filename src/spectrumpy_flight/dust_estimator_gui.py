@@ -48,15 +48,32 @@ except Exception:  # pragma: no cover - fallback to PyQt6
         QWidget,
     )
 
-from lookup.dust_estimator import (
-    CoefficientTable,
-    CurveParameters,
-    compute_mass_from_charge,
-    compute_velocity_from_collection_efficiency,
-    compute_velocity_from_rise_time,
-    load_default_tables,
-    select_velocity,
-)
+if __package__ is None or __package__ == "":  # pragma: no cover - script mode
+    _MODULE_DIR = Path(__file__).resolve().parent
+    _PACKAGE_ROOT = _MODULE_DIR.parent
+    for _path in (_MODULE_DIR, _PACKAGE_ROOT):
+        _path_str = str(_path)
+        if _path_str not in sys.path:
+            sys.path.append(_path_str)
+    from lookup.dust_estimator import (
+        CoefficientTable,
+        CurveParameters,
+        compute_mass_from_charge,
+        compute_velocity_from_collection_efficiency,
+        compute_velocity_from_rise_time,
+        load_default_tables,
+        select_velocity,
+    )
+else:
+    from .lookup.dust_estimator import (
+        CoefficientTable,
+        CurveParameters,
+        compute_mass_from_charge,
+        compute_velocity_from_collection_efficiency,
+        compute_velocity_from_rise_time,
+        load_default_tables,
+        select_velocity,
+    )
 
 
 def _render_formula(text: str) -> str:
