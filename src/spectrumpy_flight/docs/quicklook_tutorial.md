@@ -6,6 +6,8 @@ to launch the tooling (source checkout, packaged app, or CI build), highlights
 the Spectrum Launcher welcome screen, and walks through the Quicklook interface
 in detail.
 
+![Quicklook system overview](media/quicklook_overview.svg)
+
 ## 1. Launching SpectrumPY
 
 ### 1.1 Choose your entry point
@@ -84,6 +86,8 @@ file, and exposes shortcuts to the HDF Plotter and full Quicklook GUI.
 * The **Export Plot** button exposes PNG/PDF/SVG exports. File names incorporate
   the event number, making it easy to archive comparisons.
 
+![Primary window cards](media/quicklook_windows.svg)
+
 ## 6. Noise analysis window
 
 The toolbar and `View` menu expose a dedicated **Noise Analysis** workspace for
@@ -126,6 +130,15 @@ the window.【F:dust_composition.py†L1387-L1478】【F:line_shapes.py†L17-L1
 changes automatically update parameter labels (for example switching `σ` to
 `γ` for Lorentzian fits) and expose extra controls such as secondary time
 constants or weight lists for composite tails.【F:dust_composition.py†L1387-L1478】
+
+**Mass line palette from the inspector**
+
+* Gaussian — center, σ, and amplitude controls for symmetric peaks.
+* Lorentzian — centre/γ parameters for sharp resonance-like lines.
+* Voigt — combines Gaussian σ and Lorentzian γ to capture blended spreads.
+* EMG and double EMG — skewed exponential tails for asymmetric TOF arrivals.
+* HyperEMG and generalised-normal — composite tails and flexible kurtosis for
+  complex dust populations.
 
 The dialog plots the candidate waveform, overlays the fitted curve, and updates
 relative abundance estimates based on the analytic area under each line window.
