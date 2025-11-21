@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900">
+  <defs>
+    <style>
+      .title { font: 700 38px 'Helvetica Neue', Arial, sans-serif; fill: #1c2753; }
+      .subtitle { font: 400 22px 'Helvetica Neue', Arial, sans-serif; fill: #4a5568; }
+      .card { rx: 24; ry: 24; fill: #ffffff; stroke-width: 3; }
+      .card-title { font: 700 24px 'Helvetica Neue', Arial, sans-serif; fill: #1c2753; }
+      .card-body { font: 400 17px 'Helvetica Neue', Arial, sans-serif; fill: #2d3748; line-height: 1.5; }
+      .tag { font: 700 14px 'Helvetica Neue', Arial, sans-serif; fill: #1c2753; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="900" fill="#f3f6ff" rx="32" ry="32"/>
+  <text x="600" y="70" text-anchor="middle" class="title">Quicklook windows at a glance</text>
+  <text x="600" y="105" text-anchor="middle" class="subtitle">Reference cards for the primary analysis workspaces</text>
+
+  <g transform="translate(70,140)">
+    <rect class="card" stroke="#4263eb" x="0" y="0" width="500" height="220"/>
+    <text x="28" y="48" class="card-title">Data Browser & Variable Definitions</text>
+    <foreignObject x="28" y="66" width="444" height="138">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body">
+        <ul>
+          <li>Tree view of every dataset, attribute, and preview panel per event.</li>
+          <li>Definitions spreadsheet mirrors the official engineering reference.</li>
+          <li>Contextual actions for copying paths, exporting tables, and jumping to plots.</li>
+        </ul>
+      </div>
+    </foreignObject>
+    <text x="430" y="202" class="tag">Ctrl+B / Ctrl+Shift+D</text>
+  </g>
+
+  <g transform="translate(630,140)">
+    <rect class="card" stroke="#0c8599" x="0" y="0" width="500" height="220"/>
+    <text x="28" y="48" class="card-title">Noise Analysis</text>
+    <foreignObject x="28" y="66" width="444" height="138">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body">
+        <ul>
+          <li>Histogram + Gaussian overlay to validate baseline tails.</li>
+          <li>FFT spectrum with inferred frequency axis and detrending.</li>
+          <li>Autocorrelation plot with lag conversion when timestamps exist.</li>
+        </ul>
+      </div>
+    </foreignObject>
+    <text x="410" y="202" class="tag">Ctrl+N</text>
+  </g>
+
+  <g transform="translate(70,400)">
+    <rect class="card" stroke="#be4bdb" x="0" y="0" width="500" height="260"/>
+    <text x="28" y="48" class="card-title">Dust Composition</text>
+    <foreignObject x="28" y="66" width="444" height="178">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body">
+        <ul>
+          <li>Combines high/medium/low gain TOF traces with baseline subtraction.</li>
+          <li>Mass line library powered by line_shapes.py: Gaussian, Lorentzian, Voigt, EMG, double EMG, HyperEMG, generalized-normal.</li>
+          <li>Inspector toggles RSF normalization, abundance tables, ternary summaries, and per-line overrides.</li>
+        </ul>
+      </div>
+    </foreignObject>
+    <text x="400" y="242" class="tag">Ctrl+D</text>
+  </g>
+
+  <g transform="translate(630,400)">
+    <rect class="card" stroke="#fd7e14" x="0" y="0" width="500" height="260"/>
+    <text x="28" y="48" class="card-title">Plotting & Export Utilities</text>
+    <foreignObject x="28" y="66" width="444" height="178">
+      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body">
+        <ul>
+          <li>Channel toggles for overlays, ion-grid fits, and target curves.</li>
+          <li>Embedded navigation toolbar for zoom, pan, and save-as snapshots.</li>
+          <li>Export helpers for PNG/PDF/SVG with event-aware file naming.</li>
+        </ul>
+      </div>
+    </foreignObject>
+    <text x="430" y="242" class="tag">Toolbar</text>
+  </g>
+</svg>
