@@ -17,60 +17,46 @@
   <g transform="translate(70,140)">
     <rect class="card" stroke="#4263eb" x="0" y="0" width="500" height="220"/>
     <text x="28" y="48" class="card-title">Data Browser & Variable Definitions</text>
-    <foreignObject x="28" y="66" width="444" height="138">
-      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body">
-        <ul>
-          <li>Tree view of every dataset, attribute, and preview panel per event.</li>
-          <li>Definitions spreadsheet mirrors the official engineering reference.</li>
-          <li>Contextual actions for copying paths, exporting tables, and jumping to plots.</li>
-        </ul>
-      </div>
-    </foreignObject>
+      <text x="28" y="98" class="card-body">
+        <tspan x="28" dy="0">• Tree view of every dataset, attribute, and preview panel per event.</tspan>
+        <tspan x="28" dy="22">• Definitions spreadsheet mirrors the official engineering reference.</tspan>
+        <tspan x="28" dy="22">• Contextual actions for copying paths, exporting tables, and jumping to plots.</tspan>
+      </text>
     <text x="430" y="202" class="tag">Ctrl+B / Ctrl+Shift+D</text>
   </g>
 
   <g transform="translate(630,140)">
     <rect class="card" stroke="#0c8599" x="0" y="0" width="500" height="220"/>
     <text x="28" y="48" class="card-title">Noise Analysis</text>
-    <foreignObject x="28" y="66" width="444" height="138">
-      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body">
-        <ul>
-          <li>Histogram + Gaussian overlay to validate baseline tails.</li>
-          <li>FFT spectrum with inferred frequency axis and detrending.</li>
-          <li>Autocorrelation plot with lag conversion when timestamps exist.</li>
-        </ul>
-      </div>
-    </foreignObject>
+      <text x="28" y="98" class="card-body">
+        <tspan x="28" dy="0">• Histogram + Gaussian overlay to validate baseline tails.</tspan>
+        <tspan x="28" dy="22">• FFT spectrum with inferred frequency axis and detrending.</tspan>
+        <tspan x="28" dy="22">• Autocorrelation plot with lag conversion when timestamps exist.</tspan>
+      </text>
     <text x="410" y="202" class="tag">Ctrl+N</text>
   </g>
 
   <g transform="translate(70,400)">
     <rect class="card" stroke="#be4bdb" x="0" y="0" width="500" height="260"/>
     <text x="28" y="48" class="card-title">Dust Composition</text>
-    <foreignObject x="28" y="66" width="444" height="178">
-      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body">
-        <ul>
-          <li>Combines high/medium/low gain TOF traces with baseline subtraction.</li>
-          <li>Mass line library powered by line_shapes.py: Gaussian, Lorentzian, Voigt, EMG, double EMG, HyperEMG, generalized-normal.</li>
-          <li>Inspector toggles RSF normalization, abundance tables, ternary summaries, and per-line overrides.</li>
-        </ul>
-      </div>
-    </foreignObject>
+      <text x="28" y="98" class="card-body">
+        <tspan x="28" dy="0">• Combines high/medium/low gain TOF traces with baseline subtraction.</tspan>
+        <tspan x="28" dy="22">• Mass line library powered by line_shapes.py: Gaussian, Lorentzian, Voigt, EMG,</tspan>
+        <tspan x="28" dy="22">  double EMG, HyperEMG, generalized-normal.</tspan>
+        <tspan x="28" dy="22">• Inspector toggles RSF normalization, abundance tables, ternary summaries,</tspan>
+        <tspan x="28" dy="22">  and per-line overrides.</tspan>
+      </text>
     <text x="400" y="242" class="tag">Ctrl+D</text>
   </g>
 
   <g transform="translate(630,400)">
     <rect class="card" stroke="#fd7e14" x="0" y="0" width="500" height="260"/>
     <text x="28" y="48" class="card-title">Plotting & Export Utilities</text>
-    <foreignObject x="28" y="66" width="444" height="178">
-      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body">
-        <ul>
-          <li>Channel toggles for overlays, ion-grid fits, and target curves.</li>
-          <li>Embedded navigation toolbar for zoom, pan, and save-as snapshots.</li>
-          <li>Export helpers for PNG/PDF/SVG with event-aware file naming.</li>
-        </ul>
-      </div>
-    </foreignObject>
+      <text x="28" y="98" class="card-body">
+        <tspan x="28" dy="0">• Channel toggles for overlays, ion-grid fits, and target curves.</tspan>
+        <tspan x="28" dy="22">• Embedded navigation toolbar for zoom, pan, and save-as snapshots.</tspan>
+        <tspan x="28" dy="22">• Export helpers for PNG/PDF/SVG with event-aware file naming.</tspan>
+      </text>
     <text x="430" y="242" class="tag">Toolbar</text>
   </g>
 </svg>
