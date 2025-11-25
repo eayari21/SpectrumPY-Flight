@@ -15,44 +15,42 @@
   <g transform="translate(100,190)">
     <rect class="card" stroke="#4263eb" x="0" y="0" width="460" height="210"/>
     <text x="32" y="60" class="card-title">Packet decommutation</text>
-    <foreignObject x="32" y="82" width="396" height="118">
-      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body">
-        Convert raw XTCE telemetry into mission-ready HDF5 and CDF products.
-        Downlink sessions are captured, verified, and staged for every analysis sprint.
-      </div>
-    </foreignObject>
+    <text x="32" y="106" class="card-body">
+      <tspan x="32" dy="0">Convert raw XTCE telemetry into mission-ready</tspan>
+      <tspan x="32" dy="24">HDF5 and CDF products. Downlink sessions are</tspan>
+      <tspan x="32" dy="24">captured, verified, and staged for every</tspan>
+      <tspan x="32" dy="24">analysis sprint.</tspan>
+    </text>
   </g>
 
   <g transform="translate(640,190)">
     <rect class="card" stroke="#15aabf" x="0" y="0" width="460" height="210"/>
     <text x="32" y="60" class="card-title">Batch processing</text>
-    <foreignObject x="32" y="82" width="396" height="118">
-      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body">
-        Shell workflows watch incoming telemetry, decode science events,
-        and export quicklook plots so investigators can spot trends immediately.
-      </div>
-    </foreignObject>
+    <text x="32" y="106" class="card-body">
+      <tspan x="32" dy="0">Shell workflows watch incoming telemetry, decode</tspan>
+      <tspan x="32" dy="24">science events, and export quicklook plots so</tspan>
+      <tspan x="32" dy="24">investigators can spot trends immediately.</tspan>
+    </text>
   </g>
 
   <g transform="translate(100,430)">
     <rect class="card" stroke="#be4bdb" x="0" y="0" width="460" height="210"/>
     <text x="32" y="60" class="card-title">Fit adjustment</text>
-    <foreignObject x="32" y="82" width="396" height="118">
-      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body">
-        Interactive overlays let you tune lmfit solutions on the fly, lock in
-        overrides, and compare candidate fits without leaving the GUI workspace.
-      </div>
-    </foreignObject>
+    <text x="32" y="106" class="card-body">
+      <tspan x="32" dy="0">Interactive overlays let you tune lmfit solutions</tspan>
+      <tspan x="32" dy="24">on the fly, lock in overrides, and compare</tspan>
+      <tspan x="32" dy="24">candidate fits without leaving the GUI workspace.</tspan>
+    </text>
   </g>
 
   <g transform="translate(640,430)">
     <rect class="card" stroke="#fd7e14" x="0" y="0" width="460" height="210"/>
     <text x="32" y="60" class="card-title">TOF mass spectrometry</text>
-    <foreignObject x="32" y="82" width="396" height="118">
-      <div xmlns="http://www.w3.org/1999/xhtml" class="card-body">
-        Dedicated dust composition tools merge gain stages, fit EMG mass lines,
-        and highlight abundance trends across the full time-of-flight spectrum.
-      </div>
-    </foreignObject>
+    <text x="32" y="106" class="card-body">
+      <tspan x="32" dy="0">Dedicated dust composition tools merge gain</tspan>
+      <tspan x="32" dy="24">stages, fit EMG mass lines, and highlight</tspan>
+      <tspan x="32" dy="24">abundance trends across the full time-of-flight</tspan>
+      <tspan x="32" dy="24">spectrum.</tspan>
+    </text>
   </g>
 </svg>

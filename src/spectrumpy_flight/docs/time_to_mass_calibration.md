@@ -6,27 +6,19 @@ Time-of-flight (TOF) mass spectrometers record ion arrival times that must be ma
 
 Under the standard constant-field TOF approximation the travel time for an ion with mass-to-charge ratio $m / q$ is well approximated by
 
-$$
-t(m) = t_0 + \sum_{k=1}^{K} a_k \left(\sqrt{m}\right)^k,
-$$
+$$ t(m) = t_0 + \sum_{k=1}^{K} a_k \left(\sqrt{m}\right)^k, $$
 
 where $t_0$ is the electronic delay, $a_1$ scales with the inverse extraction field strength, and the higher-order coefficients capture detector timing offsets and energy spreads.  Introducing the reduced coordinate $s = \sqrt{m}$ yields a polynomial series in $s$
 
-$$
-t(s) = t_0 + a_1 s + a_2 s^2 + \cdots + a_K s^K.
-$$
+$$ t(s) = t_0 + a_1 s + a_2 s^2 + \cdots + a_K s^K. $$
 
 The coefficients $a_k$ are determined from calibration data by solving a weighted least-squares system.  Given $N$ calibration lines ($N \ge 2$), the design matrix $\mathbf{A} \in \mathbb{R}^{N \times (K+1)}$ has entries
 
-$$
-A_{i,k} = s_i^k, \qquad s_i = \sqrt{m_i},
-$$
+$$ A_{i,k} = s_i^k, \qquad s_i = \sqrt{m_i}, $$
 
 and the optimal coefficients solve the normal equations
 
-$$
-(\mathbf{A}^T \mathbf{W} \mathbf{A})\,\mathbf{c} = \mathbf{A}^T \mathbf{W} \mathbf{t}.
-$$
+$$ (\mathbf{A}^T \mathbf{W} \mathbf{A})\,\mathbf{c} = \mathbf{A}^T \mathbf{W} \mathbf{t}. $$
 
 Here $\mathbf{W}$ is a diagonal weight matrix with elements $w_i = 1/\sigma_i^2$ when measurement uncertainties $\sigma_i$ are known.  The `fit_tof_series` routine directly computes the least-squares solution via `numpy.linalg.lstsq`, which internally performs an SVD for numerical stability.
 
@@ -34,27 +26,19 @@ Here $\mathbf{W}$ is a diagonal weight matrix with elements $w_i = 1/\sigma_i^2$
 
 To convert a measured TOF sample back to a mass coordinate we must invert $t(s)$.  The `invert_tof_to_mass` helper and the [`TOFMassCal`](../mass_calibration.py) data class implement a safeguarded Newton iteration.  Starting from the affine approximation
 
-$$
-s^{(0)} = \max\left(\frac{t - t_0}{a_1}, 0\right),
-$$
+$$ s^{(0)} = \max\left(\frac{t - t_0}{a_1}, 0\right), $$
 
 the iteration refines the solution using
 
-$$
-s^{(n+1)} = \min\!\left(\max\!\left(s^{(n)} - \frac{f\big(s^{(n)}\big)}{f'\big(s^{(n)}\big)},\; 0\right),\; s_{\max}\right)
-$$
+$$ s^{(n+1)} = \min\!\left(\max\!\left(s^{(n)} - \frac{f\big(s^{(n)}\big)}{f'\big(s^{(n)}\big)},\; 0\right),\; s_{\max}\right) $$
 
 with
 
-$$
-f(s) = t(s) - t, \qquad f'(s) = \frac{\mathrm{d} t(s)}{\mathrm{d}s} = \sum_{k=1}^{K} k\,a_k\,s^{k-1}.
-$$
+$$ f(s) = t(s) - t, \qquad f'(s) = \frac{\mathrm{d} t(s)}{\mathrm{d}s} = \sum_{k=1}^{K} k\,a_k\,s^{k-1}. $$
 
 The iteration terminates when $|s^{(n+1)} - s^{(n)}| < \varepsilon$ (default $10^{-9}$) or when a fixed number of iterations is reached.  After convergence the squared reduced coordinate gives the calibrated mass,
 
-$$
-m = \left(s^{(n)}\right)^2,
-$$
+$$ m = \left(s^{(n)}\right)^2, $$
 
 which is finally clipped to the instrument-supported range $[m_{\min}, m_{\max}]$.
 
