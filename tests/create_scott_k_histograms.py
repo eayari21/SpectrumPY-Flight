@@ -6,6 +6,7 @@ For every HDF5 file under the given root (recursing by default) the script
 collects:
     * Target charges (Target L/Target H impact charge datasets)
     * Ion grid charges
+    * Ratio of ion grid to target impact charges
     * Integrated detector charge      = Sum((signal - baseline) * gain * dt)
     * Peak detector current           = (peak(signal) - baseline) * gain
 
@@ -160,9 +161,12 @@ def _compute_waveform_metrics(event_group: h5py.Group, analysis_group: h5py.Grou
     return integrated, peak
 
 
-def process_file(path: Path) -> Tuple[List[float], List[float], List[float], List[float]]:
+def process_file(
+    path: Path,
+) -> Tuple[List[float], List[float], List[float], List[float], List[float]]:
     target_charges: List[float] = []
     ion_grid_charges: List[float] = []
+    ion_to_target_ratios: List[float] = []
     integrated_charges: List[float] = []
     peak_currents: List[float] = []
 
@@ -174,8 +178,19 @@ def process_file(path: Path) -> Tuple[List[float], List[float], List[float], Lis
             if not isinstance(analysis_group, h5py.Group):
                 continue
 
-            target_charges.extend(_charge_datasets(analysis_group, ("Target L", "Target H")))
-            ion_grid_charges.extend(_charge_datasets(analysis_group, ("Ion Grid",)))
+            event_target_charges = _charge_datasets(analysis_group, ("Target L", "Target H"))
+            event_ion_grid_charges = _charge_datasets(analysis_group, ("Ion Grid",))
+
+            target_charges.extend(event_target_charges)
+            ion_grid_charges.extend(event_ion_grid_charges)
+
+            for ion_charge in event_ion_grid_charges:
+                for target_charge in event_target_charges:
+                    if target_charge == 0 or not math.isfinite(target_charge):
+                        continue
+                    ratio = ion_charge / target_charge
+                    if math.isfinite(ratio):
+                        ion_to_target_ratios.append(ratio)
 
             for channel in ("Target L", "Target H", "TOF H", "TOF M", "TOF L"):
                 integrated, peak = _compute_waveform_metrics(event_obj, analysis_group, channel)
@@ -184,7 +199,13 @@ def process_file(path: Path) -> Tuple[List[float], List[float], List[float], Lis
                 if peak is not None and math.isfinite(peak):
                     peak_currents.append(peak)
 
-    return target_charges, ion_grid_charges, integrated_charges, peak_currents
+    return (
+        target_charges,
+        ion_grid_charges,
+        ion_to_target_ratios,
+        integrated_charges,
+        peak_currents,
+    )
 
 
 def summarise(values: Sequence[float], label: str, bins: int = 50) -> None:
@@ -214,18 +235,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     target_charges: List[float] = []
     ion_grid_charges: List[float] = []
+    ion_to_target_ratios: List[float] = []
     integrated_charges: List[float] = []
     peak_currents: List[float] = []
 
     for h5_path in files:
-        t, ig, integ, peak = process_file(h5_path)
+        t, ig, ratios, integ, peak = process_file(h5_path)
         target_charges.extend(t)
         ion_grid_charges.extend(ig)
+        ion_to_target_ratios.extend(ratios)
         integrated_charges.extend(integ)
         peak_currents.extend(peak)
 
     summarise(target_charges, "target charge")
     summarise(ion_grid_charges, "ion grid charge")
+    summarise(ion_to_target_ratios, "ion grid/target charge ratio")
     summarise(integrated_charges, "integrated detector charge")
     summarise(peak_currents, "peak detector current")
 
