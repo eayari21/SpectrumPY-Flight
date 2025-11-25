@@ -8,6 +8,13 @@
 
 ![Quicklook windows](src/spectrumpy_flight/docs/media/quicklook_windows.svg?raw=1)
 
+### Quicklook highlights
+
+* **Auto ingest** – Drag in `.trc` scope captures or browse to existing telemetry; the launcher hands the file off to the right viewer without extra CLI flags.【F:src/spectrumpy_flight/spectrum_launcher.py†L196-L279】
+* **Batch processing** – Shell helpers wrap `idex_packet.py` and driver scripts so you can queue directories of packets for decoding while the GUI stays available for inspection.【F:process_packets.sh†L1-L27】【F:drive_idex_packet.py†L24-L134】
+* **Fit adjustment** – Reload events and tweak EMG parameters directly inside Quicklook; overrides persist to disk so later sessions start from your edits.【F:IDEX-quicklook.py†L1056-L1349】【F:dust_composition.py†L1129-L1478】
+* **TOF mass spectrometry** – Combine high-/mid-/low-gain traces, fit analytic line shapes, and export abundance tables from the Dust Composition workspace.【F:dust_composition.py†L3008-L3525】
+
 ---
 
 ## Overview

@@ -183,7 +183,7 @@ The repository standardises line shapes in `line_shapes.py`; each profile assume
 * **Exponentially modified Gaussian (EMG)** —
 
   $$
-  \mathrm{EMG}(x; \mu, \sigma, \tau, A) = \frac{A}{2\tau} \exp\left(\frac{\mu + \tau^{-1}\sigma^2 - x}{\tau}\right) \mathrm{erfc}\left(\frac{\mu + \tau^{-1}\sigma^2 - x}{\sqrt{2}\sigma}\right),
+  \mathrm{EMG}(x; \mu, \sigma, \tau, A) = \frac{A}{2\tau} \exp\left(\frac{\tau^{-1}}{2} \left(2\mu + \tau^{-1}\sigma^2 - 2x\right)\right) \mathrm{erfc}\left(\frac{\mu + \tau^{-1}\sigma^2 - x}{\sqrt{2}\sigma}\right),
   $$
 
   where $\tau$ is the exponential tail time constant (µs). A negative $\tau$ models a left tail.【F:line_shapes.py†L75-L101】
