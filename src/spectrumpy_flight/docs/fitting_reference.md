@@ -9,7 +9,7 @@ The automated fitting stack is concentrated in the packet decoder and quicklook 
 Targeted at charge pick-up channels, the EMG definition inside `FitEMG` is
 
 $$
-E(x; \mu, \sigma, \lambda) = \frac{\lambda}{2} \exp\Bigl(\tfrac{\lambda}{2} (2\mu + \lambda \sigma^2 - 2x)\Bigr) \operatorname{erfc}\left(\frac{\mu + \lambda \sigma^2 - x}{\sqrt{2}\,\sigma}\right),
+E(x; \mu, \sigma, \lambda) = \frac{\lambda}{2} \exp\Bigl(\tfrac{\lambda}{2} (2\mu + \lambda \sigma^2 - 2x)\Bigr) \mathrm{erfc}\left(\frac{\mu + \lambda \sigma^2 - x}{\sqrt{2}\,\sigma}\right),
 $$
 
 with $(\mu, \sigma, \lambda)$ initialised from the waveform maximum, its spread, and the acquisition span respectively. The helper integrates the fitted pulse to recover charge by calling `quad(E, x_{\min}, x_{\max})`. Failed fits return sentinel zeros so that downstream aggregation can skip the record.【F:idex_packet.py†L58-L119】【F:idex_packet.py†L120-L186】
@@ -183,7 +183,7 @@ The repository standardises line shapes in `line_shapes.py`; each profile assume
 * **Exponentially modified Gaussian (EMG)** —
 
   $$
-  \mathrm{EMG}(x; \mu, \sigma, \tau, A) = \frac{A}{2\tau} \exp\left(\frac{\mu + \tau^{-1}\sigma^2 - x}{\tau}\right) \operatorname{erfc}\left(\frac{\mu + \tau^{-1}\sigma^2 - x}{\sqrt{2}\sigma}\right),
+  \mathrm{EMG}(x; \mu, \sigma, \tau, A) = \frac{A}{2\tau} \exp\left(\frac{\mu + \tau^{-1}\sigma^2 - x}{\tau}\right) \mathrm{erfc}\left(\frac{\mu + \tau^{-1}\sigma^2 - x}{\sqrt{2}\sigma}\right),
   $$
 
   where $\tau$ is the exponential tail time constant (µs). A negative $\tau$ models a left tail.【F:line_shapes.py†L75-L101】

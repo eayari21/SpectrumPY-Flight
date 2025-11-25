@@ -27,7 +27,7 @@ $$
   where Hann-windowed segments $w_k[n]$ provide leakage control before averaging.【F:src/spectrumpy_flight/IDEX-quicklook.py†L2027-L2188】【F:src/spectrumpy_flight/noise_analysis.py†L260-L429】
 * **Dust composition fitting** – Interfaces with `dust_composition.py` to model peaks using exponentially modified Gaussian (EMG) profiles
 $$
-\mathrm{EMG}(t; \mu, \sigma, \lambda) = \frac{\lambda}{2} \exp\left[\frac{\lambda}{2} (2 \mu + \lambda \sigma^2 - 2 t)\right] \operatorname{erfc}\left(\frac{\mu + \lambda \sigma^2 - t}{\sqrt{2}\sigma}\right).
+\mathrm{EMG}(t; \mu, \sigma, \lambda) = \frac{\lambda}{2} \exp\left[\frac{\lambda}{2} (2 \mu + \lambda \sigma^2 - 2 t)\right] \mathrm{erfc}\left(\frac{\mu + \lambda \sigma^2 - t}{\sqrt{2}\sigma}\right).
 $$
   Optimisation relies on lmfit’s Levenberg–Marquardt backend with bounds derived from the currently highlighted window.【F:src/spectrumpy_flight/dust_composition.py†L1188-L1478】
 
@@ -221,7 +221,7 @@ Interactive widgets allow filtering by variable name, dimensionality, and attrib
 
 Experimental batch SNR extraction for calibration campaigns.  For each event the script calls `time2mass.time2mass` to obtain the stretch/shift parameters, detects peaks with `scipy.signal.find_peaks`, and stores
 $$
-\kappa = \frac{1}{M} \sum_{m \in \text{peaks}} \left( m_\text{scale}(m) - \operatorname{round}(m_\text{scale}(m), 1) \right)
+\kappa = \frac{1}{M} \sum_{m \in \text{peaks}} \left( m_\text{scale}(m) - \mathrm{round}\bigl(m_\text{scale}(m), 1\bigr) \right)
 $$
 as a fractional alignment metric.  Outputs include scatter plots of SNR versus $\kappa$ plus histograms of stretch and shift distributions.【F:src/spectrumpy_flight/SNR_Calculator.py†L1-L120】
 
