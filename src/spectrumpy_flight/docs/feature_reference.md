@@ -102,7 +102,7 @@ Outputs include per-file debug previews of the first few scalar reads plus stati
 *Launch command*: `python -m spectrumpy_flight.dust_composition [HDF5FILE]`
 
 Provides a standalone window for fitting EMG and HyperEMG peaks, computing relative sensitivity corrections, and producing ternary abundance plots.  HyperEMG tails follow
-`\mathrm{HyperEMG}(t) = \sum_{j} w_j \, \mathrm{EMG}(t; \mu, \sigma, \lambda_j), \qquad \sum_j w_j = 1.`
+$\mathrm{HyperEMG}(t) = \sum_{j} w_j \, \mathrm{EMG}(t; \mu, \sigma, \lambda_j), \qquad \sum_j w_j = 1.$
 Outputs include CSV tables of fitted parameters, RSF-adjusted counts, and PDF figures.【F:src/spectrumpy_flight/dust_composition.py†L1-L4023】
 
 ### `dust_estimator_gui.py`
@@ -110,7 +110,7 @@ Outputs include CSV tables of fitted parameters, RSF-adjusted counts, and PDF fi
 *Launch command*: `python -m spectrumpy_flight.dust_estimator_gui`
 
 Estimates impact charge by applying calibration polynomials to TOF peaks.  The GUI accepts manual peak picks, performs linearised error propagation
-`\sigma_m \approx \left|\frac{\partial m}{\partial t}\right| \sigma_t = \left|\frac{2 (t - t_0)}{a_1^2}\right| \sigma_t,`
+$\sigma_m \approx \left|\frac{\partial m}{\partial t}\right| \sigma_t = \left|\frac{2 (t - t_0)}{a_1^2}\right| \sigma_t,$
 assuming the first-order stretch dominates.  Results export as CSV snapshots for mission logs.【F:src/spectrumpy_flight/dust_estimator_gui.py†L1-L611】
 
 ### `ImpactBook.py`
@@ -124,7 +124,7 @@ Creates PDF “impact books” summarising events with stacked plots, channel no
 *Launch command*: `python -m spectrumpy_flight.olivine_metrics [-f HDF5FILE] [--roi MASS1 MASS2]`
 
 Runs a regression suite tailored to olivine calibration shots.  Gaussian line fits extract centroid drift, peak width, and asymmetry.  The algorithm minimises
-`\chi^2 = \sum_{i} \frac{(y_i - y(t_i; A, \mu, \sigma))^2}{\sigma_i^2},`
+$\chi^2 = \sum_{i} \frac{(y_i - y(t_i; A, \mu, \sigma))^2}{\sigma_i^2},$
 with `lmfit.Model.fit`.  Output directories contain CSV summary tables, Matplotlib figures, and JSON parameter dumps.【F:src/spectrumpy_flight/olivine_metrics.py†L1-L2663】
 
 ### `noise_analysis.py`
@@ -132,7 +132,7 @@ with `lmfit.Model.fit`.  Output directories contain CSV summary tables, Matplotl
 *Launch command*: `python -m spectrumpy_flight.noise_analysis --file HDF5FILE --channel TOF_H`
 
 Computes time-domain noise histograms, FFTs, and autocorrelation functions.  The autocorrelation coefficient at lag $\tau$ is
-`\rho(\tau) = \frac{1}{(N-\tau) \sigma^2} \sum_{i=0}^{N-\tau-1} (x_i - \mu)(x_{i+\tau} - \mu),`
+$\rho(\tau) = \frac{1}{(N-\tau) \sigma^2} \sum_{i=0}^{N-\tau-1} (x_i - \mu)(x_{i+\tau} - \mu),$
 and confidence intervals follow Bartlett’s approximation to flag statistically significant oscillations.【F:src/spectrumpy_flight/noise_analysis.py†L1-L429】
 
 ### `time2mass.py`
@@ -164,7 +164,7 @@ where $q$ is extracted from unary-coded bits and $r$ from the following $k$ bina
 *Launch command*: `python -m spectrumpy_flight.HDF_View FILE`
 
 Provides a hierarchical tree explorer for HDF5 products with dataset previews, Matplotlib quick plots, and attribute inspection.  Large datasets stream lazily; slicing leverages NumPy-style indexing entered in the GUI.  Value histograms compute
-`p(v) = \frac{1}{N}\sum_{i=1}^{N} \mathbf{1}[v_i \in \text{bin}(v)],`
+$p(v) = \frac{1}{N}\sum_{i=1}^{N} \mathbf{1}[v_i \in \text{bin}(v)],$
 enabling quick sanity checks on trigger distributions.【F:src/spectrumpy_flight/HDF_View.py†L1-L513】
 
 ### `HDF_Explorer.py`
@@ -174,25 +174,25 @@ Desktop browser for walking HDF5 and CDF trees simultaneously.  The viewer issue
 ### `CDF_View.py`
 
 Specialised NASA CDF inspector with time conversion helpers.  The tool converts TT2000 timestamps to UTC strings via
-`\text{UTC}(i) = \text{datetime64}(\text{nanoseconds since J2000} + \Delta_{\text{leap}}).`
+$\text{UTC}(i) = \text{datetime64}(\text{nanoseconds since J2000} + \Delta_{\text{leap}}).$
 Interactive widgets allow filtering by variable name, dimensionality, and attribute presence.【F:src/spectrumpy_flight/CDF_View.py†L1-L481】
 
 ### `SNR_Calculator.py`
 
 Experimental batch SNR extraction for calibration campaigns.  For each event the script calls `time2mass.time2mass` to obtain the stretch/shift parameters, detects peaks with `scipy.signal.find_peaks`, and stores
-`\kappa = \frac{1}{M} \sum_{m \in \text{peaks}} \left( m_\text{scale}(m) - \mathrm{round}\bigl(m_\text{scale}(m), 1\bigr) \right)`
+$\kappa = \frac{1}{M} \sum_{m \in \text{peaks}} \left( m_\text{scale}(m) - \mathrm{round}\bigl(m_\text{scale}(m), 1\bigr) \right)$
 as a fractional alignment metric.  Outputs include scatter plots of SNR versus $\kappa$ plus histograms of stretch and shift distributions.【F:src/spectrumpy_flight/SNR_Calculator.py†L1-L120】
 
 ### `line_shapes.py`
 
 Defines Gaussian, Lorentzian, EMG, and HyperEMG profiles used across the GUI.  Functions expose gradients so lmfit can compute analytic Jacobians during optimisation.  For example, the Gaussian profile is
-`G(t; A, \mu, \sigma) = A \exp\left(-\frac{(t-\mu)^2}{2\sigma^2}\right),`
+$G(t; A, \mu, \sigma) = A \exp\left(-\frac{(t-\mu)^2}{2\sigma^2}\right),$
 with derivative $\partial G/\partial \mu = G(t)\,(t-\mu)/\sigma^2$.【F:src/spectrumpy_flight/line_shapes.py†L1-L181】
 
 ### `bitstream.py`
 
 Handles low-level bit slicing for Rice/Golomb decoding.  The module implements constant-time masks using NumPy vector operations and optional CuPy acceleration.  Given a packed bit array, `_chunk_to_uint32` reconstructs integers as
-`u_j = \sum_{b=0}^{31} s_{32j+b} 2^b,`
+$u_j = \sum_{b=0}^{31} s_{32j+b} 2^b,$
 where $s_k$ are individual bits.【F:src/spectrumpy_flight/bitstream.py†L1-L213】
 
 ### `mass_calibration.py`
