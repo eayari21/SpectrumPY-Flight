@@ -4,7 +4,7 @@
       .title { font: 700 40px 'Helvetica Neue', Arial, sans-serif; fill: #1c2753; }
       .subtitle { font: 400 22px 'Helvetica Neue', Arial, sans-serif; fill: #4a5568; }
       .card-title { font: 700 24px 'Helvetica Neue', Arial, sans-serif; fill: #1c2753; }
-      .card-body { font: 400 17px 'Helvetica Neue', Arial, sans-serif; fill: #2d3748; line-height: 1.5; }
+      .card-body { font: 400 16px 'Helvetica Neue', Arial, sans-serif; fill: #2d3748; line-height: 1.4; }
       .card { rx: 26; ry: 26; fill: #ffffff; stroke-width: 3; }
     </style>
   </defs>
@@ -13,38 +13,42 @@
   <text x="600" y="135" text-anchor="middle" class="subtitle">Large-scale tools that keep IDEX science moving</text>
 
   <g transform="translate(80,190)">
-    <rect class="card" stroke="#4263eb" x="0" y="0" width="520" height="210"/>
+    <rect class="card" stroke="#4263eb" x="0" y="0" width="540" height="230"/>
     <text x="32" y="60" class="card-title">Packet decommutation</text>
     <text x="32" y="110" class="card-body">
-      <tspan x="32" dy="0">Convert raw XTCE telemetry into mission-ready HDF5 and CDF products.</tspan>
-      <tspan x="32" dy="24">Downlink sessions are captured, verified, and staged for every analysis sprint.</tspan>
+      <tspan x="32" dy="0">Convert raw XTCE telemetry into mission-ready HDF5/CDF products.</tspan>
+      <tspan x="32" dy="22">Downlink sessions are captured, verified, and staged</tspan>
+      <tspan x="32" dy="22">so every analysis sprint starts with consistent inputs.</tspan>
     </text>
   </g>
 
   <g transform="translate(620,190)">
-    <rect class="card" stroke="#15aabf" x="0" y="0" width="520" height="210"/>
+    <rect class="card" stroke="#15aabf" x="0" y="0" width="540" height="230"/>
     <text x="32" y="60" class="card-title">Batch processing</text>
     <text x="32" y="110" class="card-body">
       <tspan x="32" dy="0">Shell workflows watch incoming telemetry, decode science events,</tspan>
-      <tspan x="32" dy="24">and export quicklook plots so investigators can spot trends immediately.</tspan>
+      <tspan x="32" dy="22">and export quicklook plots so investigators can spot trends</tspan>
+      <tspan x="32" dy="22">immediately.</tspan>
     </text>
   </g>
 
   <g transform="translate(80,430)">
-    <rect class="card" stroke="#be4bdb" x="0" y="0" width="520" height="210"/>
+    <rect class="card" stroke="#be4bdb" x="0" y="0" width="540" height="230"/>
     <text x="32" y="60" class="card-title">Fit adjustment</text>
     <text x="32" y="110" class="card-body">
-      <tspan x="32" dy="0">Interactive overlays let you tune lmfit solutions on the fly, lock in</tspan>
-      <tspan x="32" dy="24">overrides, and compare candidate fits without leaving the GUI workspace.</tspan>
+      <tspan x="32" dy="0">Interactive overlays let you tune lmfit solutions on the fly,</tspan>
+      <tspan x="32" dy="22">lock in overrides, and compare candidate fits without</tspan>
+      <tspan x="32" dy="22">leaving the GUI workspace.</tspan>
     </text>
   </g>
 
   <g transform="translate(620,430)">
-    <rect class="card" stroke="#fd7e14" x="0" y="0" width="520" height="210"/>
+    <rect class="card" stroke="#fd7e14" x="0" y="0" width="540" height="230"/>
     <text x="32" y="60" class="card-title">TOF mass spectrometry</text>
     <text x="32" y="110" class="card-body">
       <tspan x="32" dy="0">Dedicated dust composition tools merge gain stages, fit EMG mass lines,</tspan>
-      <tspan x="32" dy="24">and highlight abundance trends across the full time-of-flight spectrum.</tspan>
+      <tspan x="32" dy="22">and highlight abundance trends across the full</tspan>
+      <tspan x="32" dy="22">time-of-flight spectrum.</tspan>
     </text>
   </g>
 </svg>

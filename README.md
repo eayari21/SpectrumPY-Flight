@@ -4,9 +4,9 @@
 
 > Ground-system decoding, fitting, and visualization tools for the LASP/IMPACT IDEX campaign.
 
-![SpectrumPY overview](src/spectrumpy_flight/docs/media/quicklook_overview.svg)
+![SpectrumPY overview](https://raw.githubusercontent.com/eayari21/4_Flight/main/src/spectrumpy_flight/docs/media/quicklook_overview.svg)
 
-![Quicklook windows](src/spectrumpy_flight/docs/media/quicklook_windows.svg)
+![Quicklook windows](https://raw.githubusercontent.com/eayari21/4_Flight/main/src/spectrumpy_flight/docs/media/quicklook_windows.svg)
 
 ### Quicklook highlights
 
