@@ -4,7 +4,7 @@
       .title { font: 700 40px 'Helvetica Neue', Arial, sans-serif; fill: #1c2753; }
       .subtitle { font: 400 22px 'Helvetica Neue', Arial, sans-serif; fill: #4a5568; }
       .card-title { font: 700 24px 'Helvetica Neue', Arial, sans-serif; fill: #1c2753; }
-      .card-body { font: 400 18px 'Helvetica Neue', Arial, sans-serif; fill: #2d3748; line-height: 1.5; }
+      .card-body { font: 400 17px 'Helvetica Neue', Arial, sans-serif; fill: #2d3748; line-height: 1.5; }
       .card { rx: 26; ry: 26; fill: #ffffff; stroke-width: 3; }
     </style>
   </defs>
@@ -12,8 +12,8 @@
   <text x="600" y="90" text-anchor="middle" class="title">SpectrumPY Quicklook</text>
   <text x="600" y="135" text-anchor="middle" class="subtitle">Large-scale tools that keep IDEX science moving</text>
 
-  <g transform="translate(100,190)">
-    <rect class="card" stroke="#4263eb" x="0" y="0" width="460" height="210"/>
+  <g transform="translate(80,190)">
+    <rect class="card" stroke="#4263eb" x="0" y="0" width="520" height="210"/>
     <text x="32" y="60" class="card-title">Packet decommutation</text>
     <text x="32" y="110" class="card-body">
       <tspan x="32" dy="0">Convert raw XTCE telemetry into mission-ready HDF5 and CDF products.</tspan>
@@ -21,8 +21,8 @@
     </text>
   </g>
 
-  <g transform="translate(640,190)">
-    <rect class="card" stroke="#15aabf" x="0" y="0" width="460" height="210"/>
+  <g transform="translate(620,190)">
+    <rect class="card" stroke="#15aabf" x="0" y="0" width="520" height="210"/>
     <text x="32" y="60" class="card-title">Batch processing</text>
     <text x="32" y="110" class="card-body">
       <tspan x="32" dy="0">Shell workflows watch incoming telemetry, decode science events,</tspan>
@@ -30,8 +30,8 @@
     </text>
   </g>
 
-  <g transform="translate(100,430)">
-    <rect class="card" stroke="#be4bdb" x="0" y="0" width="460" height="210"/>
+  <g transform="translate(80,430)">
+    <rect class="card" stroke="#be4bdb" x="0" y="0" width="520" height="210"/>
     <text x="32" y="60" class="card-title">Fit adjustment</text>
     <text x="32" y="110" class="card-body">
       <tspan x="32" dy="0">Interactive overlays let you tune lmfit solutions on the fly, lock in</tspan>
@@ -39,8 +39,8 @@
     </text>
   </g>
 
-  <g transform="translate(640,430)">
-    <rect class="card" stroke="#fd7e14" x="0" y="0" width="460" height="210"/>
+  <g transform="translate(620,430)">
+    <rect class="card" stroke="#fd7e14" x="0" y="0" width="520" height="210"/>
     <text x="32" y="60" class="card-title">TOF mass spectrometry</text>
     <text x="32" y="110" class="card-body">
       <tspan x="32" dy="0">Dedicated dust composition tools merge gain stages, fit EMG mass lines,</tspan>
