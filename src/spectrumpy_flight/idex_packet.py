@@ -54,6 +54,9 @@ if __package__ is None or __package__ == "":
         _path_str = str(_path)
         if _path_str not in sys.path:
             sys.path.append(_path_str)
+    from importlib import import_module
+
+    package_path = import_module("spectrumpy_flight").package_path
     from plot_style import apply_plot_style
     from idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
     from rice_decode import idex_rice_Decode
@@ -65,6 +68,7 @@ if __package__ is None or __package__ == "":
         spacecraft_seconds_to_datetime,
     )
 else:
+    from . import package_path
     from .plot_style import apply_plot_style
     from .idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
     from .rice_decode import idex_rice_Decode
@@ -2226,7 +2230,6 @@ class IDEXEvent:
                     reverse_mapping_dict = {value: key for key, value in mapping_dict.items()}
 
                     # Read in Scott K's instrument settings conversions
-                    from . import package_path
 
                     settings_path = package_path("IDEX CDF Variable Definitions.xlsx")
                     settings_df = pd.read_excel(settings_path)
