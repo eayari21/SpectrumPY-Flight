@@ -2283,6 +2283,7 @@ class IDEXEvent:
 
                      # Account for HS trigger delay
                     self.TOFdelay = pkt.data['IDX__TXHDRSAMPDELAY'].derived_value  # Last two bits are padding
+                    self.header[(evtnum, 'TOFDelay')] = int(self.TOFdelay)
 
                     # Mask to extract 10-bit values
                     mask = 0b1111111111
