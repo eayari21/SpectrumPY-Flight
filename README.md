@@ -113,21 +113,21 @@ require no manual path management after installation:
 ### Time-to-mass conversion details
 
 The calibration workflow models the arrival-time series as a polynomial in the
-reduced coordinate \(s = \sqrt{m}\):
+reduced coordinate `s = sqrt(m)`:
 
-$$
-  t(s) = t_0 + a_1 s + a_2 s^2 + \cdots + a_K s^K.
-$$
+```
+t(s) = t_0 + a_1 s + a_2 s^2 + \cdots + a_K s^K.
+```
 
-Least-squares fitting recovers the coefficients \(a_k\) from calibration lines
+Least-squares fitting recovers the coefficients `a_k` from calibration lines
 and the safeguarded Newton inversion maps measured times back to masses while
 clipping to the instrument range.【F:src/spectrumpy_flight/docs/time_to_mass_calibration.md†L13-L91】
 
 After convergence the squared coordinate yields the final mass axis:
 
-$$
-  m = \left(s^{(n)}\right)^2.
-$$
+```
+m = (s^(n))^2.
+```
 
 These steps are exposed through `TOFMassCal` and the `time2mass.py` CLI so that
 both automated batch runs and interactive GUI sessions share the same
