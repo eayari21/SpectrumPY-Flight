@@ -2520,114 +2520,105 @@ class IDEXEvent:
 
     def plot_all_data(self, packets, fname: str):
         fname = os.path.split(fname)[-1]
-        # Create a folder to store the plots
-        PlotFolder = os.path.join(os.getcwd(), f"Plots/{fname}")
-        if os.path.exists(PlotFolder):  # If it exists, remove it
-            shutil.rmtree(PlotFolder)
-        os.makedirs(PlotFolder)
+        plot_folder = os.path.join(os.getcwd(), f"Plots/{fname}")
+        if os.path.exists(plot_folder):
+            shutil.rmtree(plot_folder)
+        os.makedirs(plot_folder)
 
-        # print("Number of packet items = ", len(packets.items()))
-        fig, ax = plt.subplots(nrows=6)  # Make this general
-        fig.set_size_inches(18.5, 10.5)
-        for i, (k, v) in enumerate(packets.items()):  # k[0] = Event number, k[1] = CHnel name, v=waveform data
-            # fig = plt.figure(figsize=(17,12)) 
-            # print(i%6)
-            i=i%6  # We take modulo 6 so it is the same for each event
-            x = np.linspace(0, len(v), len(v))  # Number of samples
-            # Scale number of samples by ~4 ns (high rate) or ~250 ns (low rate) to get to time.
-            if(i<=2):
-                x *= 1/260  # HS
-                self.hstime = x
+        event_ids = sorted({key[0] for key in packets.keys()})
+        colors = plt.get_cmap("tab10").colors
+
+        def _format_stats(trace: np.ndarray) -> str:
+            return "\n".join(
+                [
+                    f"Min = {trace.min():.0f} [dN]",
+                    f"Avg = {trace.mean():6.2f} [dN]",
+                    f"Std = {trace.std():6.2f} [dN]",
+                    f"Max = {trace.max():.0f} [dN]",
+                ]
+            )
+
+        for event_id in event_ids:
+            fig, axes_grid = plt.subplots(
+                nrows=3,
+                ncols=2,
+                figsize=(15, 10),
+                sharex=False,
+                sharey=False,
+                constrained_layout=False,
+            )
+            axes = axes_grid.flatten()
+
+            high_trigger_offset = self._high_trigger_offset()
+            low_trigger_offset = self._low_trigger_offset()
+
+            hstime = np.linspace(
+                0, len(packets[(event_id, "TOF L")]), len(packets[(event_id, "TOF L")])
+            )
+            hstime *= 1 / 260
+            hstime -= high_trigger_offset
+
+            lstime = np.linspace(
+                0, len(packets[(event_id, "Ion Grid")]), len(packets[(event_id, "Ion Grid")])
+            )
+            lstime *= 1 / 4.0625
+            lstime -= low_trigger_offset
+
+            fig.suptitle(
+                f"{fname} Event {event_id}",
+                font="Times New Roman",
+                fontsize=22,
+                fontweight="bold",
+            )
+
+            fig.supxlabel(r"Time [$\mu$s]", fontsize=14, fontweight="bold")
+
+            def _draw_axis(ax, time_axis, trace, label, color):
+                ax.plot(time_axis, trace, color=color, lw=1.8)
+                ax.axvline(0, color="red", lw=1.2, ls="--", alpha=0.7)
+                ax.set_title(label, fontsize=14, fontweight="bold")
+                ax.set_ylabel("Counts [dN]", fontsize=12)
+                ax.grid(True, ls="--", lw=0.5, alpha=0.6)
+                ax.text(
+                    0.98,
+                    0.95,
+                    _format_stats(trace),
+                    transform=ax.transAxes,
+                    ha="right",
+                    va="top",
+                    fontsize=10,
+                    bbox={
+                        "boxstyle": "round,pad=0.4",
+                        "facecolor": "white",
+                        "edgecolor": "gray",
+                        "alpha": 0.9,
+                    },
+                )
+
+            _draw_axis(axes[0], hstime, packets[(event_id, "TOF L")], "TOF L", colors[0])
+            _draw_axis(axes[1], hstime, packets[(event_id, "TOF M")], "TOF M", colors[1])
+            _draw_axis(axes[2], hstime, packets[(event_id, "TOF H")], "TOF H", colors[2])
+            _draw_axis(axes[3], lstime, packets[(event_id, "Ion Grid")], "Ion Grid", colors[3])
+
+            if self.header[(event_id, "Timestamp")] < 494_733_600:
+                _draw_axis(
+                    axes[4], lstime, packets[(event_id, "Target L")], "Target LG", colors[4]
+                )
+                _draw_axis(
+                    axes[5], lstime, packets[(event_id, "Target H")], "Target HG", colors[5]
+                )
             else:
-                x *= 1/4.0625  # LS
-                self.lstime = x
+                _draw_axis(
+                    axes[4], lstime, packets[(event_id, "Target H")], "Target HG", colors[4]
+                )
+                _draw_axis(
+                    axes[5], lstime, packets[(event_id, "Target L")], "Target LG", colors[5]
+                )
 
-            # print("array length = ", len(v))
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+            plt.savefig(os.path.join(plot_folder, f"{fname}_Event_{event_id}.png"), dpi=300)
+            plt.close(fig)
 
-            
-            print(f"Length of Channel {k[1]} = {len(v)}")
-            # ax[i].fill_between(x, v, color='r')
-            ax[i].set_xlabel(r"Time [$\mu$ s]", font="Times New Roman", fontsize=30, fontweight='bold')
-            if(i<=2):
-                self.lstriggertime = 8*(1/4.0625)*(self.lspretrigblocks+1) - (1/260)*self.hgdelay
-                print(f"High sampling trigger time = {self.lstriggertime} microseconds.")
-                self.hstime = self.hstime - self.lstriggertime
-                ax[i].axvline(min(self.hstime)+self.lstriggertime, c="red", lw=2)
-
-            else:
-                self.hstriggertime = 512*(1/260)*(self.hspretrigblocks+1)  #  - (1/260)*self.hgdelay
-                print(f"Low sampling trigger time = {self.hstriggertime} microseconds.")
-                self.lstime = self.lstime-self.hstriggertime
-                ax[i].axvline(min(self.lstime)+self.hstriggertime, c="red", lw=2)
-                
-            plt.subplots_adjust(bottom=0.2)
-
-
-            plt.suptitle(f"{fname} Event {k[0]}", font="Times New Roman", fontsize=30, fontweight='bold')
-            # plt.tight_layout()
-
-            if i==5:  #  End of the event, lets free up some memory
-                ax[0].plot(self.hstime, packets[(k[0], "TOF L")])
-                ax[0].set_ylabel("TOF L", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = f'Min = {min(packets[(k[0], "TOF L")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "TOF L")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "TOF L")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "TOF L")])} [dN]'
-                ax[0].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[0].transAxes)
-                # ax[0].set_xlim([0, 31.5])
-                
-                ax[1].plot(self.hstime, packets[(k[0], "TOF M")])
-                ax[1].set_ylabel("TOF M", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = f'Min = {min(packets[(k[0], "TOF M")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "TOF M")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "TOF M")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "TOF M")])} [dN]'
-                ax[1].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[1].transAxes)
-                # ax[1].set_xlim([0, 31.5])
-                
-                ax[2].plot(self.hstime, packets[(k[0], "TOF H")])
-                ax[2].set_ylabel("TOF H", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = f'Min = {min(packets[(k[0], "TOF H")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "TOF H")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "TOF H")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "TOF H")])} [dN]'
-                ax[2].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[2].transAxes)
-                # ax[2].set_xlim([0, 31.5])
-
-                ax[3].plot(self.lstime, packets[(k[0], "Ion Grid")])
-                ax[3].set_ylabel("Ion Grid", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = f'Min = {min(packets[(k[0], "Ion Grid")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Ion Grid")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Ion Grid")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Ion Grid")])} [dN]'
-                ax[3].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[3].transAxes)
-                # ax[3].set_xlim([0, 126.5])
-                
-                if(self.header[(k[0], 'Timestamp')] < 494_733_600):  # If we are before September 27th, 2023 then we use the old definitions
-                
-                    ax[4].plot(self.lstime, packets[(k[0], "Target L")])
-                    ax[4].set_ylabel("Target LG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = f'Min = {min(packets[(k[0], "Target L")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Target L")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Target L")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Target L")])} [dN]'
-                    ax[4].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[4].transAxes)
-                    # ax[4].set_xlim([0, 126.5])
-                    
-                    ax[5].plot(self.lstime, packets[(k[0], "Target H")])
-                    ax[5].set_ylabel("Target HG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = f'Min = {min(packets[(k[0], "Target H")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Target H")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Target H")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Target H")])} [dN]'
-                    ax[5].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[5].transAxes)
-                    # ax[5].set_xlim([0, 126.5])
-
-                else:
-                    ax[4].plot(self.lstime, packets[(k[0], "Target H")])
-                    ax[4].set_ylabel("Target HG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = f'Min = {min(packets[(k[0], "Target H")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Target H")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Target H")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Target H")])} [dN]'
-                    ax[4].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[4].transAxes)
-                    # ax[4].set_xlim([0, 126.5])
-                    
-                    ax[5].plot(self.lstime, packets[(k[0], "Target L")])
-                    ax[5].set_ylabel("Target LG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = f'Min = {min(packets[(k[0], "Target L")])} [dN]'+ '\n'+ f'Avg={np.mean(packets[(k[0], "Target L")]): 4.2f} [dN]'+ '\n' + f'Std={np.std(packets[(k[0], "Target L")]): 4.2f} [dN]'+ '\n' + f'Max = {max(packets[(k[0], "Target L")])} [dN]'
-                    ax[5].text(1.125, 0.85, text, fontsize=12, va="top", ha="right", transform=ax[5].transAxes)
-                    # ax[5].set_xlim([0, 126.5])
-
-
-                plt.savefig(os.path.join(PlotFolder, f"{fname}_Event_{k[0]}.png"), dpi=100)
-                # plt.show()
-                plt.close()
-                del fig, ax
-                fig, ax = plt.subplots(nrows=6)  # Make this general
-                fig.set_size_inches(17.5, 10.5)
-
-                
-    
     # ||
     # ||
     # || Write the waveform data 
