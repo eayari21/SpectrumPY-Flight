@@ -21,6 +21,9 @@ import bitstring
 import h5py
 import shutil
 import struct
+import matplotlib
+# Force a non-interactive backend so plot exports succeed in headless environments.
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
 from pathlib import Path
