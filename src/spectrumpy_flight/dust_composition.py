@@ -32,7 +32,7 @@ import unicodedata
 from collections import defaultdict, OrderedDict
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import h5py
 import numpy as np
@@ -628,6 +628,21 @@ def _contiguous_mask(condition: np.ndarray, min_samples: int) -> np.ndarray:
     return mask
 
 
+def _median_baseline_subtract(values: np.ndarray, *, samples: int = 200) -> Tuple[np.ndarray, float]:
+    """Return the baseline-subtracted data and the baseline estimate."""
+
+    arr = np.asarray(values, dtype=float)
+    if arr.size == 0:
+        return arr, 0.0
+
+    npre = min(int(samples), arr.size)
+    if npre <= 0:
+        return arr, 0.0
+
+    baseline = float(np.nanmedian(arr[:npre]))
+    return arr - baseline, baseline
+
+
 def detect_saturation(values: np.ndarray, times: np.ndarray) -> np.ndarray:
     """Heuristically detect saturated portions of a waveform."""
 
@@ -780,6 +795,7 @@ def combine_waveform_channels(
     gain_map = gain_map or GAIN_MAP
 
     valid_order = ("TOF H", "TOF M", "TOF L")
+    selected_set: Optional[Set[str]] = None
     selected: Optional[List[str]] = None
     if enabled_channels is not None:
         selected_set = {str(name) for name in enabled_channels}
@@ -802,6 +818,9 @@ def combine_waveform_channels(
     ]
     if not arrays:
         return None
+
+    if selected_set == {"TOF M", "TOF L"}:
+        return combine_mid_low_waveforms(time_axis, medium, low, gain_map=gain_map)
 
     lengths = [times.size]
     lengths.extend(arr.size for arr in arrays)
@@ -889,6 +908,55 @@ def combine_waveform_channels(
         remaining_mask &= ~replace_mask
 
     return combined_corrected
+
+
+def combine_mid_low_waveforms(
+    time_axis: np.ndarray,
+    medium: Optional[np.ndarray],
+    low: Optional[np.ndarray],
+    *,
+    gain_map: Optional[Dict[str, float]] = None,
+) -> Optional[np.ndarray]:
+    """Combine TOF M and TOF L using the saturation replacement recipe."""
+
+    if medium is None or low is None or time_axis is None:
+        return None
+
+    times = np.asarray(time_axis, dtype=float)
+    mid_arr = np.asarray(medium, dtype=float)
+    low_arr = np.asarray(low, dtype=float)
+
+    length = min(times.size, mid_arr.size, low_arr.size)
+    if length == 0:
+        return None
+
+    mid_arr = mid_arr[:length]
+    low_arr = low_arr[:length]
+
+    mid_baseline_sub, _ = _median_baseline_subtract(mid_arr)
+    low_baseline_sub, _ = _median_baseline_subtract(low_arr)
+
+    gain_map = gain_map or GAIN_MAP
+    mid_gain = float(gain_map.get("TOF M", GAIN_MEDIUM))
+    low_gain = float(gain_map.get("TOF L", GAIN_LOW))
+    scale = mid_gain / low_gain if low_gain else 1.0
+    low_scaled = low_baseline_sub * scale
+
+    if not mid_baseline_sub.size:
+        return mid_baseline_sub
+
+    peak = float(np.nanmax(mid_baseline_sub))
+    if not np.isfinite(peak):
+        return mid_baseline_sub
+
+    saturation_threshold = 0.90 * peak
+    saturation_mask = mid_baseline_sub >= saturation_threshold
+
+    combined = mid_baseline_sub.copy()
+    replace_mask = saturation_mask & np.isfinite(low_scaled)
+    combined[replace_mask] = low_scaled[replace_mask]
+
+    return combined
 
 
 def _load_mass_reference() -> List[Tuple[float, str]]:
