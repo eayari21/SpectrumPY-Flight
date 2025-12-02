@@ -38,6 +38,7 @@ import h5py
 import numpy as np
 
 from matplotlib.collections import PathCollection
+from scipy.interpolate import CubicSpline
 
 try:  # pragma: no cover - Qt import guard
     from PySide6.QtCore import Qt
@@ -192,6 +193,7 @@ def _clamp_mass_stretch(value: float) -> float:
 
 COMBINED_DATASET = "CombinedSignal"
 COMBINED_TIME_DATASET = "CombinedTime"
+BASELINE_ANCHORS_DATASET = "BaselineAnchors"
 ANALYSIS_GROUP = "Analysis"
 DUST_GROUP = "DustComposition"
 MASS_LINES_DATASET = "MassLines"
@@ -3644,6 +3646,8 @@ class DustCompositionWindow(QMainWindow):
         self._combined_cached_mass: Optional[np.ndarray] = None
         self._combination_channels: Optional[Tuple[str, ...]] = None
         self._baseline = 0.0
+        self._baseline_points: List[Tuple[float, float]] = []
+        self._baseline_spline: Optional[CubicSpline] = None
         self._mass_params = {"stretch": DEFAULT_MASS_STRETCH, "shift": DEFAULT_MASS_SHIFT}
         self._mass_calibration: Optional[TOFMassCal] = None
         self._calibration_origin: float = 0.0
@@ -3663,6 +3667,7 @@ class DustCompositionWindow(QMainWindow):
         self._baseline_artist = None
         self._span_selector: Optional[SpanSelector] = None
         self._in_baseline_mode = False
+        self._in_spline_baseline_mode = False
         self._block_table_signals = False
         self._block_selection_signals = False
         self._block_species_assignment = False
@@ -3744,6 +3749,8 @@ class DustCompositionWindow(QMainWindow):
         self._combined = None
         self._combined_cached_mass = None
         self._baseline = 0.0
+        self._baseline_points = []
+        self._baseline_spline = None
         self._mass_params = {"stretch": DEFAULT_MASS_STRETCH, "shift": DEFAULT_MASS_SHIFT}
         self._mass_calibration = None
         self._calibration_origin = 0.0
@@ -3769,6 +3776,7 @@ class DustCompositionWindow(QMainWindow):
                 pass
         self._span_selector = None
         self._in_baseline_mode = False
+        self._in_spline_baseline_mode = False
         self._block_table_signals = False
         self._block_selection_signals = False
         self._block_species_assignment = False
@@ -3808,6 +3816,7 @@ class DustCompositionWindow(QMainWindow):
             self.baseline_spin.blockSignals(True)
             self.baseline_spin.setValue(self._baseline)
             self.baseline_spin.blockSignals(False)
+        self._update_baseline_points_label()
         if hasattr(self, "mass_stretch_spin"):
             self.mass_stretch_spin.blockSignals(True)
             self.mass_stretch_spin.setValue(self._mass_params.get("stretch", DEFAULT_MASS_STRETCH))
@@ -3948,6 +3957,19 @@ class DustCompositionWindow(QMainWindow):
             self._baseline = float(group.attrs.get("Baseline", self._baseline))
         except Exception:
             self._baseline = 0.0
+
+        if BASELINE_ANCHORS_DATASET in group:
+            try:
+                anchors = np.asarray(group[BASELINE_ANCHORS_DATASET][()], dtype=float)
+                if anchors.ndim == 2 and anchors.shape[1] >= 2:
+                    self._baseline_points = [
+                        (float(mass), float(height))
+                        for mass, height in anchors[:, :2]
+                        if math.isfinite(mass) and math.isfinite(height)
+                    ]
+                    self._rebuild_baseline_spline()
+            except Exception:
+                self._baseline_points = []
 
         calibration_origin: Optional[float] = None
         try:
@@ -4547,6 +4569,20 @@ class DustCompositionWindow(QMainWindow):
         self.baseline_spin.valueChanged.connect(self._on_baseline_spin_changed)
         form.addRow("Baseline value:", self.baseline_spin)
         layout.addLayout(form)
+        self.baseline_spline_button = QPushButton("Spline Baseline", box)
+        self.baseline_spline_button.setCheckable(True)
+        self.baseline_spline_button.setToolTip(
+            "Drop as many control points as you like; a cubic spline will be used as the baseline."
+        )
+        self.baseline_spline_button.toggled.connect(self._toggle_spline_mode)
+        layout.addWidget(self.baseline_spline_button)
+        self.clear_baseline_button = QPushButton("Clear Baseline Points", box)
+        self.clear_baseline_button.clicked.connect(self._clear_baseline_points)
+        layout.addWidget(self.clear_baseline_button)
+        self.baseline_points_label = QLabel("Spline anchors: 0", box)
+        self.baseline_points_label.setStyleSheet("color: #495057;")
+        layout.addWidget(self.baseline_points_label)
+        self._update_baseline_points_label()
         self.control_layout.addWidget(box)
 
     def _build_mass_axis_controls(self) -> None:
@@ -4752,11 +4788,34 @@ class DustCompositionWindow(QMainWindow):
         self._refresh_plot(show_combined=False)
 
     def _toggle_baseline_mode(self, checked: bool) -> None:
+        if checked and hasattr(self, "baseline_spline_button"):
+            self.baseline_spline_button.setChecked(False)
         self._in_baseline_mode = checked
         if checked:
             self.statusBar().showMessage("Baseline mode active — click on the plot to set the baseline.", 8000)
-        else:
+        elif not self._in_spline_baseline_mode:
             self.statusBar().clearMessage()
+
+    def _toggle_spline_mode(self, checked: bool) -> None:
+        if checked and hasattr(self, "baseline_button"):
+            self.baseline_button.setChecked(False)
+        self._in_spline_baseline_mode = checked
+        if checked:
+            message = (
+                "Spline baseline mode — click along the spectrum to drop control points."
+            )
+            self.statusBar().showMessage(message, 8000)
+        elif not self._in_baseline_mode:
+            self.statusBar().clearMessage()
+
+    def _clear_baseline_points(self) -> None:
+        self._baseline_points = []
+        self._baseline_spline = None
+        self._update_baseline_points_label()
+        self._update_mass_line_abundances()
+        self._update_tables()
+        self._update_summary()
+        self._refresh_plot()
 
     def _toggle_mass_line_mode(self, checked: bool) -> None:
         if checked and not self.combine_button.isChecked():
@@ -4972,7 +5031,7 @@ class DustCompositionWindow(QMainWindow):
             )
 
     def _on_canvas_click(self, event) -> None:
-        if not self._in_baseline_mode:
+        if not (self._in_baseline_mode or self._in_spline_baseline_mode):
             return
         if event is None or event.ydata is None:
             return
@@ -4982,7 +5041,25 @@ class DustCompositionWindow(QMainWindow):
                 valid_axes.add(self._combined_time_axis)
             if event.inaxes not in valid_axes:
                 return
-        self._set_baseline(float(event.ydata), from_user=True)
+        if self._in_spline_baseline_mode:
+            mass_value = self._mass_from_event(event)
+            if mass_value is None:
+                return
+            self._append_baseline_point(float(mass_value), float(event.ydata))
+        else:
+            self._set_baseline(float(event.ydata), from_user=True)
+
+    def _mass_from_event(self, event) -> Optional[float]:
+        if event is None or event.xdata is None:
+            return None
+        if event.inaxes == self._combined_time_axis:
+            try:
+                converted = self._time_to_mass(np.array([float(event.xdata)]))
+                if converted.size:
+                    return float(converted[0])
+            except Exception:
+                return None
+        return float(event.xdata)
 
     def _on_mass_region_selected(self, xmin: float, xmax: float) -> None:
         if not self.combine_button.isChecked():
@@ -5294,8 +5371,17 @@ class DustCompositionWindow(QMainWindow):
         mass_axis = self._combined_mass_axis()
         n = min(self._combined.size, mass_axis.size)
         ax.set_zorder(2)
-        corrected = self._combined[:n] - self._baseline
+        baseline_curve = self._baseline_for_mass(mass_axis[:n])
+        corrected = self._combined[:n] - baseline_curve
         ax.plot(mass_axis[:n], corrected, color="#1f77b4", linewidth=1.6, label="Combined TOF")
+        ax.plot(
+            mass_axis[:n],
+            self._combined[:n],
+            color="#8da9d7",
+            linewidth=1.0,
+            alpha=0.6,
+            label="Raw TOF",
+        )
         ax.set_facecolor("#f9fbff")
         ax.grid(True, alpha=0.35)
         ax.set_xlabel("Mass [amu]", fontsize=14)
@@ -5316,8 +5402,27 @@ class DustCompositionWindow(QMainWindow):
             ax_time.set_navigate(False)
             ax_time.patch.set_visible(False)
             self._combined_time_axis = ax_time
-        if (self._baseline or self.baseline_spin.value() != 0.0) and np.isfinite(self._baseline):
-            self._baseline_artist = ax.axhline(0.0, color="#aa3377", linestyle="--", linewidth=1.2, label="Baseline")
+        if len(self._baseline_points) or (self._baseline or self.baseline_spin.value() != 0.0):
+            self._baseline_artist = ax.plot(
+                mass_axis[:n],
+                baseline_curve,
+                color="#aa3377",
+                linestyle="--",
+                linewidth=1.2,
+                label="Baseline",
+            )[0]
+            if self._baseline_points:
+                anchors = np.asarray(self._baseline_points, dtype=float)
+                ax.scatter(
+                    anchors[:, 0],
+                    anchors[:, 1],
+                    color="#aa3377",
+                    edgecolor="#661733",
+                    s=40,
+                    alpha=0.9,
+                    zorder=6,
+                    label="Baseline anchors",
+                )
         selected_id = self._selected_line_id
         plotted_any = False
         for line in self._mass_lines:
@@ -5421,6 +5526,68 @@ class DustCompositionWindow(QMainWindow):
         )
 
     # ---- Baseline + mass conversions -----------------------------------
+    def _update_baseline_points_label(self) -> None:
+        if hasattr(self, "baseline_points_label"):
+            count = len(self._baseline_points)
+            self.baseline_points_label.setText(f"Spline anchors: {count}")
+
+    def _rebuild_baseline_spline(self) -> None:
+        if len(self._baseline_points) < 2:
+            self._baseline_spline = None
+            return
+        try:
+            points = np.asarray(sorted(self._baseline_points, key=lambda p: p[0]), dtype=float)
+            mass_values, heights = points[:, 0], points[:, 1]
+            unique_mass, unique_indices = np.unique(mass_values, return_index=True)
+            if unique_mass.size < 2:
+                self._baseline_spline = None
+                return
+            unique_heights = heights[unique_indices]
+            self._baseline_spline = CubicSpline(unique_mass, unique_heights, extrapolate=True)
+        except Exception:
+            self._baseline_spline = None
+
+    def _baseline_for_mass(self, mass_values: np.ndarray) -> np.ndarray:
+        mass = np.asarray(mass_values, dtype=float)
+        baseline = np.full_like(mass, self._baseline, dtype=float)
+        if self._baseline_spline is None:
+            if len(self._baseline_points) == 1:
+                anchor_level = self._baseline_points[0][1] + self._baseline
+                return np.full_like(mass, anchor_level, dtype=float)
+            return baseline
+        try:
+            spline_values = np.asarray(self._baseline_spline(mass), dtype=float)
+            baseline = baseline + spline_values
+        except Exception:
+            pass
+        return baseline
+
+    def _baseline_for_time(self, time_values: np.ndarray) -> np.ndarray:
+        try:
+            mass_values = self._time_to_mass(time_values)
+        except Exception:
+            mass_values = np.asarray(time_values, dtype=float)
+        return self._baseline_for_mass(mass_values)
+
+    def _append_baseline_point(self, mass_value: float, baseline_value: float) -> None:
+        if not math.isfinite(mass_value) or not math.isfinite(baseline_value):
+            return
+        updated = False
+        for idx, (mass, _) in enumerate(self._baseline_points):
+            if math.isclose(mass, mass_value, rel_tol=0.0, abs_tol=1.0e-9):
+                self._baseline_points[idx] = (mass_value, baseline_value)
+                updated = True
+                break
+        if not updated:
+            self._baseline_points.append((mass_value, baseline_value))
+        self._baseline_points.sort(key=lambda p: p[0])
+        self._rebuild_baseline_spline()
+        self._update_baseline_points_label()
+        self._update_mass_line_abundances()
+        self._update_tables()
+        self._update_summary()
+        self._refresh_plot()
+
     def _set_baseline(self, value: float, from_user: bool = False) -> None:
         self._baseline = float(value)
         if hasattr(self, "baseline_spin"):
@@ -5466,7 +5633,8 @@ class DustCompositionWindow(QMainWindow):
     def _manual_mass_defaults(self) -> Dict[str, float | str]:
         if self._combined is not None and self._combined.size and self._time_axis.size:
             try:
-                corrected = self._combined - self._baseline
+                baseline = self._baseline_for_time(self._time_axis)
+                corrected = self._combined[: baseline.size] - baseline
                 idx = int(np.nanargmax(np.clip(corrected, 0.0, None)))
                 idx = int(np.clip(idx, 0, self._time_axis.size - 1))
                 mu = float(self._time_axis[idx])
@@ -5495,7 +5663,8 @@ class DustCompositionWindow(QMainWindow):
             try:
                 mask = (self._time_axis >= start) & (self._time_axis <= end)
                 if np.any(mask):
-                    segment = np.clip(self._combined[mask] - self._baseline, 0.0, None)
+                    local_baseline = self._baseline_for_time(self._time_axis[mask])
+                    segment = np.clip(self._combined[mask] - local_baseline, 0.0, None)
                     amplitude = float(np.trapz(segment, self._time_axis[mask]))
             except Exception:
                 amplitude = 1.0
@@ -5541,7 +5710,7 @@ class DustCompositionWindow(QMainWindow):
             return np.zeros(0, dtype=float), np.zeros(0, dtype=float), label
         length = min(time_axis.size, signal.size)
         trimmed_time = time_axis[:length]
-        trimmed_signal = signal[:length] - self._baseline
+        trimmed_signal = signal[:length] - self._baseline_for_time(trimmed_time)
         return trimmed_time, trimmed_signal, label
 
     def _update_inspect_button_state(self) -> None:
@@ -5589,7 +5758,7 @@ class DustCompositionWindow(QMainWindow):
             QMessageBox.warning(self, "Selection Too Small", "Select a region containing more samples.")
             return
         x = self._time_axis[mask]
-        y = self._combined[mask] - self._baseline
+        y = self._combined[mask] - self._baseline_for_time(x)
         if not np.any(np.isfinite(y)):
             QMessageBox.warning(self, "No Signal", "The selected region does not contain valid data.")
             return
@@ -5706,9 +5875,11 @@ class DustCompositionWindow(QMainWindow):
                 line.abundance = 0.0
             self._recalculate_rsf_normalised()
             return
-        baseline_corrected = self._combined - self._baseline
+        length = min(self._combined.size, self._time_axis.size)
+        baseline = self._baseline_for_time(self._time_axis[:length])
+        baseline_corrected = self._combined[:length] - baseline
         positive = np.clip(baseline_corrected, 0.0, None)
-        total_area = float(np.trapz(positive, self._time_axis)) if self._time_axis.size else 0.0
+        total_area = float(np.trapz(positive, self._time_axis[:length])) if length else 0.0
         for line in self._mass_lines:
             area = line.window_area() if line.time_end > line.time_start else 0.0
             if total_area > 0:
@@ -5933,6 +6104,17 @@ class DustCompositionWindow(QMainWindow):
             if combined is not None:
                 _write_dataset(dust_group, COMBINED_DATASET, combined)
             dust_group.attrs["Baseline"] = self._baseline
+            if self._baseline_points:
+                try:
+                    anchor_array = np.asarray(self._baseline_points, dtype=float)
+                    _write_dataset(dust_group, BASELINE_ANCHORS_DATASET, anchor_array)
+                except Exception:
+                    pass
+            elif BASELINE_ANCHORS_DATASET in dust_group:
+                try:
+                    del dust_group[BASELINE_ANCHORS_DATASET]
+                except Exception:
+                    pass
             dust_group.attrs["MassStretch"] = self._mass_params.get("stretch", DEFAULT_MASS_STRETCH)
             dust_group.attrs["MassShift"] = self._mass_params.get("shift", DEFAULT_MASS_SHIFT)
             if self._mass_calibration is not None:
