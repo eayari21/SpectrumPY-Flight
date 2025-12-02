@@ -3648,6 +3648,7 @@ class DustCompositionWindow(QMainWindow):
         self._baseline = 0.0
         self._baseline_points: List[Tuple[float, float]] = []
         self._baseline_spline: Optional[CubicSpline] = None
+        self._move_spline_points = False
         self._mass_params = {"stretch": DEFAULT_MASS_STRETCH, "shift": DEFAULT_MASS_SHIFT}
         self._mass_calibration: Optional[TOFMassCal] = None
         self._calibration_origin: float = 0.0
@@ -4576,6 +4577,12 @@ class DustCompositionWindow(QMainWindow):
         )
         self.baseline_spline_button.toggled.connect(self._toggle_spline_mode)
         layout.addWidget(self.baseline_spline_button)
+        self.move_baseline_points_checkbox = QCheckBox("Move existing spline points", box)
+        self.move_baseline_points_checkbox.setToolTip(
+            "When enabled, clicks in spline mode reposition the nearest anchor instead of adding a new one."
+        )
+        self.move_baseline_points_checkbox.toggled.connect(self._on_move_spline_points_toggled)
+        layout.addWidget(self.move_baseline_points_checkbox)
         self.clear_baseline_button = QPushButton("Clear Baseline Points", box)
         self.clear_baseline_button.clicked.connect(self._clear_baseline_points)
         layout.addWidget(self.clear_baseline_button)
@@ -4801,8 +4808,10 @@ class DustCompositionWindow(QMainWindow):
             self.baseline_button.setChecked(False)
         self._in_spline_baseline_mode = checked
         if checked:
+            self._seed_spline_endpoints()
             message = (
-                "Spline baseline mode — click along the spectrum to drop control points."
+                "Spline baseline mode — click along the spectrum to drop control points. "
+                "Enable ‘Move existing spline points’ to reposition anchors."
             )
             self.statusBar().showMessage(message, 8000)
         elif not self._in_baseline_mode:
@@ -5045,7 +5054,12 @@ class DustCompositionWindow(QMainWindow):
             mass_value = self._mass_from_event(event)
             if mass_value is None:
                 return
-            self._append_baseline_point(float(mass_value), float(event.ydata))
+            if self._move_spline_points and self._baseline_points:
+                self._move_nearest_baseline_point(
+                    float(mass_value), float(event.ydata)
+                )
+            else:
+                self._append_baseline_point(float(mass_value), float(event.ydata))
         else:
             self._set_baseline(float(event.ydata), from_user=True)
 
@@ -5580,6 +5594,21 @@ class DustCompositionWindow(QMainWindow):
                 break
         if not updated:
             self._baseline_points.append((mass_value, baseline_value))
+        self._commit_baseline_points()
+
+    def _move_nearest_baseline_point(self, mass_value: float, baseline_value: float) -> None:
+        if not math.isfinite(mass_value) or not math.isfinite(baseline_value):
+            return
+        if not self._baseline_points:
+            return
+        nearest_idx = min(
+            range(len(self._baseline_points)),
+            key=lambda idx: abs(self._baseline_points[idx][0] - mass_value),
+        )
+        self._baseline_points[nearest_idx] = (mass_value, baseline_value)
+        self._commit_baseline_points()
+
+    def _commit_baseline_points(self) -> None:
         self._baseline_points.sort(key=lambda p: p[0])
         self._rebuild_baseline_spline()
         self._update_baseline_points_label()
@@ -5587,6 +5616,41 @@ class DustCompositionWindow(QMainWindow):
         self._update_tables()
         self._update_summary()
         self._refresh_plot()
+
+    def _seed_spline_endpoints(self) -> None:
+        if self._combined is None:
+            self._combined = self._combine_waveforms()
+        if self._combined is None or self._combined.size == 0:
+            return
+        mass_axis = self._combined_mass_axis()
+        n = min(self._combined.size, mass_axis.size)
+        if n == 0:
+            return
+        window = min(50, n)
+        start_mean = float(np.nanmean(self._combined[:window]))
+        end_mean = float(np.nanmean(self._combined[n - window : n]))
+        endpoints: List[Tuple[float, float]] = []
+        if math.isfinite(start_mean):
+            endpoints.append((float(mass_axis[0]), start_mean))
+        if math.isfinite(end_mean):
+            endpoints.append((float(mass_axis[n - 1]), end_mean))
+        if not endpoints:
+            return
+        updated = False
+        for mass_value, baseline_value in endpoints:
+            for idx, (mass, _) in enumerate(self._baseline_points):
+                if math.isclose(mass, mass_value, rel_tol=0.0, abs_tol=1.0e-9):
+                    self._baseline_points[idx] = (mass_value, baseline_value)
+                    updated = True
+                    break
+            else:
+                self._baseline_points.append((mass_value, baseline_value))
+                updated = True
+        if updated:
+            self._commit_baseline_points()
+
+    def _on_move_spline_points_toggled(self, checked: bool) -> None:
+        self._move_spline_points = bool(checked)
 
     def _set_baseline(self, value: float, from_user: bool = False) -> None:
         self._baseline = float(value)
