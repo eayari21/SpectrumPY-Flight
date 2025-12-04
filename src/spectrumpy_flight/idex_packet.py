@@ -661,16 +661,24 @@ def _compute_particle_estimate(
         return None
 
 
-def _replace_data_dir(path: Path) -> Path:
+def _swap_data_root(path: Path, replacement: str) -> Path:
     parts = list(path.parts)
     for idx, part in enumerate(parts):
-        if part.lower() == 'data':
-            parts[idx] = 'HDF5'
-            base = Path(parts[0]) if parts else Path('HDF5')
+        if part.lower() == "data":
+            parts[idx] = replacement
+            base = Path(parts[0]) if parts else Path(replacement)
             for segment in parts[1:]:
                 base /= segment
             return base
     return path
+
+
+def _replace_data_dir(path: Path) -> Path:
+    return _swap_data_root(path, "HDF5")
+
+
+def _replace_plot_dir(path: Path) -> Path:
+    return _swap_data_root(path, "Plots")
 
 
 def _resolve_output_path(filename: str) -> Path:
@@ -682,6 +690,17 @@ def _resolve_output_path(filename: str) -> Path:
         target_parent = Path(__file__).resolve().parent / "HDF5"
     target_parent.mkdir(parents=True, exist_ok=True)
     return target_parent / f"{stem}.h5"
+
+
+def _resolve_plot_dir(filename: str) -> Path:
+    input_path = Path(filename).expanduser()
+    stem = input_path.stem if input_path.suffix else input_path.name
+    parent = input_path.parent
+    target_parent = _replace_plot_dir(parent)
+    if target_parent == parent and not target_parent.is_absolute():
+        target_parent = Path(__file__).resolve().parent / "Plots"
+    target_parent.mkdir(parents=True, exist_ok=True)
+    return target_parent / stem
 
 
 _SQL_DB_URI = os.environ.get("IDEX_SQL_URI")
@@ -2522,11 +2541,11 @@ class IDEXEvent:
         return time_values - offset
 
     def plot_all_data(self, packets, fname: str):
+        plot_folder = _resolve_plot_dir(fname)
         fname = os.path.split(fname)[-1]
-        plot_folder = os.path.join(os.getcwd(), f"Plots/{fname}")
-        if os.path.exists(plot_folder):
+        if plot_folder.exists():
             shutil.rmtree(plot_folder)
-        os.makedirs(plot_folder)
+        plot_folder.mkdir(parents=True, exist_ok=True)
 
         event_ids = sorted({key[0] for key in packets.keys()})
         colors = plt.get_cmap("tab10").colors
@@ -2619,7 +2638,7 @@ class IDEXEvent:
                 )
 
             plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-            plt.savefig(os.path.join(plot_folder, f"{fname}_Event_{event_id}.png"), dpi=300)
+            plt.savefig(plot_folder / f"{fname}_Event_{event_id}.png", dpi=300)
             plt.close(fig)
 
     # ||
