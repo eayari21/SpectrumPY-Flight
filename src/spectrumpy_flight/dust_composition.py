@@ -5456,14 +5456,15 @@ class DustCompositionWindow(QMainWindow):
         baseline_curve = self._baseline_for_mass(mass_axis[:n])
         corrected = self._combined[:n] - baseline_curve
         ax.plot(mass_axis[:n], corrected, color="#1f77b4", linewidth=1.6, label="Combined TOF")
-        ax.plot(
-            mass_axis[:n],
-            self._combined[:n],
-            color="#8da9d7",
-            linewidth=1.0,
-            alpha=0.6,
-            label="Raw TOF",
-        )
+        if not (self._in_baseline_mode or self._in_spline_baseline_mode):
+            ax.plot(
+                mass_axis[:n],
+                self._combined[:n],
+                color="#8da9d7",
+                linewidth=1.0,
+                alpha=0.6,
+                label="Raw TOF",
+            )
         ax.set_facecolor("#f9fbff")
         ax.grid(True, alpha=0.35)
         ax.set_xlabel("Mass [amu]", fontsize=14)
