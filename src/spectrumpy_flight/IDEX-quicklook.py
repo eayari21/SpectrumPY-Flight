@@ -8,6 +8,7 @@ from __future__ import annotations
 # =====================================================================
 
 import os
+import warnings
 os.environ.pop("QT_DEBUG_PLUGINS", None)
 import sys
 import argparse
@@ -51,8 +52,13 @@ except Exception:  # pragma: no cover - optional dependency for environments wit
 from typing import Union
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
-from sqlalchemy.pool import QueuePool
+try:  # pragma: no cover - optional dependency for SQL lookups
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.pool import QueuePool
+except Exception:  # pragma: no cover - allow import when optional deps missing
+    create_engine = None  # type: ignore[assignment]
+    text = None  # type: ignore[assignment]
+    QueuePool = None  # type: ignore[assignment]
 
 from spectrumpy_flight.idex_analysis_utils import RISE_METRIC_SUFFIXES, compute_rise_metrics
 from spectrumpy_flight.paths import default_hdf5_dir
@@ -2157,6 +2163,11 @@ _SQL_ENGINE = None
 
 def _get_sql_engine():
     global _SQL_ENGINE
+    if create_engine is None or QueuePool is None:
+        raise ImportError(
+            "SQL lookups require optional dependency 'sqlalchemy'. "
+            "Install it to enable database-backed matching."
+        )
     if _SQL_ENGINE is None:
         _SQL_ENGINE = create_engine(
             SQL_DB_URI,
