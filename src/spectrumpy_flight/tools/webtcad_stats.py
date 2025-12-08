@@ -485,7 +485,9 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Downloading data from WebTCAD…")
 
         try:
-            series_map = self.download_all_series(username, password, start_iso, stop_iso)
+            series_map, missing_series = self.download_all_series(
+                username, password, start_iso, stop_iso
+            )
         except Exception as e:
             self.run_btn.setEnabled(True)
             self.statusBar().showMessage("Error")
@@ -508,6 +510,17 @@ class MainWindow(QMainWindow):
         self.canvas.plot_series(series_map)
 
         msg = "Finished"
+        if missing_series:
+            missing = ", ".join(sorted(missing_series))
+            QMessageBox.warning(
+                self,
+                "Missing series",
+                (
+                    "Some series had no data for the selected time range and were "
+                    f"skipped: {missing}"
+                ),
+            )
+            msg += f" – skipped {len(missing_series)} empty series"
         if out_name:
             msg += f" – saved merged CSV to {out_name}"
         self.statusBar().showMessage(msg)
@@ -521,26 +534,31 @@ class MainWindow(QMainWindow):
         password: str,
         start_iso: str,
         stop_iso: str,
-    ) -> Dict[str, SeriesData]:
-        """Download all configured series and return a map: key -> SeriesData."""
+    ) -> Tuple[Dict[str, SeriesData], List[str]]:
+        """Download all configured series and return (map, missing_keys)."""
         session = requests.Session()
         session.auth = (username, password)
 
         series_map: Dict[str, SeriesData] = {}
+        missing_series: List[str] = []
 
         for key, tmid in SERIES_TMIDS.items():
+            self.statusBar().showMessage(f"Fetching {key} (TMID={tmid})…")
+            QApplication.processEvents()  # keep UI responsive
             try:
-                self.statusBar().showMessage(f"Fetching {key} (TMID={tmid})…")
-                QApplication.processEvents()  # keep UI responsive
                 s = fetch_series(session, key, tmid, start_iso, stop_iso)
                 series_map[key] = s
+            except ValueError as e:
+                # If a channel has no data for the time range, continue with others
+                missing_series.append(key)
+                continue
             except Exception as e:
                 raise RuntimeError(f"Error fetching {key} (TMID={tmid}): {e}") from e
 
         if not series_map:
             raise RuntimeError("No series downloaded.")
 
-        return series_map
+        return series_map, missing_series
 
 
 # ----------------------------------------------------------------------
