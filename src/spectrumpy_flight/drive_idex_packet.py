@@ -22,7 +22,13 @@ from pathlib import Path
 from typing import List, Sequence, Tuple
 
 def find_source_files(roots: List[Path]) -> List[Path]:
-    """Return all files with **no extension** under the given roots."""
+    """Return all candidate input files under the given roots.
+
+    Historically we only looked for extensionless files, but IDEX raw packet
+    captures often arrive as ``.pkts`` or ``.bin``.  The extension does not
+    matter to ``idex_packet.py`` so include everything except hidden files and
+    existing ``.h5`` outputs.
+    """
     files: List[Path] = []
     for root in roots:
         if not root.exists():
@@ -30,16 +36,18 @@ def find_source_files(roots: List[Path]) -> List[Path]:
         for p in root.rglob("*"):
             if not p.is_file():
                 continue
-            if p.suffix != "":  # Skip anything that already has an extension
-                continue
             if p.name.startswith('.'):
                 # Ignore metadata files like .DS_Store that lack extensions
+                continue
+            if p.suffix.lower() == ".h5":
+                # Skip already-produced outputs
                 continue
             files.append(p)
     return files
 
 def needs_conversion(src: Path, out_dir: Path) -> Tuple[bool, Path]:
-    dst = out_dir / (src.name + ".h5")
+    stem = src.stem if src.suffix else src.name
+    dst = out_dir / f"{stem}.h5"
     return (not dst.exists()), dst
 
 def _maybe_prepend_pythonpath(env: dict) -> None:

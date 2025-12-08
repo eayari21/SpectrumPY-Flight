@@ -114,7 +114,8 @@ def test_drive_idex_packet_generates_hdf_for_all_data(populated_hdf5):
     hdf5_dir: Path = populated_hdf5["hdf5_dir"]
     assert raw_files, "Expected repository Data/ directory to provide raw captures."
     for raw_file in raw_files:
-        hdf_path = hdf5_dir / f"{raw_file.name}.h5"
+        stem = raw_file.stem if raw_file.suffix else raw_file.name
+        hdf_path = hdf5_dir / f"{stem}.h5"
         assert hdf_path.exists(), f"Missing converted file for {raw_file.name}"
         with h5py.File(hdf_path, "r") as handle:
             assert handle.keys(), "Converted HDF5 file should expose at least one event group."
@@ -134,7 +135,7 @@ def test_generate_flight_calibration_report(flight_report_summary, populated_hdf
     assert summary["total_events"] == len(summary["events"])
     inventory = summary["hdf5_inventory"]
     expected = {
-        f"{raw_file.name}.h5" for raw_file in populated_hdf5["raw_files"]
+        f"{(raw_file.stem if raw_file.suffix else raw_file.name)}.h5" for raw_file in populated_hdf5["raw_files"]
     }
     assert {
         Path(entry["hdf5_file"]).name for entry in inventory
