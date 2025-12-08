@@ -323,7 +323,7 @@ class TimeSeriesCanvas(FigureCanvas):
             self.mpl_disconnect(self._zoom_reset_cid)
             self._zoom_reset_cid = None
 
-        if not self.axes:
+        if self.axes is None or len(self.axes) == 0:
             return
 
         self._zoom_selector = SpanSelector(
