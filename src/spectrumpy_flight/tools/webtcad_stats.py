@@ -14,13 +14,15 @@ Dependencies:
 """
 
 import io
+import os
 import sys
 from dataclasses import dataclass
-from typing import Dict, Tuple, List
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import requests
 import matplotlib
+from matplotlib.widgets import SpanSelector
 
 matplotlib.use("QtAgg")  # Qt backend for PyQt6
 
@@ -69,9 +71,9 @@ SERIES_TMIDS: Dict[str, int] = {
     "TOFHGMAX": 3325,
     "TOFLGMAX": 3333,
     "TOFMGMAX": 3343,
-    # Add Ion Grid min/max TMIDs here if desired:
-    # "IONGRIDMIN": <TMID>,
-    # "IONGRIDMAX": <TMID>,
+    # Ion Grid TMIDs can be overridden via environment variables if needed.
+    "IONGRIDMIN": int(os.getenv("IDEX_ION_GRID_MIN_TMID", "3345")),
+    "IONGRIDMAX": int(os.getenv("IDEX_ION_GRID_MAX_TMID", "3346")),
 }
 
 # How the series are grouped for plotting:
@@ -82,7 +84,7 @@ PLOT_GROUPS: List[Tuple[str, str, str]] = [
     ("TOF H", "TOFHGMIN", "TOFHGMAX"),
     ("Target L", "Target_Low_Gain_Min", "Target_Low_Gain_Max"),
     ("Target H", "Target_High_Gain_Min", "Target_High_Gain_Max"),
-    # ("Ion Grid", "IONGRIDMIN", "IONGRIDMAX"),
+    ("Ion Grid", "IONGRIDMIN", "IONGRIDMAX"),
 ]
 
 DETECTOR_VOLT_KEY = "Det_Voltage"
@@ -204,6 +206,9 @@ class TimeSeriesCanvas(FigureCanvas):
         self.setParent(parent)
         self.figure = fig
         self.axes = []
+        self._zoom_selector: Optional[SpanSelector] = None
+        self._zoom_reset_cid: Optional[int] = None
+        self._full_xlim: Optional[Tuple[pd.Timestamp, pd.Timestamp]] = None
 
         # Light UI-style background
         self.figure.set_facecolor("#f7f7fb")
@@ -224,7 +229,7 @@ class TimeSeriesCanvas(FigureCanvas):
             self.draw()
             return
 
-        axes = self.figure.subplots(nrows, 1, sharex=False)
+        axes = self.figure.subplots(nrows, 1, sharex=True)
         if nrows == 1:
             axes = [axes]
         self.axes = axes
@@ -279,8 +284,83 @@ class TimeSeriesCanvas(FigureCanvas):
             for spine in ("top", "right"):
                 ax.spines[spine].set_visible(False)
 
+        self._full_xlim = self._compute_full_xlim(series_map)
+        if self._full_xlim:
+            xmin, xmax = self._full_xlim
+            for ax in axes:
+                ax.set_xlim(xmin, xmax)
+
+        self._init_zoom_selector()
+
         self.figure.tight_layout()
         self.draw()
+
+    def _compute_full_xlim(
+        self, series_map: Dict[str, SeriesData]
+    ) -> Optional[Tuple[pd.Timestamp, pd.Timestamp]]:
+        """Return the min/max datetime across all series for resetting zoom."""
+        mins: List[pd.Timestamp] = []
+        maxs: List[pd.Timestamp] = []
+
+        for s in series_map.values():
+            times = s.df["time_dt"].dropna()
+            if times.empty:
+                continue
+            mins.append(times.min())
+            maxs.append(times.max())
+
+        if not mins or not maxs:
+            return None
+
+        return min(mins), max(maxs)
+
+    def _init_zoom_selector(self) -> None:
+        """Enable a span selector that synchronizes x-limits across axes."""
+        if self._zoom_selector is not None:
+            self._zoom_selector.disconnect_events()
+            self._zoom_selector = None
+        if self._zoom_reset_cid is not None:
+            self.mpl_disconnect(self._zoom_reset_cid)
+            self._zoom_reset_cid = None
+
+        if not self.axes:
+            return
+
+        self._zoom_selector = SpanSelector(
+            self.axes[0],
+            self._on_zoom_selected,
+            direction="horizontal",
+            useblit=True,
+            props=dict(alpha=0.25, facecolor="#c7d2fe"),
+        )
+        self._zoom_reset_cid = self.mpl_connect(
+            "button_press_event", self._on_zoom_reset_clicked
+        )
+
+    def _on_zoom_selected(self, xmin, xmax):
+        if xmin is None or xmax is None:
+            return
+        if xmin == xmax:
+            return
+        if xmin > xmax:
+            xmin, xmax = xmax, xmin
+
+        for ax in self.axes:
+            ax.set_xlim(xmin, xmax)
+        self.figure.canvas.draw_idle()
+
+    def _on_zoom_reset_clicked(self, event) -> None:
+        if event is None:
+            return
+        if not event.dblclick:
+            return
+        if self._full_xlim is None:
+            return
+
+        xmin, xmax = self._full_xlim
+        for ax in self.axes:
+            ax.set_xlim(xmin, xmax)
+        self.figure.canvas.draw_idle()
 
 
 # ----------------------------------------------------------------------
