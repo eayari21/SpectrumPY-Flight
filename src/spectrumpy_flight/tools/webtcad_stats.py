@@ -218,6 +218,8 @@ class TimeSeriesCanvas(FigureCanvas):
         self.setParent(parent)
         self.figure = fig
         self.axes: list = []
+        self.shared_xlim: Tuple[float, float] | None = None
+        self._updating_xlim = False
 
         # Match the publication-style background used across Quicklook tools
         self.figure.set_facecolor(matplotlib.rcParams.get("figure.facecolor", "white"))
@@ -231,6 +233,11 @@ class TimeSeriesCanvas(FigureCanvas):
             super().wheelEvent(event)
         else:
             event.ignore()
+
+    def reset_shared_xlim(self) -> None:
+        """Clear any stored zoom state so new plots start autoscaled."""
+
+        self.shared_xlim = None
 
     def plot_series(
         self,
@@ -313,10 +320,32 @@ class TimeSeriesCanvas(FigureCanvas):
             ax.margins(x=0)
             ax.tick_params(axis="x", rotation=0)
 
+        # Apply any previous x-zoom (e.g., after toggling visibility) and keep
+        # all panels in sync when the user zooms or pans.
+        if self.shared_xlim is not None:
+            for ax in axes:
+                ax.set_xlim(self.shared_xlim)
+
+        for ax in axes:
+            ax.callbacks.connect("xlim_changed", self._on_xlim_changed)
+
         self.figure.tight_layout(pad=1.2)
         # Increase canvas height so scroll areas have room to render all panels
         self.setMinimumHeight(max(1, nrows) * 260)
         self.draw()
+
+    def _on_xlim_changed(self, ax):
+        if self._updating_xlim:
+            return
+
+        self.shared_xlim = ax.get_xlim()
+        self._updating_xlim = True
+        try:
+            for other_ax in self.axes:
+                if other_ax is not ax:
+                    other_ax.set_xlim(self.shared_xlim)
+        finally:
+            self._updating_xlim = False
 
 
 # ----------------------------------------------------------------------
@@ -495,6 +524,7 @@ class MainWindow(QMainWindow):
 
         # Plot
         self.current_series_map = series_map
+        self.canvas.reset_shared_xlim()
         self.refresh_plots()
 
         msg = "Finished"
