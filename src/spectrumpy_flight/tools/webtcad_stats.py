@@ -24,7 +24,7 @@ import requests
 import matplotlib
 
 # Allow running directly from a source checkout without installing the package
-REPO_SRC = Path(__file__).resolve().parents[2] / "src"
+REPO_SRC = Path(__file__).resolve().parents[3] / "src"
 if REPO_SRC.is_dir() and str(REPO_SRC) not in sys.path:
     sys.path.insert(0, str(REPO_SRC))
 
