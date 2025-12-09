@@ -222,6 +222,16 @@ class TimeSeriesCanvas(FigureCanvas):
         # Match the publication-style background used across Quicklook tools
         self.figure.set_facecolor(matplotlib.rcParams.get("figure.facecolor", "white"))
 
+    def wheelEvent(self, event):
+        """Route wheel events to the scroll area instead of zooming the plot."""
+
+        # Let users hold Ctrl to retain matplotlib's zoom behavior, but otherwise
+        # pass the wheel event up so the surrounding QScrollArea can scroll.
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            super().wheelEvent(event)
+        else:
+            event.ignore()
+
     def plot_series(
         self,
         series_map: Dict[str, SeriesData],
