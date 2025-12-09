@@ -14,15 +14,13 @@ Dependencies:
 """
 
 import io
-import os
 import sys
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Tuple, List
 
 import pandas as pd
 import requests
 import matplotlib
-from matplotlib.widgets import SpanSelector
 
 matplotlib.use("QtAgg")  # Qt backend for PyQt6
 
@@ -71,9 +69,9 @@ SERIES_TMIDS: Dict[str, int] = {
     "TOFHGMAX": 3325,
     "TOFLGMAX": 3333,
     "TOFMGMAX": 3343,
-    # Ion Grid TMIDs can be overridden via environment variables if needed.
-    "IONGRIDMIN": int(os.getenv("IDEX_ION_GRID_MIN_TMID", "3345")),
-    "IONGRIDMAX": int(os.getenv("IDEX_ION_GRID_MAX_TMID", "3346")),
+    # Add Ion Grid min/max TMIDs here if desired:
+    # "IONGRIDMIN": <TMID>,
+    # "IONGRIDMAX": <TMID>,
 }
 
 # How the series are grouped for plotting:
@@ -84,7 +82,7 @@ PLOT_GROUPS: List[Tuple[str, str, str]] = [
     ("TOF H", "TOFHGMIN", "TOFHGMAX"),
     ("Target L", "Target_Low_Gain_Min", "Target_Low_Gain_Max"),
     ("Target H", "Target_High_Gain_Min", "Target_High_Gain_Max"),
-    ("Ion Grid", "IONGRIDMIN", "IONGRIDMAX"),
+    # ("Ion Grid", "IONGRIDMIN", "IONGRIDMAX"),
 ]
 
 DETECTOR_VOLT_KEY = "Det_Voltage"
@@ -206,9 +204,6 @@ class TimeSeriesCanvas(FigureCanvas):
         self.setParent(parent)
         self.figure = fig
         self.axes = []
-        self._zoom_selector: Optional[SpanSelector] = None
-        self._zoom_reset_cid: Optional[int] = None
-        self._full_xlim: Optional[Tuple[pd.Timestamp, pd.Timestamp]] = None
 
         # Light UI-style background
         self.figure.set_facecolor("#f7f7fb")
@@ -229,7 +224,7 @@ class TimeSeriesCanvas(FigureCanvas):
             self.draw()
             return
 
-        axes = self.figure.subplots(nrows, 1, sharex=True)
+        axes = self.figure.subplots(nrows, 1, sharex=False)
         if nrows == 1:
             axes = [axes]
         self.axes = axes
@@ -284,83 +279,8 @@ class TimeSeriesCanvas(FigureCanvas):
             for spine in ("top", "right"):
                 ax.spines[spine].set_visible(False)
 
-        self._full_xlim = self._compute_full_xlim(series_map)
-        if self._full_xlim:
-            xmin, xmax = self._full_xlim
-            for ax in axes:
-                ax.set_xlim(xmin, xmax)
-
-        self._init_zoom_selector()
-
         self.figure.tight_layout()
         self.draw()
-
-    def _compute_full_xlim(
-        self, series_map: Dict[str, SeriesData]
-    ) -> Optional[Tuple[pd.Timestamp, pd.Timestamp]]:
-        """Return the min/max datetime across all series for resetting zoom."""
-        mins: List[pd.Timestamp] = []
-        maxs: List[pd.Timestamp] = []
-
-        for s in series_map.values():
-            times = s.df["time_dt"].dropna()
-            if times.empty:
-                continue
-            mins.append(times.min())
-            maxs.append(times.max())
-
-        if not mins or not maxs:
-            return None
-
-        return min(mins), max(maxs)
-
-    def _init_zoom_selector(self) -> None:
-        """Enable a span selector that synchronizes x-limits across axes."""
-        if self._zoom_selector is not None:
-            self._zoom_selector.disconnect_events()
-            self._zoom_selector = None
-        if self._zoom_reset_cid is not None:
-            self.mpl_disconnect(self._zoom_reset_cid)
-            self._zoom_reset_cid = None
-
-        if self.axes is None or len(self.axes) == 0:
-            return
-
-        self._zoom_selector = SpanSelector(
-            self.axes[0],
-            self._on_zoom_selected,
-            direction="horizontal",
-            useblit=True,
-            props=dict(alpha=0.25, facecolor="#c7d2fe"),
-        )
-        self._zoom_reset_cid = self.mpl_connect(
-            "button_press_event", self._on_zoom_reset_clicked
-        )
-
-    def _on_zoom_selected(self, xmin, xmax):
-        if xmin is None or xmax is None:
-            return
-        if xmin == xmax:
-            return
-        if xmin > xmax:
-            xmin, xmax = xmax, xmin
-
-        for ax in self.axes:
-            ax.set_xlim(xmin, xmax)
-        self.figure.canvas.draw_idle()
-
-    def _on_zoom_reset_clicked(self, event) -> None:
-        if event is None:
-            return
-        if not event.dblclick:
-            return
-        if self._full_xlim is None:
-            return
-
-        xmin, xmax = self._full_xlim
-        for ax in self.axes:
-            ax.set_xlim(xmin, xmax)
-        self.figure.canvas.draw_idle()
 
 
 # ----------------------------------------------------------------------
@@ -485,9 +405,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Downloading data from WebTCAD…")
 
         try:
-            series_map, missing_series = self.download_all_series(
-                username, password, start_iso, stop_iso
-            )
+            series_map = self.download_all_series(username, password, start_iso, stop_iso)
         except Exception as e:
             self.run_btn.setEnabled(True)
             self.statusBar().showMessage("Error")
@@ -510,17 +428,6 @@ class MainWindow(QMainWindow):
         self.canvas.plot_series(series_map)
 
         msg = "Finished"
-        if missing_series:
-            missing = ", ".join(sorted(missing_series))
-            QMessageBox.warning(
-                self,
-                "Missing series",
-                (
-                    "Some series had no data for the selected time range and were "
-                    f"skipped: {missing}"
-                ),
-            )
-            msg += f" – skipped {len(missing_series)} empty series"
         if out_name:
             msg += f" – saved merged CSV to {out_name}"
         self.statusBar().showMessage(msg)
@@ -534,31 +441,26 @@ class MainWindow(QMainWindow):
         password: str,
         start_iso: str,
         stop_iso: str,
-    ) -> Tuple[Dict[str, SeriesData], List[str]]:
-        """Download all configured series and return (map, missing_keys)."""
+    ) -> Dict[str, SeriesData]:
+        """Download all configured series and return a map: key -> SeriesData."""
         session = requests.Session()
         session.auth = (username, password)
 
         series_map: Dict[str, SeriesData] = {}
-        missing_series: List[str] = []
 
         for key, tmid in SERIES_TMIDS.items():
-            self.statusBar().showMessage(f"Fetching {key} (TMID={tmid})…")
-            QApplication.processEvents()  # keep UI responsive
             try:
+                self.statusBar().showMessage(f"Fetching {key} (TMID={tmid})…")
+                QApplication.processEvents()  # keep UI responsive
                 s = fetch_series(session, key, tmid, start_iso, stop_iso)
                 series_map[key] = s
-            except ValueError as e:
-                # If a channel has no data for the time range, continue with others
-                missing_series.append(key)
-                continue
             except Exception as e:
                 raise RuntimeError(f"Error fetching {key} (TMID={tmid}): {e}") from e
 
         if not series_map:
             raise RuntimeError("No series downloaded.")
 
-        return series_map, missing_series
+        return series_map
 
 
 # ----------------------------------------------------------------------
