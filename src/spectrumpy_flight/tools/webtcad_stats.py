@@ -29,6 +29,7 @@ from matplotlib.backends.backend_qtagg import (
     NavigationToolbar2QT as NavigationToolbar,
 )
 from matplotlib.figure import Figure
+import matplotlib.dates as mdates
 
 from PyQt6.QtCore import Qt, QDateTime
 from PyQt6.QtWidgets import (
@@ -44,7 +45,14 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QMessageBox,
     QGroupBox,
+    QCheckBox,
+    QScrollArea,
 )
+
+from spectrumpy_flight.plot_style import apply_plot_style
+
+# Apply publication-style defaults shared with IDEX Quicklook
+apply_plot_style()
 
 
 # ----------------------------------------------------------------------
@@ -199,32 +207,39 @@ def merge_to_single_csv(series_map: Dict[str, SeriesData], out_path: str) -> pd.
 
 class TimeSeriesCanvas(FigureCanvas):
     def __init__(self, parent=None):
-        fig = Figure(figsize=(8, 6), tight_layout=True)
+        fig = Figure(figsize=(9, 6), tight_layout=False)
         super().__init__(fig)
         self.setParent(parent)
         self.figure = fig
-        self.axes = []
+        self.axes: list = []
 
-        # Light UI-style background
-        self.figure.set_facecolor("#f7f7fb")
+        # Match the publication-style background used across Quicklook tools
+        self.figure.set_facecolor(matplotlib.rcParams.get("figure.facecolor", "white"))
 
-    def plot_series(self, series_map: Dict[str, SeriesData]):
+    def plot_series(
+        self,
+        series_map: Dict[str, SeriesData],
+        visible_groups: Dict[str, bool],
+    ) -> None:
         self.figure.clear()
 
         valid_groups = [
-            grp for grp in PLOT_GROUPS
-            if (grp[1] in series_map) or (grp[2] in series_map)
+            grp
+            for grp in PLOT_GROUPS
+            if visible_groups.get(grp[0], True)
+            and ((grp[1] in series_map) or (grp[2] in series_map))
         ]
 
+        detector_enabled = visible_groups.get("Detector Voltage", True)
         nrows = len(valid_groups)
-        if DETECTOR_VOLT_KEY in series_map:
+        if detector_enabled and DETECTOR_VOLT_KEY in series_map:
             nrows += 1
 
         if nrows == 0:
             self.draw()
             return
 
-        axes = self.figure.subplots(nrows, 1, sharex=False)
+        axes = self.figure.subplots(nrows, 1, sharex=True)
         if nrows == 1:
             axes = [axes]
         self.axes = axes
@@ -258,28 +273,33 @@ class TimeSeriesCanvas(FigureCanvas):
                 )
 
             ax.set_ylabel(title)
-            ax.grid(True, linestyle=":", linewidth=0.5, alpha=0.6)
-            ax.legend(loc="upper right", fontsize=8)
-            ax.tick_params(axis="both", labelsize=8)
+            ax.grid(True, linestyle="-", linewidth=0.8, alpha=0.35)
+            ax.legend(loc="upper right")
+            ax.tick_params(axis="both", labelsize=11)
 
         # Detector voltage in the last panel
-        if DETECTOR_VOLT_KEY in series_map:
+        if detector_enabled and DETECTOR_VOLT_KEY in series_map:
             ax = axes[ax_idx]
             s = series_map[DETECTOR_VOLT_KEY]
             df = s.df
-            ax.plot(df["time_dt"], df[s.value_col], linewidth=0.9)
+            ax.plot(df["time_dt"], df[s.value_col], linewidth=1.2)
             ax.set_ylabel("Det V")
-            ax.grid(True, linestyle=":", linewidth=0.5, alpha=0.6)
-            ax.tick_params(axis="both", labelsize=8)
+            ax.grid(True, linestyle="-", linewidth=0.8, alpha=0.35)
+            ax.tick_params(axis="both", labelsize=11)
 
         # Shared x-label on the last axis
-        axes[-1].set_xlabel("Time [UTC]", fontsize=9)
+        axes[-1].set_xlabel("Time [UTC]", fontsize=13)
+        axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d\n%H:%M:%S"))
 
         for ax in axes:
             for spine in ("top", "right"):
                 ax.spines[spine].set_visible(False)
+            ax.margins(x=0)
+            ax.tick_params(axis="x", rotation=0)
 
-        self.figure.tight_layout()
+        self.figure.tight_layout(pad=1.2)
+        # Increase canvas height so scroll areas have room to render all panels
+        self.setMinimumHeight(max(1, nrows) * 260)
         self.draw()
 
 
@@ -293,6 +313,7 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("IDEX WebTCAD Waveform Viewer")
         self.resize(1100, 700)
+        self.current_series_map: Dict[str, SeriesData] = {}
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -365,13 +386,45 @@ class MainWindow(QMainWindow):
         controls_layout.addLayout(button_row)
         main_layout.addWidget(controls_group)
 
+        # --- Visibility toggles ----------------------------------------------
+        visibility_group = QGroupBox("Plot visibility")
+        visibility_layout = QHBoxLayout(visibility_group)
+
+        self.visibility_checks: Dict[str, QCheckBox] = {}
+        for title, _, _ in PLOT_GROUPS:
+            cb = QCheckBox(title)
+            cb.setChecked(True)
+            cb.stateChanged.connect(self.on_visibility_changed)
+            self.visibility_checks[title] = cb
+            visibility_layout.addWidget(cb)
+
+        det_cb = QCheckBox("Detector Voltage")
+        det_cb.setChecked(True)
+        det_cb.stateChanged.connect(self.on_visibility_changed)
+        self.visibility_checks["Detector Voltage"] = det_cb
+        visibility_layout.addWidget(det_cb)
+
+        visibility_layout.addStretch(1)
+        main_layout.addWidget(visibility_group)
+
         # --- Plot canvas + toolbar -------------------------------------------
         self.canvas = TimeSeriesCanvas(self)
         self.toolbar = NavigationToolbar(self.canvas, self)
 
+        canvas_container = QWidget()
+        canvas_layout = QVBoxLayout(canvas_container)
+        canvas_layout.setContentsMargins(0, 0, 0, 0)
+        canvas_layout.addWidget(self.toolbar)
+        canvas_layout.addWidget(self.canvas)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setWidget(canvas_container)
+
         plot_layout = QVBoxLayout()
-        plot_layout.addWidget(self.toolbar)
-        plot_layout.addWidget(self.canvas, stretch=1)
+        plot_layout.addWidget(scroll)
 
         main_layout.addLayout(plot_layout, stretch=1)
 
@@ -425,7 +478,8 @@ class MainWindow(QMainWindow):
             out_name = None
 
         # Plot
-        self.canvas.plot_series(series_map)
+        self.current_series_map = series_map
+        self.refresh_plots()
 
         msg = "Finished"
         if out_name:
@@ -461,6 +515,19 @@ class MainWindow(QMainWindow):
             raise RuntimeError("No series downloaded.")
 
         return series_map
+
+    # ------------------------------------------------------------------ #
+
+    def visible_flags(self) -> Dict[str, bool]:
+        return {name: cb.isChecked() for name, cb in self.visibility_checks.items()}
+
+    def refresh_plots(self) -> None:
+        if not self.current_series_map:
+            return
+        self.canvas.plot_series(self.current_series_map, self.visible_flags())
+
+    def on_visibility_changed(self) -> None:
+        self.refresh_plots()
 
 
 # ----------------------------------------------------------------------
