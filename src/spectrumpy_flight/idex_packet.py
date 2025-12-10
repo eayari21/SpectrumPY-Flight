@@ -219,21 +219,39 @@ def _ensure_dataset_aliases(hdf5_file, dataset_path, aliases):
 
 
 _FILENAME_EPOCH_PATTERN = re.compile(r"(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})")
+_FILENAME_DATE_ONLY_PATTERN = re.compile(r"(\d{2})_(\d{2})_(\d{2})")
 
 
-def _parse_filename_epoch(filename: str) -> Optional[datetime]:
-    """Return a timezone-aware datetime parsed from the capture filename."""
+def _parse_filename_epoch(filename: str) -> Tuple[Optional[datetime], bool]:
+    """Return a timezone-aware datetime parsed from the capture filename.
+
+    The second return value indicates whether the filename included an explicit
+    time-of-day component.  When only a date is present we still anchor to that
+    day while deriving the time-of-day from the packet counters.
+    """
 
     name = Path(filename).name
     match = _FILENAME_EPOCH_PATTERN.search(name)
-    if not match:
-        return None
+    if match:
+        month, day, year, hour, minute, second = map(int, match.groups())
+        try:
+            return (
+                datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc),
+                True,
+            )
+        except ValueError:
+            return (None, False)
 
-    month, day, year, hour, minute, second = map(int, match.groups())
+    date_only_match = _FILENAME_DATE_ONLY_PATTERN.search(name)
+    if not date_only_match:
+        return (None, False)
+
+    month, day, year = map(int, date_only_match.groups())
+    year = 2000 + year if year < 100 else year
     try:
-        return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+        return (datetime(year, month, day, tzinfo=timezone.utc), False)
     except ValueError:
-        return None
+        return (None, False)
 
 
 def _collection_efficiency_ratio(
@@ -2011,7 +2029,9 @@ class IDEXEvent:
         self._rollover_count = 0
         self._last_base_seconds: Optional[float] = None
         self._last_mod_seconds: Optional[float] = None
-        self._filename_epoch = _parse_filename_epoch(filename)
+        self._filename_epoch, self._filename_epoch_has_time = _parse_filename_epoch(
+            filename
+        )
         if self._filename_epoch is not None:
             anchor_day_start = datetime(
                 self._filename_epoch.year,
@@ -2028,6 +2048,8 @@ class IDEXEvent:
             self._anchor_seconds_of_day = (
                 self._filename_epoch - anchor_day_start
             ).total_seconds()
+            if not self._filename_epoch_has_time:
+                self._anchor_seconds_of_day = None
         else:
             self._anchor_day_start_seconds = None
             self._anchor_seconds = None
@@ -2505,6 +2527,10 @@ class IDEXEvent:
 
         if self._seconds_offset is None:
             if self._anchor_seconds is not None:
+                if self._anchor_seconds_of_day is None and self._anchor_day_start_seconds is not None:
+                    self._anchor_seconds_of_day = seconds_mod
+                    self._anchor_seconds = self._anchor_day_start_seconds + seconds_mod
+
                 raw_offset = self._anchor_seconds - base_seconds
                 if self._anchor_seconds_of_day is not None:
                     candidate_time_of_day = base_seconds % 86400.0
