@@ -219,7 +219,11 @@ def _ensure_dataset_aliases(hdf5_file, dataset_path, aliases):
 
 
 _FILENAME_EPOCH_PATTERN = re.compile(r"(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})")
+_FILENAME_EPOCH_YEAR_FIRST_PATTERN = re.compile(
+    r"(\d{4})(\d{2})(\d{2})[ _-]?(\d{2})(\d{2})(\d{2})"
+)
 _FILENAME_DATE_ONLY_PATTERN = re.compile(r"(\d{2})_(\d{2})_(\d{2})")
+_FILENAME_DATE_ONLY_YEAR_FIRST_PATTERN = re.compile(r"(\d{4})[ _-]?(\d{2})[ _-]?(\d{2})")
 
 
 def _parse_filename_epoch(filename: str) -> Tuple[Optional[datetime], bool]:
@@ -240,14 +244,29 @@ def _parse_filename_epoch(filename: str) -> Tuple[Optional[datetime], bool]:
                 True,
             )
         except ValueError:
+            # Fall through to alternate patterns if the date is invalid
+            pass
+
+    year_first_match = _FILENAME_EPOCH_YEAR_FIRST_PATTERN.search(name)
+    if year_first_match:
+        year, month, day, hour, minute, second = map(int, year_first_match.groups())
+        try:
+            return (
+                datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc),
+                True,
+            )
+        except ValueError:
             return (None, False)
 
     date_only_match = _FILENAME_DATE_ONLY_PATTERN.search(name)
     if not date_only_match:
-        return (None, False)
-
-    month, day, year = map(int, date_only_match.groups())
-    year = 2000 + year if year < 100 else year
+        date_only_match = _FILENAME_DATE_ONLY_YEAR_FIRST_PATTERN.search(name)
+        if not date_only_match:
+            return (None, False)
+        year, month, day = map(int, date_only_match.groups())
+    else:
+        month, day, year = map(int, date_only_match.groups())
+        year = 2000 + year if year < 100 else year
     try:
         return (datetime(year, month, day, tzinfo=timezone.utc), False)
     except ValueError:
