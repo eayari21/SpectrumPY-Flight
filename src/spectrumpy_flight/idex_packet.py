@@ -69,6 +69,7 @@ if __package__ is None or __package__ == "":
         SPACECRAFT_EPOCH,
         combine_coarse_fine_seconds,
         spacecraft_seconds_to_datetime,
+        spacecraft_seconds_to_unix_seconds,
     )
 else:
     from . import package_path
@@ -81,6 +82,7 @@ else:
         SPACECRAFT_EPOCH,
         combine_coarse_fine_seconds,
         spacecraft_seconds_to_datetime,
+        spacecraft_seconds_to_unix_seconds,
     )
 
 try:
@@ -2417,7 +2419,10 @@ class IDEXEvent:
                     # mst_offset = timedelta(hours=-7)
                     # mst_time = utc_time + mst_offset
                     print(f"Trigger time = {utc_time}")
-                    self.header[(evtnum, 'Timestamp')] = utc_time.timestamp()
+                    unix_seconds = spacecraft_seconds_to_unix_seconds(
+                        seconds_since_spacecraft_epoch
+                    )
+                    self.header[(evtnum, 'Timestamp')] = unix_seconds
                     self.header[(evtnum, 'SpacecraftSeconds')] = seconds_since_spacecraft_epoch
 
 
@@ -2854,7 +2859,16 @@ class IDEXEvent:
 
                 metadata_path = f"/{event_key}/Metadata/Epoch"
                 if metadata_path not in h:
-                    timestamp = self.header.get((int(event_key), 'Timestamp'), 0)
+                    header_key = int(event_key)
+                    timestamp = self.header.get((header_key, 'Timestamp'))
+                    if timestamp is None:
+                        spacecraft_seconds = self.header.get(
+                            (header_key, 'SpacecraftSeconds')
+                        )
+                        if spacecraft_seconds is not None:
+                            timestamp = spacecraft_seconds_to_unix_seconds(spacecraft_seconds)
+                    if timestamp is None:
+                        timestamp = 0
                     create_dataset_if_not_exists(h, metadata_path, data=np.array(timestamp))
 
                 transformed = analysis['transformed']
