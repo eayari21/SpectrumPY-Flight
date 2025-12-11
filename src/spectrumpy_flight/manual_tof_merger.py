@@ -9,7 +9,7 @@ from scipy.special import erf
 # ------------------------------------------------------------
 # User Settings
 # ------------------------------------------------------------
-INPUT_FILE = "HDF5/Flight/imap_idex_l0_raw_20251130_v001.h5"
+INPUT_FILE = "HDF5/Flight/imap_idex_l0_raw_20251130_v002.h5"
 EVENT = "29"
 OUT_PLOT = "Plots/evt29_combined_single_waveform.png"
 
@@ -48,6 +48,12 @@ with h5py.File(INPUT_FILE, "r") as f:
 tof_m = 2.93e-3 * raw_m
 tof_l = raw_l
 tof_h = (1/4.67) * raw_h
+
+
+import pandas as pd
+df = pd.DataFrame({"Time": time_hi, "TOF H": tof_h, "TOF M": tof_m, "TOF L": tof_l})
+df.to_csv("IDEXEvent.csv")
+
 
 # ------------------------------------------------------------
 # Baseline subtract
