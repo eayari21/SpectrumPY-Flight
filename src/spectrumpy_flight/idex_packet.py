@@ -2800,21 +2800,21 @@ class IDEXEvent:
                 'rise_time': None,
             }
 
-                if channel in conversion_factors:
-                    transformed_data = analysis['data'].astype(float) * conversion_factors[channel]
-                    analysis['transformed'] = transformed_data
-                    analysis['channel_saturated'] = detect_saturation(analysis['data'])
+            if channel in conversion_factors:
+                transformed_data = analysis['data'].astype(float) * conversion_factors[channel]
+                analysis['transformed'] = transformed_data
+                analysis['channel_saturated'] = detect_saturation(analysis['data'])
 
-                    if channel in {'TOF H', 'TOF M', 'TOF L'}:
-                        time_array = self._build_time_array(
-                            len(transformed_data), high_rate=True, event_id=event_id
-                        )
-                    elif channel in target_channels:
-                        time_array = self._build_time_array(
-                            len(transformed_data), high_rate=False, event_id=event_id
-                        )
-                    else:
-                        time_array = np.arange(len(transformed_data), dtype=float)
+                if channel in {'TOF H', 'TOF M', 'TOF L'}:
+                    time_array = self._build_time_array(
+                        len(transformed_data), high_rate=True, event_id=event_id
+                    )
+                elif channel in target_channels:
+                    time_array = self._build_time_array(
+                        len(transformed_data), high_rate=False, event_id=event_id
+                    )
+                else:
+                    time_array = np.arange(len(transformed_data), dtype=float)
                 analysis['time_array'] = np.asarray(time_array, dtype=float)
 
                 if channel == 'TOF H':
