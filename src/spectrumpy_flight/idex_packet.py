@@ -2362,6 +2362,11 @@ class IDEXEvent:
                     print(f"Mid gain delay = {self.mgdelay} samples.")
                     print(f"Low gain delay = {self.lgdelay} samples.")
 
+                    # Store per-channel delays so they are written to Metadata
+                    self.header[(evtnum, 'TOFDelay_L')] = int(self.lgdelay)
+                    self.header[(evtnum, 'TOFDelay_M')] = int(self.mgdelay)
+                    self.header[(evtnum, 'TOFDelay_H')] = int(self.hgdelay)
+
                     fifo_delay = pkt.data.get('IDX__TXHDRFIFODELAY')
                     if fifo_delay is not None:
                         self.fifo_delay = fifo_delay.derived_value
