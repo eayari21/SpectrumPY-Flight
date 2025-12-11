@@ -27,7 +27,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 
@@ -2041,6 +2041,7 @@ class IDEXEvent:
         self.hspretrigblocks = 0
         self.hsposttrigblocks = 0
         self.hgdelay = 0
+        self.fifo_delay = 0
         self.hstime = np.array([], dtype=float)
         self.lstime = np.array([], dtype=float)
         self._coarse_period = float(1 << 16)
@@ -2361,6 +2362,11 @@ class IDEXEvent:
                     print(f"Mid gain delay = {self.mgdelay} samples.")
                     print(f"Low gain delay = {self.lgdelay} samples.")
 
+                    fifo_delay = pkt.data.get('IDX__TXHDRFIFODELAY')
+                    if fifo_delay is not None:
+                        self.fifo_delay = fifo_delay.derived_value
+                        self.header[(evtnum, 'FIFODelay')] = int(self.fifo_delay)
+
                     if(pkt.data['IDX__TXHDRLSTRIGMODE'].derived_value!='DIS'):  # If this was a LS (Target Low Gain) trigger (DIS=disabled)
                         print(f"Low sampling trigger mode = {pkt.data['IDX__TXHDRLSTRIGMODE'].derived_value}")
                         self.Triggerorigin = 'LS' 
@@ -2598,13 +2604,27 @@ class IDEXEvent:
         pre_blocks = getattr(self, "hspretrigblocks", 0)
         return 512 * (1.0 / 260.0) * (pre_blocks + 1)
 
-    def _build_time_array(self, sample_count: int, *, high_rate: bool) -> np.ndarray:
+    def _low_sampling_delay_seconds(self, event_id: Optional[Union[int, str]]) -> float:
+        delay_value = None
+        if event_id is not None:
+            try:
+                delay_value = self.header.get((int(event_id), 'FIFODelay'))
+            except Exception:
+                delay_value = None
+        if delay_value is None:
+            delay_value = getattr(self, 'fifo_delay', 0)
+        return float(delay_value) * (1.0 / 260.0)
+
+    def _build_time_array(self, sample_count: int, *, high_rate: bool, event_id: Optional[Union[int, str]] = None) -> np.ndarray:
         if sample_count <= 0:
             return np.array([], dtype=float)
         spacing = 1.0 / 260.0 if high_rate else 1.0 / 4.0625
         offset = self._high_trigger_offset() if high_rate else self._low_trigger_offset()
         time_values = np.arange(sample_count, dtype=float) * spacing
-        return time_values - offset
+        time_values = time_values - offset
+        if not high_rate:
+            time_values = time_values + self._low_sampling_delay_seconds(event_id)
+        return time_values
 
     def plot_all_data(self, packets, fname: str):
         plot_folder = _resolve_plot_dir(fname)
@@ -2775,17 +2795,21 @@ class IDEXEvent:
                 'rise_time': None,
             }
 
-            if channel in conversion_factors:
-                transformed_data = analysis['data'].astype(float) * conversion_factors[channel]
-                analysis['transformed'] = transformed_data
-                analysis['channel_saturated'] = detect_saturation(analysis['data'])
+                if channel in conversion_factors:
+                    transformed_data = analysis['data'].astype(float) * conversion_factors[channel]
+                    analysis['transformed'] = transformed_data
+                    analysis['channel_saturated'] = detect_saturation(analysis['data'])
 
-                if channel in {'TOF H', 'TOF M', 'TOF L'}:
-                    time_array = self._build_time_array(len(transformed_data), high_rate=True)
-                elif channel in target_channels:
-                    time_array = self._build_time_array(len(transformed_data), high_rate=False)
-                else:
-                    time_array = np.arange(len(transformed_data), dtype=float)
+                    if channel in {'TOF H', 'TOF M', 'TOF L'}:
+                        time_array = self._build_time_array(
+                            len(transformed_data), high_rate=True, event_id=event_id
+                        )
+                    elif channel in target_channels:
+                        time_array = self._build_time_array(
+                            len(transformed_data), high_rate=False, event_id=event_id
+                        )
+                    else:
+                        time_array = np.arange(len(transformed_data), dtype=float)
                 analysis['time_array'] = np.asarray(time_array, dtype=float)
 
                 if channel == 'TOF H':
@@ -2836,7 +2860,9 @@ class IDEXEvent:
                 if analysis['time_array'].size == signal_for_fit.size:
                     target_time = analysis['time_array']
                 else:
-                    target_time = self._build_time_array(signal_for_fit.size, high_rate=False)
+                    target_time = self._build_time_array(
+                        signal_for_fit.size, high_rate=False, event_id=event_id
+                    )
                 target_time = np.asarray(target_time, dtype=float)
                 target_fit = FitTargetSignal(target_time, signal_for_fit)
                 analysis['target_fit'] = target_fit
@@ -2963,10 +2989,16 @@ class IDEXEvent:
                         )
 
                     if channel == 'TOF L':
-                        time_data = analysis.get('time_array', self._build_time_array(len(data), high_rate=True))
+                        time_data = analysis.get(
+                            'time_array',
+                            self._build_time_array(len(data), high_rate=True, event_id=event_key),
+                        )
                         h.create_dataset(f"/{event_key}/Time (high sampling)", data=time_data)
                     if channel == 'Ion Grid':
-                        time_data = analysis.get('time_array', self._build_time_array(len(data), high_rate=False))
+                        time_data = analysis.get(
+                            'time_array',
+                            self._build_time_array(len(data), high_rate=False, event_id=event_key),
+                        )
                         h.create_dataset(f"/{event_key}/Time (low sampling)", data=time_data)
 
                 analysis_group = h.require_group(f"/{event_key}/Analysis")
