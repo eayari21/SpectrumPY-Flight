@@ -2044,6 +2044,7 @@ class IDEXEvent:
         self.hstime = np.array([], dtype=float)
         self.lstime = np.array([], dtype=float)
         self._coarse_period = float(1 << 16)
+        self._time32_period = float((1 << 32) * 20e-6)
         self._seconds_offset: Optional[float] = None
         self._rollover_count = 0
         self._last_base_seconds: Optional[float] = None
@@ -2447,8 +2448,8 @@ class IDEXEvent:
 
                     # self.header[evtnum][f"TimeIntervals"] = pkt.data['IDX__SCI0TIME32'].derived_value  # Store the number of 20 us intervals in the respective CDF "Time" variables
                     seconds_since_spacecraft_epoch = self._resolve_spacecraft_seconds(
-                        pkt.data['SHCOARSE'].derived_value,
-                        pkt.data['SHFINE'].derived_value,
+                        seconds=pkt.data['IDX__SCI0TIME32'].derived_value * 20e-6,
+                        period=self._time32_period,
                     )
                     print(
                         "Timestamp ="
@@ -2528,18 +2529,33 @@ class IDEXEvent:
     # ||
     # || Gather all of the events
     # || and plot them
-    def _resolve_spacecraft_seconds(self, coarse: float, fine: float) -> float:
+    def _resolve_spacecraft_seconds(
+        self,
+        coarse: Optional[float] = None,
+        fine: Optional[float] = None,
+        *,
+        seconds: Optional[float] = None,
+        period: Optional[float] = None,
+    ) -> float:
         """Return monotonically increasing spacecraft-clock seconds."""
 
-        coarse_masked = int(coarse) & 0xFFFF
-        seconds_mod = combine_coarse_fine_seconds(coarse_masked, fine)
-        base_seconds = seconds_mod + self._rollover_count * self._coarse_period
+        if seconds is None:
+            if coarse is None or fine is None:
+                raise ValueError("coarse and fine values are required when seconds is not provided")
+            coarse_masked = int(coarse) & 0xFFFF
+            seconds_mod = combine_coarse_fine_seconds(coarse_masked, fine)
+            active_period = self._coarse_period
+        else:
+            seconds_mod = float(seconds)
+            active_period = float(period) if period is not None else self._coarse_period
+
+        base_seconds = seconds_mod + self._rollover_count * active_period
 
         if self._last_base_seconds is not None and base_seconds + 1e-6 < self._last_base_seconds:
             deficit = self._last_base_seconds - base_seconds
-            rollover_increments = int(math.floor(deficit / self._coarse_period)) + 1
+            rollover_increments = int(math.floor(deficit / active_period)) + 1
             self._rollover_count += rollover_increments
-            base_seconds = seconds_mod + self._rollover_count * self._coarse_period
+            base_seconds = seconds_mod + self._rollover_count * active_period
 
         self._last_mod_seconds = seconds_mod
         self._last_base_seconds = base_seconds
