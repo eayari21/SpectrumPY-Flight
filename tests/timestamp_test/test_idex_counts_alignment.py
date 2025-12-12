@@ -3,9 +3,11 @@ from __future__ import annotations
 import csv
 from datetime import datetime, timezone
 from pathlib import Path
+import textwrap
 from typing import Dict, Iterable, List, Tuple
 
 import matplotlib
+from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pytest
 
@@ -17,6 +19,7 @@ from spectrumpy_flight import idex_packet
 
 CSV_TIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
 TIME_TOLERANCE_SECONDS = 6.0
+REPORTS_DIR = Path("reports")
 
 
 def _read_csv_counts(path: Path) -> Dict[int, float]:
@@ -51,6 +54,60 @@ def _extract_event_records(pkts_path: Path) -> List[Tuple[float, int, int]]:
             continue
         records.append((float(timestamp), int(scievt_count), int(sent_unproc)))
     return records
+
+
+def _render_pdf_report(
+    pdf_path: Path,
+    *,
+    matched_events: int,
+    max_delta: float,
+    tolerance: float,
+    plot_fig: matplotlib.figure.Figure,
+) -> None:
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+
+    background = (
+        "This report documents alignment between timestamps provided by IDEX LASP "
+        "packet data and spacecraft counters exported to CSV. Maintaining "
+        "alignment ensures science events are synchronized with spacecraft "
+        "telemetry for downstream analysis."
+    )
+    methods = (
+        "Event records were read from raw .pkts files using idex_packet. Each event "
+        "timestamp was matched against reference science and transmission counters "
+        "from IDX_SW.SCIEVT_CNT.csv and IDX_SW.SCISENTUNPROCCNT.csv. Differences "
+        "between packet timestamps and reference counters were compared against the "
+        f"{tolerance:.1f}s tolerance threshold."
+    )
+    results = (
+        f"A total of {matched_events} events were compared. The maximum absolute "
+        f"timestamp difference observed was {max_delta:.2f} seconds, which is "
+        f"within the {tolerance:.1f}-second tolerance threshold."
+    )
+
+    with PdfPages(pdf_path) as pdf:
+        text_fig = plt.figure(figsize=(8.5, 11))
+        text_fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
+
+        sections = [
+            ("Background", background),
+            ("Methods", methods),
+            ("Results", results),
+        ]
+
+        y = 0.9
+        for heading, body in sections:
+            text_fig.text(0.1, y, heading, fontsize=16, fontweight="bold")
+            y -= 0.05
+            for line in textwrap.wrap(body, 85):
+                text_fig.text(0.1, y, line, fontsize=12, wrap=True)
+                y -= 0.03
+            y -= 0.04
+
+        pdf.savefig(text_fig, bbox_inches="tight")
+        plt.close(text_fig)
+
+        pdf.savefig(plot_fig, bbox_inches="tight")
 
 
 @pytest.mark.skipif(
@@ -94,13 +151,16 @@ def test_idex_packet_timestamps_match_science_counts(tmp_path: Path) -> None:
     assert deltas, "No matching counts between idex_packet output and CSV references."
     assert np.all(np.array(deltas) <= TIME_TOLERANCE_SECONDS)
 
+    matched_events = len(deltas)
+    max_delta = max(deltas)
+
     # Report
     report_path = tmp_path / "idex_timestamp_alignment.txt"
     with report_path.open("w", encoding="utf-8") as handle:
         handle.write("IDX timestamp alignment summary\n")
-        handle.write(f"Total events compared: {len(deltas)}\n")
+        handle.write(f"Total events compared: {matched_events}\n")
         handle.write(
-            f"Max |timestamp - reference|: {max(deltas):.2f} seconds (tolerance {TIME_TOLERANCE_SECONDS:.1f}s)\n"
+            f"Max |timestamp - reference|: {max_delta:.2f} seconds (tolerance {TIME_TOLERANCE_SECONDS:.1f}s)\n"
         )
 
     # Plot
@@ -146,5 +206,16 @@ def test_idex_packet_timestamps_match_science_counts(tmp_path: Path) -> None:
     plot_path = tmp_path / "idex_timestamp_alignment.png"
     fig.savefig(plot_path, dpi=150, bbox_inches="tight")
 
+    pdf_path = REPORTS_DIR / "idex_timestamp_alignment_report.pdf"
+    _render_pdf_report(
+        pdf_path,
+        matched_events=matched_events,
+        max_delta=max_delta,
+        tolerance=TIME_TOLERANCE_SECONDS,
+        plot_fig=fig,
+    )
+    plt.close(fig)
+
     assert report_path.exists()
     assert plot_path.exists()
+    assert pdf_path.exists()
