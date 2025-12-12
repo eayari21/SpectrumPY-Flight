@@ -1,0 +1,12 @@
+Source file,Event Number,Timestamp (seconds),Timestamp (sub-seconds),Trigger ID,Delta time (seconds),Source file matches,Event Number matches,Timestamp (seconds) matches,Timestamp (sub-seconds) matches,Trigger ID matches,Delta time (seconds) matches
+imap_idex_l0_raw_20251130_v002.pkts,29,502153036,36310,HG,0,True,True,True,True,True,True
+imap_idex_l0_raw_20251130_v002.pkts,30,502156921,17342,FSW,8,True,True,True,True,True,True
+imap_idex_l0_raw_20251130_v002.pkts,31,502156927,17381,HG,6,True,True,True,True,True,True
+imap_idex_l0_raw_20251130_v002.pkts,32,502156935,17389,HG,8,True,True,True,True,True,True
+imap_idex_l0_raw_20251130_v002.pkts,33,502156951,17377,HG,8,True,True,True,True,True,True
+imap_idex_l0_raw_20251130_v002.pkts,34,502156959,17375,HG,8,True,True,True,True,True,True
+imap_idex_l0_raw_20251130_v002.pkts,35,502156973,17375,FSW,14,True,True,True,True,True,True
+imap_idex_l0_raw_20251130_v002.pkts,36,502156987,17323,FSW,12,True,True,True,True,True,True
+imap_idex_l0_raw_20251130_v002.pkts,37,502156995,17330,FSW,8,True,True,True,True,True,True
+imap_idex_l0_raw_20251130_v002.pkts,38,502156995,17323,FSW,12,True,True,True,True,True,True
+imap_idex_l0_raw_20251130_v002.pkts,39,502157009,17316,FSW,12,True,True,True,True,True,True

@@ -3570,6 +3570,29 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _write_trigger_summary(packets: Any, source_file: str) -> Optional[Path]:
+    """Persist a trigger summary if the packet reader exposes one."""
+
+    trigger_summary = getattr(packets, "trigger_summary", None)
+    if not callable(trigger_summary):
+        return None
+
+    rows = trigger_summary()
+    if not rows:
+        return None
+
+    project_root = Path(__file__).resolve().parents[2]
+    reports_dir = project_root / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    out_path = reports_dir / "first_transmit_trigger_params.csv"
+
+    df = pd.DataFrame(rows)
+    df.insert(0, "Source file", Path(source_file).name)
+    df.to_csv(out_path, index=False)
+    print(f"Trigger summary written to {out_path}")
+    return out_path
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
@@ -3580,6 +3603,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except Exception as exc:  # pragma: no cover - plotting is optional in tests
         print(exc)
     packets.write_to_hdf5(packets.data, args.file)
+    _write_trigger_summary(packets, args.file)
     return 0
 
 

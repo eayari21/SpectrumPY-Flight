@@ -1,0 +1,12 @@
+Source file,Event Number,Timestamp (seconds),Timestamp (sub-seconds),Trigger ID,Delta time (seconds)
+imap_idex_l0_raw_20251130_v002.pkts,29,502153036,36310,HG,0
+imap_idex_l0_raw_20251130_v002.pkts,30,502156921,17342,FSW,8
+imap_idex_l0_raw_20251130_v002.pkts,31,502156927,17381,HG,6
+imap_idex_l0_raw_20251130_v002.pkts,32,502156935,17389,HG,8
+imap_idex_l0_raw_20251130_v002.pkts,33,502156951,17377,HG,8
+imap_idex_l0_raw_20251130_v002.pkts,34,502156959,17375,HG,8
+imap_idex_l0_raw_20251130_v002.pkts,35,502156973,17375,FSW,14
+imap_idex_l0_raw_20251130_v002.pkts,36,502156987,17323,FSW,12
+imap_idex_l0_raw_20251130_v002.pkts,37,502156995,17330,FSW,8
+imap_idex_l0_raw_20251130_v002.pkts,38,502156995,17323,FSW,12
+imap_idex_l0_raw_20251130_v002.pkts,39,502157009,17316,FSW,12
