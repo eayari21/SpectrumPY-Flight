@@ -722,6 +722,8 @@ def _replace_plot_dir(path: Path) -> Path:
 
 def _resolve_output_path(filename: str) -> Path:
     input_path = Path(filename).expanduser()
+    if not input_path.is_absolute():
+        input_path = Path.cwd() / input_path
     stem = input_path.stem if input_path.suffix else input_path.name
     parent = input_path.parent
     target_parent = _replace_data_dir(parent)
@@ -733,6 +735,8 @@ def _resolve_output_path(filename: str) -> Path:
 
 def _resolve_plot_dir(filename: str) -> Path:
     input_path = Path(filename).expanduser()
+    if not input_path.is_absolute():
+        input_path = Path.cwd() / input_path
     stem = input_path.stem if input_path.suffix else input_path.name
     parent = input_path.parent
     target_parent = _replace_plot_dir(parent)
