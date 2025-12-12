@@ -2453,6 +2453,9 @@ class IDEXEvent:
                             self.header[(evtnum, 'TriggerMode')] = "HGDoublePulse"
 
                     print(f"AID = {pkt.data['IDX__SCI0AID'].derived_value}")  # Instrument event number
+                    self.header[(evtnum, 'IDX__SCI0AID')] = int(
+                        pkt.data['IDX__SCI0AID'].derived_value
+                    )
                     print(f"Event number = {pkt.data['IDX__SCI0EVTNUM'].raw_value}")  # Event number out of how many events constitute the file
                     # print(f"Time = {pkt.data['IDX__SCI0TIME32'].derived_value}")  # Time in 20 ns intervals
 
@@ -2896,7 +2899,7 @@ class IDEXEvent:
 
         with h5py.File(output_path, 'w') as h:
             for (evtnum, key), value in self.header.items():
-                if "IDX__" in key:
+                if "IDX__" in key and key != "IDX__SCI0AID":
                     print(f"Skipping header field {key}")
                     continue
                 dataset_path = f"/{evtnum}/Metadata/{key}"
