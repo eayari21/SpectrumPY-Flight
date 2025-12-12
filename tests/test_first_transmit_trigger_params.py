@@ -1,6 +1,7 @@
 import subprocess
 from pathlib import Path
 
+import h5py
 import pandas as pd
 
 
@@ -44,3 +45,21 @@ def test_first_transmit_test_trigger_params(tmp_path):
 
     report_path = reports_dir / "first_transmit_test_trigger_params_report.csv"
     comparison_report.to_csv(report_path, index=False)
+
+    hdf5_path = script_dir / "Data" / "Flight" / "imap_idex_l0_raw_20251130_v002.h5"
+    assert hdf5_path.exists(), "HDF5 output was not written"
+
+    trigger_mode_map = {"HG": "HGThreshold"}
+
+    with h5py.File(hdf5_path, "r") as handle:
+        for _, row in expected_df.iterrows():
+            event = str(int(row["Event Number"]))
+            assert event in handle, f"Event {event} missing from HDF5"
+
+            metadata = handle[event]["Metadata"]
+            trigger_mode = metadata["TriggerMode"].asstr()[0]
+            expected_mode = trigger_mode_map.get(row["Trigger ID"], row["Trigger ID"])
+            assert trigger_mode == expected_mode
+
+            assert metadata["TimestampSeconds"][0] == row["Timestamp (seconds)"]
+            assert metadata["TimestampSubseconds"][0] == row["Timestamp (sub-seconds)"]

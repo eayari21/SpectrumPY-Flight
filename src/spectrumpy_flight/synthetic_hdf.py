@@ -18,6 +18,7 @@ _MATERIALS = [
 ]
 _STR_120 = h5py.string_dtype(encoding="utf-8", length=120)
 _STR_EXTRAS = h5py.string_dtype(encoding="utf-8", length=2048)
+_STR_TRIGGER = h5py.string_dtype(encoding="utf-8")
 
 
 def _parse_timestamp(path: Path) -> datetime | None:
@@ -209,6 +210,13 @@ def _write_signal_metrics(analysis, event_idx: int, seed: int) -> None:
     analysis.create_dataset("Reference Voltage", data=np.array([3200.0], dtype=float))
 
 
+def _trigger_mode_from_id(trigger_id: str) -> str:
+    """Translate trigger identifiers to the `TriggerMode` strings used in HDF5."""
+
+    translations = {"HG": "HGThreshold"}
+    return translations.get(trigger_id, trigger_id)
+
+
 class SyntheticIDEXEvent:
     """Fallback decoder that fabricates HDF5 outputs when lasp_packets is unavailable."""
 
@@ -255,13 +263,42 @@ class SyntheticIDEXEvent:
         if target.suffix != ".h5":
             target = target.with_suffix(".h5")
         target.parent.mkdir(parents=True, exist_ok=True)
-        event_count = 1 + (self.seed % 3)
+
+        trigger_rows = self.trigger_summary()
+        event_rows: list[dict[str, object] | None]
+        if trigger_rows:
+            event_rows = [dict(row) for row in trigger_rows]
+        else:
+            event_count = 1 + (self.seed % 3)
+            event_rows = [None for _ in range(event_count)]
+
         with h5py.File(target, "w") as handle:
-            for idx in range(1, event_count + 1):
-                event_group = handle.require_group(str(idx))
+            for idx, row in enumerate(event_rows, start=1):
+                event_number = row.get("Event Number") if isinstance(row, dict) else idx
+                event_group = handle.require_group(str(event_number))
                 metadata = event_group.require_group("Metadata")
+
                 event_epoch_ms = self.epoch_ms + idx * 1000.0
                 metadata.create_dataset("Epoch", data=np.array([event_epoch_ms], dtype=float))
+
+                if isinstance(row, dict):
+                    timestamp_seconds = float(row["Timestamp (seconds)"])
+                    timestamp_subseconds = float(row["Timestamp (sub-seconds)"])
+                    trigger_id = str(row["Trigger ID"])
+
+                    metadata.create_dataset(
+                        "TimestampSeconds",
+                        data=np.array([timestamp_seconds], dtype=float),
+                    )
+                    metadata.create_dataset(
+                        "TimestampSubseconds",
+                        data=np.array([timestamp_subseconds], dtype=float),
+                    )
+                    metadata.create_dataset(
+                        "TriggerMode",
+                        data=np.array([_trigger_mode_from_id(trigger_id)], dtype=_STR_TRIGGER),
+                    )
+
                 analysis = event_group.require_group("Analysis")
                 accel = analysis.require_group("AcceleratorMetadata")
                 _write_accelerator_metadata(
