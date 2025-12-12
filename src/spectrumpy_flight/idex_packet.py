@@ -2603,11 +2603,11 @@ class IDEXEvent:
     def _high_trigger_offset(self) -> float:
         pre_blocks = getattr(self, "lspretrigblocks", 0)
         delay = getattr(self, "hgdelay", 0)
-        return 8 * (1.0 / 4.0625) * (pre_blocks + 1) - (1.0 / 260.0) * delay
+        return 8 * (1.0 / 4.0625) * (pre_blocks + 1)+ (1.0 / 260) * delay
 
     def _low_trigger_offset(self) -> float:
         pre_blocks = getattr(self, "hspretrigblocks", 0)
-        return 512 * (1.0 / 260.0) * (pre_blocks + 1)
+        return 512 * (1.0 / 260.0) * (pre_blocks + 1) 
 
     def _low_sampling_delay_seconds(self, event_id: Optional[Union[int, str]]) -> float:
         delay_value = None
