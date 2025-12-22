@@ -2465,25 +2465,39 @@ class IDEXEvent:
 
 
                     # self.header[evtnum][f"TimeIntervals"] = pkt.data['IDX__SCI0TIME32'].derived_value  # Store the number of 20 us intervals in the respective CDF "Time" variables
-                    seconds_since_spacecraft_epoch = self._resolve_spacecraft_seconds(
-                        seconds=pkt.data['IDX__SCI0TIME32'].derived_value * 20e-6,
+                    time32_ticks = float(pkt.data['IDX__SCI0TIME32'].derived_value)
+                    spacecraft_seconds = self._resolve_spacecraft_seconds(
+                        seconds=time32_ticks * 20e-6,
                         period=self._time32_period,
                     )
+                    timestamp_seconds = int(math.floor(spacecraft_seconds))
+                    timestamp_subseconds = int(
+                        round((spacecraft_seconds - timestamp_seconds) * 50000.0)
+                    )
+                    if timestamp_subseconds >= 50000:
+                        timestamp_seconds += timestamp_subseconds // 50000
+                        timestamp_subseconds = timestamp_subseconds % 50000
+
                     print(
                         "Timestamp ="
-                        f" {seconds_since_spacecraft_epoch} seconds since epoch (Midnight January 1st,"
+                        f" {spacecraft_seconds} seconds since epoch (Midnight January 1st,"
                         f" {SPACECRAFT_EPOCH.year})"
                     )
 
-                    utc_time = spacecraft_seconds_to_datetime(seconds_since_spacecraft_epoch)
+                    utc_time = spacecraft_seconds_to_datetime(spacecraft_seconds)
                     # mst_offset = timedelta(hours=-7)
                     # mst_time = utc_time + mst_offset
                     print(f"Trigger time = {utc_time}")
                     unix_seconds = spacecraft_seconds_to_unix_seconds(
-                        seconds_since_spacecraft_epoch
+                        spacecraft_seconds
                     )
+                    epoch_ms = spacecraft_seconds * 1000.0
+
+                    self.header[(evtnum, 'TimestampSeconds')] = timestamp_seconds
+                    self.header[(evtnum, 'TimestampSubseconds')] = timestamp_subseconds
                     self.header[(evtnum, 'Timestamp')] = unix_seconds
-                    self.header[(evtnum, 'SpacecraftSeconds')] = seconds_since_spacecraft_epoch
+                    self.header[(evtnum, 'SpacecraftSeconds')] = spacecraft_seconds
+                    self.header[(evtnum, 'Epoch')] = epoch_ms
 
 
                 if pkt.data['IDX__SCI0TYPE'].raw_value in [2, 4, 8, 16, 32, 64]:
@@ -2907,7 +2921,17 @@ class IDEXEvent:
                     dtype = h5py.string_dtype(encoding='utf-8')
                     create_dataset_if_not_exists(h, dataset_path, data=value, dtype=dtype)
                 else:
-                    create_dataset_if_not_exists(h, dataset_path, data=np.array(value))
+                    if key in {
+                        'Timestamp',
+                        'TimestampSeconds',
+                        'TimestampSubseconds',
+                        'SpacecraftSeconds',
+                        'Epoch',
+                    }:
+                        data = np.array([value])
+                    else:
+                        data = np.array(value)
+                    create_dataset_if_not_exists(h, dataset_path, data=data)
                 print(f"Created dataset: {dataset_path} with value: {value}")
 
             for analysis in analyses:
@@ -2957,18 +2981,46 @@ class IDEXEvent:
                     event_info['spice_written'] = True
 
                 metadata_path = f"/{event_key}/Metadata/Epoch"
-                if metadata_path not in h:
-                    header_key = int(event_key)
-                    timestamp = self.header.get((header_key, 'Timestamp'))
-                    if timestamp is None:
-                        spacecraft_seconds = self.header.get(
-                            (header_key, 'SpacecraftSeconds')
+                header_key = int(event_key)
+                timestamp_seconds = self.header.get((header_key, 'TimestampSeconds'))
+                timestamp_subseconds = self.header.get((header_key, 'TimestampSubseconds'))
+                if timestamp_seconds is None or timestamp_subseconds is None:
+                    spacecraft_seconds = self.header.get(
+                        (header_key, 'SpacecraftSeconds')
+                    )
+                    if spacecraft_seconds is not None:
+                        timestamp_seconds = int(math.floor(spacecraft_seconds))
+                        timestamp_subseconds = int(
+                            round((spacecraft_seconds - timestamp_seconds) * 50000.0)
                         )
-                        if spacecraft_seconds is not None:
-                            timestamp = spacecraft_seconds_to_unix_seconds(spacecraft_seconds)
-                    if timestamp is None:
-                        timestamp = 0
-                    create_dataset_if_not_exists(h, metadata_path, data=np.array(timestamp))
+                        if timestamp_subseconds >= 50000:
+                            timestamp_seconds += timestamp_subseconds // 50000
+                            timestamp_subseconds = timestamp_subseconds % 50000
+
+                if timestamp_seconds is not None and timestamp_subseconds is not None:
+                    create_dataset_if_not_exists(
+                        h,
+                        f"/{event_key}/Metadata/TimestampSeconds",
+                        data=np.array([timestamp_seconds], dtype=float),
+                    )
+                    create_dataset_if_not_exists(
+                        h,
+                        f"/{event_key}/Metadata/TimestampSubseconds",
+                        data=np.array([timestamp_subseconds], dtype=float),
+                    )
+                    epoch_ms = float(timestamp_seconds) * 1000.0 + float(timestamp_subseconds) * 0.02
+                else:
+                    epoch_ms = None
+
+                if metadata_path in h:
+                    if epoch_ms is not None:
+                        h[metadata_path][...] = np.array([epoch_ms])
+                else:
+                    create_dataset_if_not_exists(
+                        h,
+                        metadata_path,
+                        data=np.array([0.0 if epoch_ms is None else epoch_ms]),
+                    )
 
                 transformed = analysis['transformed']
                 if transformed is not None:
