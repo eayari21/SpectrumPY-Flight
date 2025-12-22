@@ -22,7 +22,7 @@ images/*.pdf
 # test artifacts
 reports/*
 !reports/.gitkeep
+!reports/fm_laser_testing_categories.csv
 
 # node / misc
 node_modules/
-
