@@ -14,6 +14,7 @@ Dependencies:
 """
 
 import io
+import os
 import sys
 from pathlib import Path
 from dataclasses import dataclass
@@ -71,22 +72,43 @@ BASE_URL = (
 )
 
 # Individual series: label -> TMID
-SERIES_TMIDS: Dict[str, int] = {
-    "TOFHGMIN": 3323,
-    "Det_Voltage": 38,
-    "Target_Low_Gain_Min": 3356,
-    "Target_High_Gain_Min": 3349,
-    "Target_Low_Gain_Max": 3357,
-    "Target_High_Gain_Max": 3350,
-    "TOFLGMIN": 3331,
-    "TOFMGMIN": 3341,
-    "TOFHGMAX": 3325,
-    "TOFLGMAX": 3333,
-    "TOFMGMAX": 3343,
-    # Add Ion Grid min/max TMIDs here if desired:
-    # "IONGRIDMIN": <TMID>,
-    # "IONGRIDMAX": <TMID>,
-}
+def _load_series_tmids() -> tuple[Dict[str, int], List[str]]:
+    tmids: Dict[str, int] = {
+        "TOFHGMIN": 3323,
+        "Det_Voltage": 38,
+        "Target_Low_Gain_Min": 3356,
+        "Target_High_Gain_Min": 3349,
+        "Target_Low_Gain_Max": 3357,
+        "Target_High_Gain_Max": 3350,
+        "TOFLGMIN": 3331,
+        "TOFMGMIN": 3341,
+        "TOFHGMAX": 3325,
+        "TOFLGMAX": 3333,
+        "TOFMGMAX": 3343,
+    }
+
+    # Optional TMIDs that can be configured without code changes.
+    warnings: List[str] = []
+    optional_env = {
+        "IONGRIDMIN": "WEBTCAD_IONGRID_MIN_TMID",
+        "IONGRIDMAX": "WEBTCAD_IONGRID_MAX_TMID",
+    }
+
+    for key, env_var in optional_env.items():
+        raw_val = os.getenv(env_var)
+        if raw_val in (None, ""):
+            warnings.append(f"{key} disabled – set {env_var} to enable downloads.")
+            continue
+
+        try:
+            tmids[key] = int(raw_val)
+        except ValueError:
+            warnings.append(f"Ignored {key} – {env_var} must be an integer (got {raw_val!r}).")
+
+    return tmids, warnings
+
+
+SERIES_TMIDS, SERIES_CONFIG_WARNINGS = _load_series_tmids()
 
 # How the series are grouped for plotting:
 # (axis title, min_key, max_key)
@@ -96,7 +118,7 @@ PLOT_GROUPS: List[Tuple[str, str, str]] = [
     ("TOF H", "TOFHGMIN", "TOFHGMAX"),
     ("Target L", "Target_Low_Gain_Min", "Target_Low_Gain_Max"),
     ("Target H", "Target_High_Gain_Min", "Target_High_Gain_Max"),
-    # ("Ion Grid", "IONGRIDMIN", "IONGRIDMAX"),
+    ("Ion Grid", "IONGRIDMIN", "IONGRIDMAX"),
 ]
 
 DETECTOR_VOLT_KEY = "Det_Voltage"
@@ -359,6 +381,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("IDEX WebTCAD Waveform Viewer")
         self.resize(1100, 700)
         self.current_series_map: Dict[str, SeriesData] = {}
+        self.current_warnings: List[str] = []
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -503,7 +526,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Downloading data from WebTCAD…")
 
         try:
-            series_map = self.download_all_series(username, password, start_iso, stop_iso)
+            series_map, warnings = self.download_all_series(username, password, start_iso, stop_iso)
         except Exception as e:
             self.run_btn.setEnabled(True)
             self.statusBar().showMessage("Error")
@@ -524,6 +547,7 @@ class MainWindow(QMainWindow):
 
         # Plot
         self.current_series_map = series_map
+        self.current_warnings = warnings
         self.canvas.reset_shared_xlim()
         self.refresh_plots()
 
@@ -531,6 +555,15 @@ class MainWindow(QMainWindow):
         if out_name:
             msg += f" – saved merged CSV to {out_name}"
         self.statusBar().showMessage(msg)
+
+        if self.current_warnings:
+            warn_text = "\n".join(self.current_warnings)
+            QMessageBox.warning(
+                self,
+                "Completed with warnings",
+                warn_text,
+            )
+
         self.run_btn.setEnabled(True)
 
     # ------------------------------------------------------------------ #
@@ -541,12 +574,13 @@ class MainWindow(QMainWindow):
         password: str,
         start_iso: str,
         stop_iso: str,
-    ) -> Dict[str, SeriesData]:
-        """Download all configured series and return a map: key -> SeriesData."""
+    ) -> Tuple[Dict[str, SeriesData], List[str]]:
+        """Download configured series, skipping failures with warnings."""
         session = requests.Session()
         session.auth = (username, password)
 
         series_map: Dict[str, SeriesData] = {}
+        warnings: List[str] = list(SERIES_CONFIG_WARNINGS)
 
         for key, tmid in SERIES_TMIDS.items():
             try:
@@ -555,12 +589,12 @@ class MainWindow(QMainWindow):
                 s = fetch_series(session, key, tmid, start_iso, stop_iso)
                 series_map[key] = s
             except Exception as e:
-                raise RuntimeError(f"Error fetching {key} (TMID={tmid}): {e}") from e
+                warnings.append(f"Skipped {key} (TMID={tmid}): {e}")
 
         if not series_map:
             raise RuntimeError("No series downloaded.")
 
-        return series_map
+        return series_map, warnings
 
     # ------------------------------------------------------------------ #
 
