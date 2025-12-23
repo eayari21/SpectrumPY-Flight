@@ -97,7 +97,6 @@ def _load_series_tmids() -> tuple[Dict[str, int], List[str]]:
     for key, env_var in optional_env.items():
         raw_val = os.getenv(env_var)
         if raw_val in (None, ""):
-            warnings.append(f"{key} disabled – set {env_var} to enable downloads.")
             continue
 
         try:
