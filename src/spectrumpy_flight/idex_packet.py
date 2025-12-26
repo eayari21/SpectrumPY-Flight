@@ -2045,6 +2045,9 @@ class IDEXEvent:
         self.hspretrigblocks = 0
         self.hsposttrigblocks = 0
         self.hgdelay = 0
+        self.mgdelay = 0
+        self.lgdelay = 0
+        self.trig_offset = 0
         self.fifo_delay = 0
         self.hstime = np.array([], dtype=float)
         self.lstime = np.array([], dtype=float)
@@ -2371,6 +2374,11 @@ class IDEXEvent:
                     self.header[(evtnum, 'TOFDelay_M')] = int(self.mgdelay)
                     self.header[(evtnum, 'TOFDelay_H')] = int(self.hgdelay)
 
+                    trig_offset = pkt.data.get('IDX__TXHDRTRIGOFFSET')
+                    if trig_offset is not None:
+                        self.trig_offset = trig_offset.derived_value
+                        self.header[(evtnum, 'TriggerOffset')] = int(self.trig_offset)
+
                     fifo_delay = pkt.data.get('IDX__TXHDRFIFODELAY')
                     if fifo_delay is not None:
                         self.fifo_delay = fifo_delay.derived_value
@@ -2641,15 +2649,39 @@ class IDEXEvent:
             delay_value = getattr(self, 'fifo_delay', 0)
         return float(delay_value) * (1.0 / 260.0)
 
-    def _build_time_array(self, sample_count: int, *, high_rate: bool, event_id: Optional[Union[int, str]] = None) -> np.ndarray:
+    def _high_sampling_delay_seconds(self, channel: Optional[str]) -> float:
+        if channel is None:
+            return 0.0
+        delays = {
+            'TOF H': getattr(self, 'hgdelay', 0),
+            'TOF M': getattr(self, 'mgdelay', 0),
+            'TOF L': getattr(self, 'lgdelay', 0),
+        }
+        channel_delay = delays.get(channel, 0)
+        return float(channel_delay) * (1.0 / 260.0)
+
+    def _trigger_offset_seconds(self) -> float:
+        return float(getattr(self, 'trig_offset', 0)) * (1.0 / 32.5)
+
+    def _build_time_array(
+        self,
+        sample_count: int,
+        *,
+        high_rate: bool,
+        event_id: Optional[Union[int, str]] = None,
+        channel: Optional[str] = None,
+    ) -> np.ndarray:
         if sample_count <= 0:
             return np.array([], dtype=float)
         spacing = 1.0 / 260.0 if high_rate else 1.0 / 4.0625
         offset = self._high_trigger_offset() if high_rate else self._low_trigger_offset()
+        trigger_offset = self._trigger_offset_seconds()
         time_values = np.arange(sample_count, dtype=float) * spacing
         time_values = time_values - offset
-        if not high_rate:
-            time_values = time_values + self._low_sampling_delay_seconds(event_id)
+        if high_rate:
+            time_values = time_values + self._high_sampling_delay_seconds(channel) + trigger_offset
+        else:
+            time_values = time_values + self._low_sampling_delay_seconds(event_id) + trigger_offset
         return time_values
 
     def plot_all_data(self, packets, fname: str):
@@ -2828,7 +2860,7 @@ class IDEXEvent:
 
                 if channel in {'TOF H', 'TOF M', 'TOF L'}:
                     time_array = self._build_time_array(
-                        len(transformed_data), high_rate=True, event_id=event_id
+                        len(transformed_data), high_rate=True, event_id=event_id, channel=channel
                     )
                 elif channel in target_channels:
                     time_array = self._build_time_array(
