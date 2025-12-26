@@ -535,6 +535,7 @@ class MainWindow(QMainWindow):
         # Save merged CSV
         try:
             out_name = (
+                "CSV/"
                 f"idex_waveforms_{start_dt.toString('yyyyMMdd_HHmmss')}"
                 f"_to_{stop_dt.toString('yyyyMMdd_HHmmss')}.csv"
             )
