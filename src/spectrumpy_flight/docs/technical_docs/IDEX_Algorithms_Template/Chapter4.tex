@@ -114,6 +114,28 @@ python idex_packet.py --file filename
 \end{minted}
 Where $filename$ must be replaced with the name of the packet file, and $python$ must be an alias for a python installation. The $--file$ can be substituted for $-f$.
 
+\subsection{Metadata translation and timing validation}
+The HDF5 writer now mirrors the FPGA header layout in two dedicated subgroups beneath \textit{/Metadata/}: \textit{/Metadata/raw/} contains the raw field names and integer payloads exactly as they appear in the FPGA table (\texttt{IDX\_\_SCI0TIME32}, \texttt{IDX\_\_TXHDRSAMPDELAY}, \texttt{IDX\_\_TXHDRTRIGOFFSET}, etc.), while \textit{/Metadata/unpacked/} carries the decoded quantities used throughout the analysis (timestamp seconds/subseconds, trigger level/mode, per-channel sample delays, and pre-trigger block counts). The unpacked entries are also aliased to the legacy paths directly under \textit{/Metadata/} so existing notebooks continue to resolve fields like \textit{Epoch} or \textit{TriggerLevel}. The raw-to-unpacked pairing lets reviewers validate the algorithms template against flight data by comparing each raw integer to its derived counterpart in a single event.
+
+Time handling is now fully derived from the FPGA header. The 32-bit \texttt{IDX\_\_SCI0TIME32} coarse counter advances in 20~$\mu$s increments; \texttt{TimestampSeconds} and \texttt{TimestampSubseconds} are derived by separating the integer seconds from the remaining fractional portion (scaled by 50{,}000 counts/s), and an \texttt{Epoch} value in milliseconds is retained for convenience. The helper routine preserves monotonicity across counter rollovers by tracking the 2$^{32}$\,$\times$\,20~$\mu$s period, and it honours an optional file-based anchor time to keep sequences within the intended day. Trigger alignment uses three additive pieces: (1) a pre-trigger window based on the HS/LS block counts from \texttt{IDX\_\_TXHDRBLOCKS}, (2) the WCLK-based trigger offset in \texttt{IDX\_\_TXHDRTRIGOFFSET} (scaled by $1/32.5$ to yield a $\approx$30.8~ns increment), and (3) the per-channel sample delays from \texttt{IDX\_\_TXHDRSAMPDELAY} and the FIFO delay (\texttt{IDX\_\_TXHDRFIFODELAY}) expressed in $1/260$~$\mu$s units. These terms are injected directly into the \textit{Time (high sampling)} and \textit{Time (low sampling)} datasets, so the $t=0$ crossing in each waveform now reflects the firmware’s reported offsets.
+
+\begin{table}[H]
+\centering
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{|p{3.4cm}|p{3.8cm}|p{4.8cm}|p{4.2cm}|}
+ \hline
+ \rowcolor{darkGrey}\textcolor{white}{\textbf{FPGA field}} & \textcolor{white}{\textbf{HDF5 raw path}} & \textcolor{white}{\textbf{Unpacked path \& quantity}} & \textcolor{white}{\textbf{Translation / timing note}} \\\hline
+ \texttt{IDX\_\_SCI0TIME32} & \textit{/Metadata/raw/IDX\_\_SCI0TIME32} & \textit{/Metadata/unpacked/\{SCI0Time32, TimestampSeconds, TimestampSubseconds, Epoch, SpacecraftSeconds\}} & 32-bit counter in 20~$\mu$s units; rollovers corrected before splitting integer seconds from fractional subseconds (50{,}000 ticks/s). Epoch retains the millisecond value used by downstream plots. \\\hline
+ \texttt{IDX\_\_SCI0TYPE}, \texttt{IDX\_\_SCI0AID}, \texttt{IDX\_\_SCI0EVTNUM} & \textit{/Metadata/raw/(field name)} & \textit{/Metadata/unpacked/\{SCI0Type, SCI0AID, SCI0EventNumber\}} & Packet routing metadata used to classify each waveform and preserve the AID alongside the event counter. \\\hline
+ \texttt{IDX\_\_TXHDRBLOCKS} & \textit{/Metadata/raw/IDX\_\_TXHDRBLOCKS} & \textit{/Metadata/unpacked/\{HSPretriggerBlocks, HSPosttriggerBlocks, LSPretriggerBlocks, LSPosttriggerBlocks, HSPretriggerOffsetMicroseconds, LSPretriggerOffsetMicroseconds\}} & Block counts define the pre-trigger window: HS offsets subtract $512/260$~$\mu$s per block, LS offsets subtract $8/4.0625$~$\mu$s per block before zeroing the time axis. \\\hline
+ \texttt{IDX\_\_TXHDRTRIGOFFSET} & \textit{/Metadata/raw/IDX\_\_TXHDRTRIGOFFSET} & \textit{/Metadata/unpacked/\{TriggerOffsetTicks, TriggerOffsetMicroseconds\}} & WCLK cycles (32.5~MHz) reported by firmware; converted to $\mu$s and added to every time base to preserve the firmware-defined trigger instant. \\\hline
+ \texttt{IDX\_\_TXHDRSAMPDELAY} & \textit{/Metadata/raw/IDX\_\_TXHDRSAMPDELAY} & \textit{/Metadata/unpacked/SampleDelayMicroseconds\_TOF\_\{H,M,L\}} & Three 10-bit fields encode channel-specific sample delays at the 260~Msps rate (3.85~ns per tick). Each delay shifts its corresponding TOF channel before fitting or mass-line extraction. \\\hline
+ \texttt{IDX\_\_TXHDRFIFODELAY} & \textit{/Metadata/raw/IDX\_\_TXHDRFIFODELAY} & \textit{/Metadata/unpacked/FIFODelayMicroseconds} & FIFO latency applied to low-rate channels, scaled by $1/260$~$\mu$s to keep the ion grid and target CSAs aligned with the TOF streams. \\\hline
+ \texttt{IDX\_\_SCI0RAW} waveform words & Captured via \textit{/Data/} then written to channel datasets (\textit{/event/TOF H}, \textit{/event/Target L}, etc.) & \textit{/Time (high sampling)}, \textit{/Time (low sampling)} arrays share the same offsets and delays as the channel data & Rice-decompressed into 10-bit (TOF) or 12-bit (CSA) sample arrays, with the above timing corrections baked into the saved time axes for each channel. \\\hline
+\end{tabular}
+\caption{Mapping between FPGA header fields, their raw HDF5 storage, and the derived “unpacked” quantities used by the processing software.}
+\label{tab:fpga_to_packet}
+\end{table}
 
 
 \subsection{Housekeeping data}

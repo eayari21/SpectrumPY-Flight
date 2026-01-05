@@ -2045,12 +2045,16 @@ class IDEXEvent:
         idex_packet_generator = idex_parser.generator(idex_binary_data)
         self.data = {}
         self.header={}
+        self.raw_header = {}
         self.lspretrigblocks = 0
         self.lsposttrigblocks = 0
         self.hspretrigblocks = 0
         self.hsposttrigblocks = 0
         self.hgdelay = 0
+        self.mgdelay = 0
+        self.lgdelay = 0
         self.fifo_delay = 0
+        self.trig_offset = 0
         self.hstime = np.array([], dtype=float)
         self.lstime = np.array([], dtype=float)
         self._coarse_period = float(1 << 16)
@@ -2103,6 +2107,10 @@ class IDEXEvent:
 
                     # Iterate over all items in pkt.data and store them in the header
                     for key, item in pkt.data.items():
+                        try:
+                            self.raw_header[(evtnum, key)] = item.raw_value
+                        except Exception:
+                            self.raw_header[(evtnum, key)] = item.derived_value
                         self.header[(evtnum, key)] = item.derived_value
                         print(f"{key} = {self.header[(evtnum, key)]}")
                     print(f"^*****Event header {evtnum}******^")
@@ -2134,6 +2142,11 @@ class IDEXEvent:
                     print("HS post trig sampling blocks: ", self.hsposttrigblocks)
 
                     print("LS post trig sampling blocks: ", self.lsposttrigblocks)
+
+                    self.header[(evtnum, 'HSPretriggerBlocks')] = int(self.hspretrigblocks)
+                    self.header[(evtnum, 'HSPosttriggerBlocks')] = int(self.hsposttrigblocks)
+                    self.header[(evtnum, 'LSPretriggerBlocks')] = int(self.lspretrigblocks)
+                    self.header[(evtnum, 'LSPosttriggerBlocks')] = int(self.lsposttrigblocks)
 
                     print(f"IDX__TXHDRHVPSHKCH01 = {pkt.data['IDX__TXHDRHVPSHKCH01'].derived_value}")
 
@@ -2384,6 +2397,11 @@ class IDEXEvent:
                     self.header[(evtnum, 'TOFDelay_M')] = int(self.mgdelay)
                     self.header[(evtnum, 'TOFDelay_H')] = int(self.hgdelay)
 
+                    trig_offset = pkt.data.get('IDX__TXHDRTRIGOFFSET')
+                    if trig_offset is not None:
+                        self.trig_offset = trig_offset.derived_value
+                        self.header[(evtnum, 'TriggerOffset')] = int(self.trig_offset)
+
                     fifo_delay = pkt.data.get('IDX__TXHDRFIFODELAY')
                     if fifo_delay is not None:
                         self.fifo_delay = fifo_delay.derived_value
@@ -2475,8 +2493,10 @@ class IDEXEvent:
 
 
                     # self.header[evtnum][f"TimeIntervals"] = pkt.data['IDX__SCI0TIME32'].derived_value  # Store the number of 20 us intervals in the respective CDF "Time" variables
+                    time32_ticks = float(pkt.data['IDX__SCI0TIME32'].derived_value)
+                    self.header[(evtnum, 'Time32Ticks')] = time32_ticks
                     seconds_since_spacecraft_epoch = self._resolve_spacecraft_seconds(
-                        seconds=pkt.data['IDX__SCI0TIME32'].derived_value * 20e-6,
+                        seconds=time32_ticks * 20e-6,
                         period=self._time32_period,
                     )
                     print(
@@ -2492,8 +2512,18 @@ class IDEXEvent:
                     unix_seconds = spacecraft_seconds_to_unix_seconds(
                         seconds_since_spacecraft_epoch
                     )
+                    timestamp_seconds = int(math.floor(seconds_since_spacecraft_epoch))
+                    timestamp_subseconds = int(
+                        round((seconds_since_spacecraft_epoch - timestamp_seconds) * 50000.0)
+                    )
+                    if timestamp_subseconds >= 50000:
+                        timestamp_seconds += timestamp_subseconds // 50000
+                        timestamp_subseconds = timestamp_subseconds % 50000
                     self.header[(evtnum, 'Timestamp')] = unix_seconds
+                    self.header[(evtnum, 'TimestampSeconds')] = timestamp_seconds
+                    self.header[(evtnum, 'TimestampSubseconds')] = timestamp_subseconds
                     self.header[(evtnum, 'SpacecraftSeconds')] = seconds_since_spacecraft_epoch
+                    self.header[(evtnum, 'Epoch')] = seconds_since_spacecraft_epoch * 1000.0
 
 
                 if pkt.data['IDX__SCI0TYPE'].raw_value in [2, 4, 8, 16, 32, 64]:
@@ -2617,14 +2647,27 @@ class IDEXEvent:
 
         return base_seconds + self._seconds_offset
 
-    def _high_trigger_offset(self) -> float:
-        pre_blocks = getattr(self, "lspretrigblocks", 0)
-        delay = getattr(self, "hgdelay", 0)
-        return 8 * (1.0 / 4.0625) * (pre_blocks + 1) - (1.0 / 260.0) * delay
+    def _event_key(self, event_id: Optional[Union[int, str]]) -> Optional[int]:
+        if event_id is None:
+            return None
+        try:
+            return int(event_id)
+        except Exception:
+            return None
 
-    def _low_trigger_offset(self) -> float:
-        pre_blocks = getattr(self, "hspretrigblocks", 0)
+    def _get_header_value(self, event_id: Optional[Union[int, str]], key: str, default: float = 0.0) -> float:
+        header_key = self._event_key(event_id)
+        if header_key is None:
+            return default
+        return self.header.get((header_key, key), default)
+
+    def _high_trigger_offset(self, event_id: Optional[Union[int, str]]) -> float:
+        pre_blocks = self._get_header_value(event_id, "HSPretriggerBlocks", getattr(self, "hspretrigblocks", 0))
         return 512 * (1.0 / 260.0) * (pre_blocks + 1)
+
+    def _low_trigger_offset(self, event_id: Optional[Union[int, str]]) -> float:
+        pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
+        return 8 * (1.0 / 4.0625) * (pre_blocks + 1)
 
     def _low_sampling_delay_seconds(self, event_id: Optional[Union[int, str]]) -> float:
         delay_value = None
@@ -2637,15 +2680,40 @@ class IDEXEvent:
             delay_value = getattr(self, 'fifo_delay', 0)
         return float(delay_value) * (1.0 / 260.0)
 
-    def _build_time_array(self, sample_count: int, *, high_rate: bool, event_id: Optional[Union[int, str]] = None) -> np.ndarray:
+    def _high_sampling_delay_seconds(self, event_id: Optional[Union[int, str]], channel: Optional[str]) -> float:
+        if channel is None:
+            return 0.0
+        delays = {
+            'TOF H': self._get_header_value(event_id, 'TOFDelay_H', getattr(self, 'hgdelay', 0)),
+            'TOF M': self._get_header_value(event_id, 'TOFDelay_M', getattr(self, 'mgdelay', 0)),
+            'TOF L': self._get_header_value(event_id, 'TOFDelay_L', getattr(self, 'lgdelay', 0)),
+        }
+        channel_delay = delays.get(channel, 0)
+        return float(channel_delay) * (1.0 / 260.0)
+
+    def _trigger_offset_seconds(self, event_id: Optional[Union[int, str]]) -> float:
+        trigger_offset = self._get_header_value(event_id, 'TriggerOffset', getattr(self, 'trig_offset', 0))
+        return float(trigger_offset) * (1.0 / 32.5)
+
+    def _build_time_array(
+        self,
+        sample_count: int,
+        *,
+        high_rate: bool,
+        event_id: Optional[Union[int, str]] = None,
+        channel: Optional[str] = None,
+    ) -> np.ndarray:
         if sample_count <= 0:
             return np.array([], dtype=float)
         spacing = 1.0 / 260.0 if high_rate else 1.0 / 4.0625
-        offset = self._high_trigger_offset() if high_rate else self._low_trigger_offset()
+        offset = self._high_trigger_offset(event_id) if high_rate else self._low_trigger_offset(event_id)
+        trigger_offset = self._trigger_offset_seconds(event_id)
         time_values = np.arange(sample_count, dtype=float) * spacing
         time_values = time_values - offset
-        if not high_rate:
-            time_values = time_values + self._low_sampling_delay_seconds(event_id)
+        if high_rate:
+            time_values = time_values + self._high_sampling_delay_seconds(event_id, channel) + trigger_offset
+        else:
+            time_values = time_values + self._low_sampling_delay_seconds(event_id) + trigger_offset
         return time_values
 
     def plot_all_data(self, packets, fname: str):
@@ -2679,20 +2747,25 @@ class IDEXEvent:
             )
             axes = axes_grid.flatten()
 
-            high_trigger_offset = self._high_trigger_offset()
-            low_trigger_offset = self._low_trigger_offset()
-
-            hstime = np.linspace(
-                0, len(packets[(event_id, "TOF L")]), len(packets[(event_id, "TOF L")])
-            )
-            hstime *= 1 / 260
-            hstime -= high_trigger_offset
-
-            lstime = np.linspace(
-                0, len(packets[(event_id, "Ion Grid")]), len(packets[(event_id, "Ion Grid")])
-            )
-            lstime *= 1 / 4.0625
-            lstime -= low_trigger_offset
+            hstime_map = {
+                channel: self._build_time_array(
+                    len(packets[(event_id, channel)]),
+                    high_rate=True,
+                    event_id=event_id,
+                    channel=channel,
+                )
+                for channel in ("TOF L", "TOF M", "TOF H")
+                if (event_id, channel) in packets
+            }
+            lstime_map = {
+                channel: self._build_time_array(
+                    len(packets[(event_id, channel)]),
+                    high_rate=False,
+                    event_id=event_id,
+                )
+                for channel in ("Ion Grid", "Target L", "Target H")
+                if (event_id, channel) in packets
+            }
 
             fig.suptitle(
                 f"{fname} Event {event_id}",
@@ -2725,24 +2798,24 @@ class IDEXEvent:
                     },
                 )
 
-            _draw_axis(axes[0], hstime, packets[(event_id, "TOF L")], "TOF L", colors[0])
-            _draw_axis(axes[1], hstime, packets[(event_id, "TOF M")], "TOF M", colors[1])
-            _draw_axis(axes[2], hstime, packets[(event_id, "TOF H")], "TOF H", colors[2])
-            _draw_axis(axes[3], lstime, packets[(event_id, "Ion Grid")], "Ion Grid", colors[3])
+            _draw_axis(axes[0], hstime_map.get("TOF L", np.array([])), packets[(event_id, "TOF L")], "TOF L", colors[0])
+            _draw_axis(axes[1], hstime_map.get("TOF M", np.array([])), packets[(event_id, "TOF M")], "TOF M", colors[1])
+            _draw_axis(axes[2], hstime_map.get("TOF H", np.array([])), packets[(event_id, "TOF H")], "TOF H", colors[2])
+            _draw_axis(axes[3], lstime_map.get("Ion Grid", np.array([])), packets[(event_id, "Ion Grid")], "Ion Grid", colors[3])
 
             if self.header[(event_id, "Timestamp")] < 494_733_600:
                 _draw_axis(
-                    axes[4], lstime, packets[(event_id, "Target L")], "Target LG", colors[4]
+                    axes[4], lstime_map.get("Target L", np.array([])), packets[(event_id, "Target L")], "Target LG", colors[4]
                 )
                 _draw_axis(
-                    axes[5], lstime, packets[(event_id, "Target H")], "Target HG", colors[5]
+                    axes[5], lstime_map.get("Target H", np.array([])), packets[(event_id, "Target H")], "Target HG", colors[5]
                 )
             else:
                 _draw_axis(
-                    axes[4], lstime, packets[(event_id, "Target H")], "Target HG", colors[4]
+                    axes[4], lstime_map.get("Target H", np.array([])), packets[(event_id, "Target H")], "Target HG", colors[4]
                 )
                 _draw_axis(
-                    axes[5], lstime, packets[(event_id, "Target L")], "Target LG", colors[5]
+                    axes[5], lstime_map.get("Target L", np.array([])), packets[(event_id, "Target L")], "Target LG", colors[5]
                 )
 
             plt.tight_layout(rect=[0, 0.03, 1, 0.95])
@@ -2824,7 +2897,7 @@ class IDEXEvent:
 
                 if channel in {'TOF H', 'TOF M', 'TOF L'}:
                     time_array = self._build_time_array(
-                        len(transformed_data), high_rate=True, event_id=event_id
+                        len(transformed_data), high_rate=True, event_id=event_id, channel=channel
                     )
                 elif channel in target_channels:
                     time_array = self._build_time_array(
@@ -2908,17 +2981,113 @@ class IDEXEvent:
             analyses = list(executor.map(_prepare_waveform, waveform_items))
 
         with h5py.File(output_path, 'w') as h:
-            for (evtnum, key), value in self.header.items():
-                if "IDX__" in key:
-                    print(f"Skipping header field {key}")
-                    continue
-                dataset_path = f"/{evtnum}/Metadata/{key}"
-                if isinstance(value, str):
+            event_ids = sorted({evtnum for (evtnum, _) in self.header.keys()})
+
+            def _write_metadata_value(group: h5py.Group, name: str, value: object, *, alias_paths=()):
+                if value is None:
+                    return None
+                if isinstance(value, (bytes, bytearray)):
+                    value = value.decode('utf-8', errors='backslashreplace')
+                dtype = h5py.string_dtype(encoding='utf-8') if isinstance(value, str) else None
+                data = value if isinstance(value, np.ndarray) else np.atleast_1d(value)
+                if data.dtype == object:
                     dtype = h5py.string_dtype(encoding='utf-8')
-                    create_dataset_if_not_exists(h, dataset_path, data=value, dtype=dtype)
-                else:
-                    create_dataset_if_not_exists(h, dataset_path, data=np.array(value))
-                print(f"Created dataset: {dataset_path} with value: {value}")
+                    data = np.array([str(value)])
+                dataset_path = f"{group.name}/{name}"
+                if dataset_path in h:
+                    del h[dataset_path]
+                dataset = create_dataset_if_not_exists(h, dataset_path, data=data, dtype=dtype)
+                for alias_path in alias_paths:
+                    if alias_path in h:
+                        del h[alias_path]
+                    h[alias_path] = dataset
+                return dataset
+
+            for event_id in event_ids:
+                event_key = str(event_id)
+                metadata_root = h.require_group(f"/{event_key}/Metadata")
+                raw_group = metadata_root.require_group("raw")
+                unpacked_group = metadata_root.require_group("unpacked")
+
+                raw_entries = {
+                    key: value
+                    for (evtnum, key), value in self.raw_header.items()
+                    if evtnum == event_id
+                }
+                for key, value in raw_entries.items():
+                    _write_metadata_value(raw_group, key, value)
+
+                header_entries = {
+                    key: value for (evtnum, key), value in self.header.items() if evtnum == event_id
+                }
+
+                timestamp_seconds = header_entries.get('TimestampSeconds')
+                timestamp_subseconds = header_entries.get('TimestampSubseconds')
+                spacecraft_seconds = header_entries.get('SpacecraftSeconds')
+                if (timestamp_seconds is None or timestamp_subseconds is None) and spacecraft_seconds is not None:
+                    timestamp_seconds = int(math.floor(spacecraft_seconds))
+                    timestamp_subseconds = int(
+                        round((spacecraft_seconds - timestamp_seconds) * 50000.0)
+                    )
+                    if timestamp_subseconds >= 50000:
+                        timestamp_seconds += timestamp_subseconds // 50000
+                        timestamp_subseconds = timestamp_subseconds % 50000
+                    header_entries['TimestampSeconds'] = timestamp_seconds
+                    header_entries['TimestampSubseconds'] = timestamp_subseconds
+                    self.header[(event_id, 'TimestampSeconds')] = timestamp_seconds
+                    self.header[(event_id, 'TimestampSubseconds')] = timestamp_subseconds
+
+                if header_entries.get('Epoch') is None and timestamp_seconds is not None and timestamp_subseconds is not None:
+                    header_entries['Epoch'] = float(timestamp_seconds) * 1000.0 + float(timestamp_subseconds) * 0.02
+                    self.header[(event_id, 'Epoch')] = header_entries['Epoch']
+
+                unpacked_entries = {}
+                for key, value in header_entries.items():
+                    if value is None or str(key).startswith("IDX__"):
+                        continue
+                    unpacked_entries[key] = value
+
+                sci_field_aliases = {
+                    "SCI0AID": "IDX__SCI0AID",
+                    "SCI0Type": "IDX__SCI0TYPE",
+                    "SCI0EventNumber": "IDX__SCI0EVTNUM",
+                    "SCI0Time32": "IDX__SCI0TIME32",
+                }
+                for alias_name, raw_key in sci_field_aliases.items():
+                    raw_value = header_entries.get(raw_key)
+                    if raw_value is not None:
+                        unpacked_entries.setdefault(alias_name, raw_value)
+
+                trigger_offset_us = self._trigger_offset_seconds(event_id)
+                hs_offset_us = self._high_trigger_offset(event_id)
+                ls_offset_us = self._low_trigger_offset(event_id)
+                fifo_delay_us = self._low_sampling_delay_seconds(event_id)
+                tof_h_delay = self._high_sampling_delay_seconds(event_id, 'TOF H')
+                tof_m_delay = self._high_sampling_delay_seconds(event_id, 'TOF M')
+                tof_l_delay = self._high_sampling_delay_seconds(event_id, 'TOF L')
+
+                derived_entries = {
+                    'TriggerOffsetTicks': header_entries.get('TriggerOffset'),
+                    'TriggerOffsetMicroseconds': trigger_offset_us,
+                    'HSPretriggerOffsetMicroseconds': hs_offset_us,
+                    'LSPretriggerOffsetMicroseconds': ls_offset_us,
+                    'FIFODelayMicroseconds': fifo_delay_us,
+                    'SampleDelayMicroseconds_TOF_H': tof_h_delay,
+                    'SampleDelayMicroseconds_TOF_M': tof_m_delay,
+                    'SampleDelayMicroseconds_TOF_L': tof_l_delay,
+                }
+                for key, value in derived_entries.items():
+                    if value is None:
+                        continue
+                    unpacked_entries[key] = value
+
+                for key, value in unpacked_entries.items():
+                    _write_metadata_value(
+                        unpacked_group,
+                        key,
+                        value,
+                        alias_paths=[f"/{event_key}/Metadata/{key}"],
+                    )
 
             for analysis in analyses:
                 event_key, channel = analysis['key']
@@ -2966,7 +3135,7 @@ class IDEXEvent:
                     create_dataset_if_not_exists(h, f"/{event_key}/SpiceData/Ephemeris/VelocityZ", velocity_z)
                     event_info['spice_written'] = True
 
-                metadata_path = f"/{event_key}/Metadata/Epoch"
+                metadata_path = f"/{event_key}/Metadata/unpacked/Epoch"
                 if metadata_path not in h:
                     header_key = int(event_key)
                     timestamp = self.header.get((header_key, 'Timestamp'))
@@ -2979,6 +3148,11 @@ class IDEXEvent:
                     if timestamp is None:
                         timestamp = 0
                     create_dataset_if_not_exists(h, metadata_path, data=np.array(timestamp))
+                    _ensure_dataset_aliases(
+                        h,
+                        metadata_path,
+                        (f"/{event_key}/Metadata/Epoch",),
+                    )
 
                 transformed = analysis['transformed']
                 if transformed is not None:
@@ -3013,7 +3187,7 @@ class IDEXEvent:
                     if channel == 'TOF L':
                         time_data = analysis.get(
                             'time_array',
-                            self._build_time_array(len(data), high_rate=True, event_id=event_key),
+                            self._build_time_array(len(data), high_rate=True, event_id=event_key, channel=channel),
                         )
                         h.create_dataset(f"/{event_key}/Time (high sampling)", data=time_data)
                     if channel == 'Ion Grid':
