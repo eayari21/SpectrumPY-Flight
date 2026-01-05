@@ -2979,15 +2979,22 @@ class IDEXEvent:
             def _write_metadata_value(group: h5py.Group, name: str, value: object, *, alias_paths=()):
                 if value is None:
                     return None
+
                 if isinstance(value, (bytes, bytearray)):
                     value = value.decode('utf-8', errors='backslashreplace')
-                dtype = h5py.string_dtype(encoding='utf-8') if isinstance(value, str) else None
+
                 data = value if isinstance(value, np.ndarray) else np.atleast_1d(value)
-                if data.dtype.kind in {'U', 'S'}:
+
+                if data.dtype.kind in {'U', 'S', 'O'}:
+                    # Normalise all string-like inputs to Python ``str`` objects to ensure
+                    # h5py creates a variable-length UTF-8 string dataset instead of
+                    # attempting to coerce ``<U`` NumPy dtypes that lack a conversion
+                    # path.  Using ``dtype=object`` allows heterogeneous string lengths
+                    # without truncation while still playing nicely with vlen HDF5 types.
+                    data = np.array(["" if v is None else str(v) for v in data.ravel()], dtype=object)
                     dtype = h5py.string_dtype(encoding='utf-8')
-                elif data.dtype == object:
-                    dtype = h5py.string_dtype(encoding='utf-8')
-                    data = np.array([str(value)])
+                else:
+                    dtype = None
                 dataset_path = f"{group.name}/{name}"
                 if dataset_path in h:
                     del h[dataset_path]
