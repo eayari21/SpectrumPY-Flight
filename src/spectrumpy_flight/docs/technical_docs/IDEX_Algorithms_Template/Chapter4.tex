@@ -123,7 +123,9 @@ Time handling is now fully derived from the FPGA header. The 32-bit \texttt{IDX\
 \begin{table}[H]
 \centering
 \renewcommand{\arraystretch}{1.15}
-\begin{tabular}{|p{3.4cm}|p{3.8cm}|p{4.8cm}|p{4.2cm}|}
+\setlength{\tabcolsep}{7pt}
+\small
+\begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{3.5cm}|>{\raggedright\arraybackslash}p{3.6cm}|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|}
  \hline
  \rowcolor{darkGrey}\textcolor{white}{\textbf{FPGA field}} & \textcolor{white}{\textbf{HDF5 raw path}} & \textcolor{white}{\textbf{Unpacked path \& quantity}} & \textcolor{white}{\textbf{Translation / timing note}} \\\hline
  \texttt{IDX\_\_SCI0TIME32} & \textit{/Metadata/raw/IDX\_\_SCI0TIME32} & \textit{/Metadata/unpacked/\{SCI0Time32, TimestampSeconds, TimestampSubseconds, Epoch, SpacecraftSeconds\}} & 32-bit counter in 20~$\mu$s units; rollovers corrected before splitting integer seconds from fractional subseconds (50{,}000 ticks/s). Epoch retains the millisecond value used by downstream plots. \\\hline
@@ -133,7 +135,7 @@ Time handling is now fully derived from the FPGA header. The 32-bit \texttt{IDX\
  \texttt{IDX\_\_TXHDRSAMPDELAY} & \textit{/Metadata/raw/IDX\_\_TXHDRSAMPDELAY} & \textit{/Metadata/unpacked/SampleDelayMicroseconds\_TOF\_\{H,M,L\}} & Three 10-bit fields encode channel-specific sample delays at the 260~Msps rate (3.85~ns per tick). Each delay shifts its corresponding TOF channel before fitting or mass-line extraction. \\\hline
  \texttt{IDX\_\_TXHDRFIFODELAY} & \textit{/Metadata/raw/IDX\_\_TXHDRFIFODELAY} & \textit{/Metadata/unpacked/FIFODelayMicroseconds} & FIFO latency applied to low-rate channels, scaled by $1/260$~$\mu$s to keep the ion grid and target CSAs aligned with the TOF streams. \\\hline
  \texttt{IDX\_\_SCI0RAW} waveform words & Captured via \textit{/Data/} then written to channel datasets (\textit{/event/TOF H}, \textit{/event/Target L}, etc.) & \textit{/Time (high sampling)}, \textit{/Time (low sampling)} arrays share the same offsets and delays as the channel data & Rice-decompressed into 10-bit (TOF) or 12-bit (CSA) sample arrays, with the above timing corrections baked into the saved time axes for each channel. \\\hline
-\end{tabular}
+\end{tabularx}
 \caption{Mapping between FPGA header fields, their raw HDF5 storage, and the derived “unpacked” quantities used by the processing software.}
 \label{tab:fpga_to_packet}
 \end{table}
