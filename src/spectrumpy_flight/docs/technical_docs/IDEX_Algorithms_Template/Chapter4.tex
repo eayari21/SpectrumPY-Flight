@@ -119,7 +119,8 @@ The HDF5 writer now mirrors the FPGA header layout in two dedicated subgroups be
 
 Time handling is now fully derived from the FPGA header. The 32-bit \texttt{IDX\_\_SCI0TIME32} coarse counter advances in 20~$\mu$s increments; \texttt{TimestampSeconds} and \texttt{TimestampSubseconds} are derived by separating the integer seconds from the remaining fractional portion (scaled by 50{,}000 counts/s), and an \texttt{Epoch} value in milliseconds is retained for convenience. The helper routine preserves monotonicity across counter rollovers by tracking the 2$^{32}$\,$\times$\,20~$\mu$s period, and it honours an optional file-based anchor time to keep sequences within the intended day. Trigger alignment uses three additive pieces: (1) a pre-trigger window based on the HS/LS block counts from \texttt{IDX\_\_TXHDRBLOCKS}, (2) the WCLK-based trigger offset in \texttt{IDX\_\_TXHDRTRIGOFFSET} (scaled by $1/32.5$ to yield a $\approx$30.8~ns increment), and (3) the per-channel sample delays from \texttt{IDX\_\_TXHDRSAMPDELAY} and the FIFO delay (\texttt{IDX\_\_TXHDRFIFODELAY}) expressed in $1/260$~$\mu$s units. These terms are injected directly into the \textit{Time (high sampling)} and \textit{Time (low sampling)} datasets, so the $t=0$ crossing in each waveform now reflects the firmware’s reported offsets.
 
-\begin{sidewaystable}[H]
+\begin{landscape}
+\begin{table}[H]
 \centering
 \renewcommand{\arraystretch}{1.15}
 \begin{tabular}{|p{3.4cm}|p{3.8cm}|p{4.8cm}|p{4.2cm}|}
@@ -135,7 +136,8 @@ Time handling is now fully derived from the FPGA header. The 32-bit \texttt{IDX\
 \end{tabular}
 \caption{Mapping between FPGA header fields, their raw HDF5 storage, and the derived “unpacked” quantities used by the processing software.}
 \label{tab:fpga_to_packet}
-\end{sidewaystable}
+\end{table}
+\end{landscape}
 
 
 \subsection{Housekeeping data}
