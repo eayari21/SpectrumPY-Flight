@@ -131,8 +131,8 @@ def _qt_to_datetime_utc(value: QDateTime) -> datetime:
     return value.toUTC().toPyDateTime().replace(tzinfo=timezone.utc)
 
 
-def _format_day_of_year(dt: datetime) -> str:
-    return dt.strftime("%Y-%jT%H:%M:%S")
+def _format_webpoda_time(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def _format_iso_seconds(dt: datetime) -> str:
@@ -511,10 +511,10 @@ class LaunchWindow(QMainWindow):
     ) -> Optional[Path]:
         DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
         query_params = [
-            ("time>=", _format_day_of_year(start)),
-            ("time<", _format_day_of_year(stop)),
+            ("time>", _format_webpoda_time(start)),
+            ("time<", _format_webpoda_time(stop)),
             ("project(time,packet)", ""),
-            ('formatTime("yyyy-DDD\'T\'HH:mm:ss")', ""),
+            ('formatTime("yyyy-MM-dd\'T\'HH:mm:ss")', ""),
         ]
         url = "https://lasp.colorado.edu/ops/imap/poda/dap2/packets/SID1/IDX_SCI.asc"
 
