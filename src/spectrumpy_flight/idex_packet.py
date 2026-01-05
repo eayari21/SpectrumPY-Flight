@@ -2947,7 +2947,13 @@ class IDEXEvent:
             for (evtnum, key), value in self.header.items():
                 if "IDX__" in key and key != "IDX__SCI0AID":
                     print(f"Skipping header field {key}")
-                    continue
+                    try:
+                       data = np.array([value])
+                    except Exception as e:
+                        print(f"Exception raised: {e}")
+                        data = np.array(value)
+                    create_dataset_if_not_exists(h, dataset_path, data=data)
+                    # continue
                 dataset_path = f"/{evtnum}/Metadata/{key}"
                 if isinstance(value, str):
                     dtype = h5py.string_dtype(encoding='utf-8')
