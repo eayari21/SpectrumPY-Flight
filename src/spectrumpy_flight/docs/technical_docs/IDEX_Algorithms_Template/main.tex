@@ -1,0 +1,261 @@
+\documentclass{report}
+
+% ---------- Encoding & Layout ----------
+\PassOptionsToPackage{table,dvipsnames}{xcolor} % add any colorsets you need
+\usepackage{xcolor}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper, total={6in, 8in}]{geometry}
+
+% ---------- Math / Fonts ----------
+\usepackage{amsmath}
+\usepackage{amsfonts}
+
+% ---------- Graphics ----------
+\usepackage{graphicx}
+\graphicspath{{./images/}}
+\usepackage{subfig}
+\usepackage{float}
+\usepackage[final]{pdfpages}
+
+
+\definecolor{darkGrey}{gray}{0.3}
+
+% ---------- Colors (define before hyperref) ----------
+% \usepackage{xcolor}
+% Colors for tables
+% \usepackage[table]{xcolor} % or: \usepackage{colortbl}
+\definecolor{darkGrey}{RGB}{77,77,77} % adjust to taste
+\definecolor{deepblue}{rgb}{0,0,0.5}
+\definecolor{deepred}{rgb}{0.6,0,0}
+\definecolor{deepgreen}{rgb}{0,0.5,0}
+\definecolor{maroon}{rgb}{0.5,0,0}
+\definecolor{darkgreen}{rgb}{0,0.5,0}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\definecolor{codegreen}{rgb}{0,0.6,0}
+
+% ---------- Listings (use this instead of minted to avoid --shell-escape) ----------
+\usepackage{listings}
+\lstdefinestyle{myStyle}{
+  backgroundcolor=\color{backcolour},
+  commentstyle=\color{codegreen},
+  basicstyle=\ttfamily\small,
+  breakatwhitespace=false,
+  breaklines=true,
+  keepspaces=true,
+  numbers=left,
+  numbersep=5pt,
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  tabsize=2
+}
+\lstset{style=myStyle}
+
+\usepackage{listingsutf8}   % UTF-8 support for listings
+\usepackage{inconsolata}    % nicer monospaced font (optional)
+\usepackage{upquote}        % straight quotes in verbatim/listings
+
+\lstset{
+  inputencoding=utf8,
+  basicstyle=\ttfamily\small,
+  columns=fullflexible,
+  keepspaces=true,
+  breaklines=true,
+  showstringspaces=false,
+  % Map common UTF-8 characters to TeX equivalents:
+  literate=
+    {–}{{--}}1  % en dash
+    {—}{{---}}1 % em dash
+    {…}{{\ldots}}1
+    {’}{{'}}1
+    {“}{{``}}1
+    {”}{{''}}1
+    {−}{{-}}1   % Unicode minus
+}
+
+
+% XML language for listings
+\lstdefinelanguage{XML}{
+  basicstyle=\ttfamily,
+  morestring=[s]{"}{"},
+  morecomment=[s]{?}{?},
+  morecomment=[s]{!--}{--},
+  commentstyle=\color{darkgreen},
+  moredelim=[s][\color{black}]{>}{<},
+  moredelim=[s][\color{red}]{\ }{=},
+  stringstyle=\color{blue},
+  identifierstyle=\color{maroon}
+}
+
+% Optional Python styling macro (no undefined \ttb/\ttm)
+\newcommand\pythonstyle{\lstset{
+  language=Python,
+  keywordstyle=\bfseries\color{deepblue},
+  emph={MyClass,__init__,def,if,else,try,except,while},
+  emphstyle=\bfseries\color{deepred},
+  stringstyle=\color{deepgreen},
+  frame=tb,
+  showstringspaces=false
+}}
+
+% ---------- Other utilities ----------
+\usepackage{comment}
+\usepackage{fancyhdr}
+\usepackage{blindtext}
+\usepackage{lastpage}
+\usepackage{mdframed}
+
+% ---------- Hyperref (load last) ----------
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue!50!black,
+  urlcolor=blue!80!black,
+  pdftitle={Overleaf Example},
+  pdfpagemode=FullScreen
+}
+
+% ---------- Header / Footer ----------
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\today}
+\lhead{%
+  \IfFileExists{images/imap_logo.png}{\includegraphics[width=3cm]{images/imap_logo.png}}{\fbox{imap\_logo.png}}%
+  \hspace{1cm} \bfseries \Large IDEX Algorithms Template
+}
+\rfoot{%
+  \IfFileExists{images/lasp_logo.png}{\includegraphics[width=5cm]{images/lasp_logo.png}}{\fbox{lasp\_logo.png}}%
+}
+\fancyfoot[L]{Page \thepage\ of \pageref{LastPage}}
+
+\setcounter{chapter}{-1}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  \vfill
+  {\bfseries\Huge IDEX Algorithms Template\\
+  \vskip2cm
+  \Large Draft 8\\
+  \vskip5cm
+  Ethan Ayari\\
+  Jamey Szalay\\
+  Mihály Horányi\\
+  \vskip3.5cm}
+  \vfill
+  \IfFileExists{images/lasp_logo.png}{\includegraphics[width=10cm]{lasp_logo.png}}{\fbox{lasp\_logo.png}}
+  \quad
+  \IfFileExists{images/imap_logo.png}{\includegraphics[width=10cm]{imap_logo.png}}{\fbox{imap\_logo.png}}
+  \vfill
+\end{titlepage}
+
+\tableofcontents
+
+\chapter{SDC Prompts}\label{chap:chap1}
+
+All of the information below was taken from the website:\\
+\url{https://lasp.colorado.edu/galaxy/display/IMAP/IMAP+SDC+Software+Developer+Guide}.
+
+In addition, \textbf{from the IMAP SOC CDRL List Applicable Algorithms} is defined in the following sequence:\\[0.5\baselineskip]
+Level 0 -- Level 1A\\
+Level 1A -- Level 1B\\
+Level 1B -- Level 2\\
+Data culling
+
+\section{List of Acronyms}
+\begin{itemize}
+  \item AID: Application Identifier
+  \item APID: Application Process Identifier
+  \item CDRL: Contract Data Requirements List
+  \item CCSDS: Consultative Committee for Space Data Systems
+  \item CoDICE: Compact Dual Ion Composition Experiment
+  \item DAB: Decontamination Actuator Board
+  \item FPGA: Field Programmable Gate Array
+  \item FSW: Flight Software
+  \item HG: High Gain
+  \item IDP: Interplanetary Dust Particle
+  \item IDEX: Interstellar Dust Experiment
+  \item IMAP: Interstellar Mapping and Acceleration Probe
+  \item ISD: Interstellar Dust
+  \item LG: Low Gain
+  \item MG: Mid Gain
+  \item MSPS: Mega samples per second
+  \item PUI: Pickup ions
+  \item SDC: Science Data Center
+  \item SDMP: Science Data Management Plan
+  \item SOC: Science Operations Center
+  \item SWAPI: Solar Wind and Pickup Ions
+  \item TOF: Time of Flight
+\end{itemize}
+
+\section{Definitions}
+\textbf{Algorithm:} In this text, algorithm refers to a finite sequence of well-defined, computer-implementable instructions needed to generate one or more data products using lower-level data, calibration, and ancillary information.\\[0.5\baselineskip]
+\textbf{Code:} Computer-executable instructions in a common programming language may be compiled (if needed) and executed to perform designated computations.\\[0.5\baselineskip]
+\textbf{Pseudocode:} Simplified code used in preliminary code design and layout.
+
+% \section{Preparation Information}
+% (your commented content remains unchanged)
+
+\section{Suggested Algorithm Document Content}
+\begin{enumerate}
+  \item Definitions of Terms
+  \item Description of Overall Approach
+  \item Background on Heritage Instruments (if applicable)
+  \item Background on heritage processing implementations (if applicable)
+  \item Instrument measurement approach and relationship between data collection, telemetry packets, and data products
+  \item Overall processing flow, e.g. step-by-step process description/diagrams
+  \item Identification of and detail pertaining to dependencies on S/C or other instrument's data
+  \item Calibration Data and associated application, including recommended calibration file formats
+  \item Mathematical description of algorithm steps
+  \item Equations, constants, and coefficients for science calibrations
+  \item Pseudocode
+  \item Examples of in-flight calibration update incorporation
+  \item Telemetry packet decomposition information (possibly part of SE-005)
+  \item Spice kernels to map instrument into spacecraft coordinate frame
+  \item Equations and coefficients for Temperature Conversions (possibly part of SE-005)
+  \item Equations and coefficients for engineering conversions (possibly part of SE-005)
+  \item Observation time basis
+  \item Expected maintenance tasks (e.g. updating calibrations)
+  \item Approach to Rejection, Culling, or Flagging of Suspect/Bad Data
+  \item Expected Uncertainties / Uncertainty Analysis
+  \item Data Validation Steps
+  \item Recommended Testing Approaches
+  \item Special considerations and unusual circumstances
+\end{enumerate}
+
+\input{Chapter1}
+\input{Chapter2}
+\input{Chapter3}
+\input{Chapter4}
+% \input{Level0->1}
+
+\setcounter{chapter}{0}
+\renewcommand{\chaptername}{Appendix}
+\renewcommand{\thechapter}{\Alph{chapter}}
+
+\chapter{LASP Packets}\label{lasppackets}
+The \textbf{generator} method from the \textbf{parser.py} script in LASP Packets.
+
+\pythonstyle
+\begin{lstlisting}[language=Python,breaklines]
+def generator(self, binary_data: bitstring.ConstBitStream, parse_bad_pkts: bool = True, skip_header_bits: int = 0, root_container_name="CCSDSPacket", ccsds_headers_only: bool = False, yield_unrecognized_packet_errors: bool = False, show_progress: bool = False):
+    """Create and return a Packet generator.
+    Creating a generator object to return allows the user to create many generators from a single Parser and reduces memory usage.
+    ...
+\end{lstlisting}
+
+\chapter{IDEX/SUDA Combined XTCE Definition}\label{xtce}
+The first 100 lines of the combined IDEX/SUDA XTCE definition are shown below.
+
+\IfFileExists{suda_combined_definition.xml}{%
+  \lstinputlisting[basicstyle=\ttfamily\scriptsize,breaklines=true,language=XML,firstline=1,lastline=98]{suda_combined_definition.xml}%
+}{%
+  \begin{mdframed}
+    \emph{File \texttt{suda\_combined\_definition.xml} not found. Place it in the project root to include it.}
+  \end{mdframed}
+}
+
+\end{document}
