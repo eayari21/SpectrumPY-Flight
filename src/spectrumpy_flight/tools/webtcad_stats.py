@@ -71,43 +71,55 @@ BASE_URL = (
     "AnalogTelemetryItem_SID1.csv"
 )
 
-# Individual series: label -> TMID
-def _load_series_tmids() -> tuple[Dict[str, int], List[str]]:
-    tmids: Dict[str, int] = {
-        "TOFHGMIN": 3323,
-        "Det_Voltage": 38,
-        "Target_Low_Gain_Min": 3356,
-        "Target_High_Gain_Min": 3349,
-        "Target_Low_Gain_Max": 3357,
-        "Target_High_Gain_Max": 3350,
-        "TOFLGMIN": 3331,
-        "TOFMGMIN": 3341,
-        "TOFHGMAX": 3325,
-        "TOFLGMAX": 3333,
-        "TOFMGMAX": 3343,
+@dataclass
+class SeriesSpec:
+    """Identifier for a single analog telemetry series."""
+    query_param: str
+    value: str
+
+
+# Individual series: label -> SeriesSpec
+def _load_series_specs() -> tuple[Dict[str, SeriesSpec], List[str]]:
+    specs: Dict[str, SeriesSpec] = {
+        "TOFHGMIN": SeriesSpec("TMID", "3323"),
+        "Det_Voltage": SeriesSpec("TMID", "38"),
+        "Target_Low_Gain_Min": SeriesSpec("TMID", "3356"),
+        "Target_High_Gain_Min": SeriesSpec("TMID", "3349"),
+        "Target_Low_Gain_Max": SeriesSpec("TMID", "3357"),
+        "Target_High_Gain_Max": SeriesSpec("TMID", "3350"),
+        "TOFLGMIN": SeriesSpec("TMID", "3331"),
+        "TOFMGMIN": SeriesSpec("TMID", "3341"),
+        "TOFHGMAX": SeriesSpec("TMID", "3325"),
+        "TOFLGMAX": SeriesSpec("TMID", "3333"),
+        "TOFMGMAX": SeriesSpec("TMID", "3343"),
+        # Ion grid channels are identified by key name instead of TMID.
+        "IONGRIDMIN": SeriesSpec("KEY", "IDX_HW.SCIIONMIN"),
+        "IONGRIDMAX": SeriesSpec("KEY", "IDX_HW.SCIIONMAX"),
     }
 
-    # Optional TMIDs that can be configured without code changes.
     warnings: List[str] = []
+
     optional_env = {
-        "IONGRIDMIN": "WEBTCAD_IONGRID_MIN_TMID",
-        "IONGRIDMAX": "WEBTCAD_IONGRID_MAX_TMID",
+        "IONGRIDMIN": ("WEBTCAD_IONGRID_MIN_TMID", "WEBTCAD_IONGRID_MIN_KEY"),
+        "IONGRIDMAX": ("WEBTCAD_IONGRID_MAX_TMID", "WEBTCAD_IONGRID_MAX_KEY"),
     }
 
-    for key, env_var in optional_env.items():
-        raw_val = os.getenv(env_var)
-        if raw_val in (None, ""):
+    for key, (tmid_var, key_var) in optional_env.items():
+        raw_tmid = os.getenv(tmid_var)
+        raw_key = os.getenv(key_var)
+
+        if raw_tmid not in (None, ""):
+            specs[key] = SeriesSpec("TMID", raw_tmid)
             continue
 
-        try:
-            tmids[key] = int(raw_val)
-        except ValueError:
-            warnings.append(f"Ignored {key} – {env_var} must be an integer (got {raw_val!r}).")
+        if raw_key not in (None, ""):
+            specs[key] = SeriesSpec("KEY", raw_key)
+            continue
 
-    return tmids, warnings
+    return specs, warnings
 
 
-SERIES_TMIDS, SERIES_CONFIG_WARNINGS = _load_series_tmids()
+SERIES_SPECS, SERIES_CONFIG_WARNINGS = _load_series_specs()
 
 # How the series are grouped for plotting:
 # (axis title, min_key, max_key)
@@ -135,13 +147,13 @@ class SeriesData:
 # Networking + data helpers
 # ----------------------------------------------------------------------
 
-def build_url(tmid: int, start_iso: str, stop_iso: str) -> str:
+def build_url(spec: SeriesSpec, start_iso: str, stop_iso: str) -> str:
     """
     Construct a URL matching the format you supplied, with
     time>=start_iso and time<=stop_iso, and the formatted time column.
     """
     return (
-        f"{BASE_URL}?TMID={tmid}"
+        f"{BASE_URL}?{spec.query_param}={spec.value}"
         f"&time%3E={start_iso}"
         f"&time%3C={stop_iso}"
         f"&format_time(yyyy-DDD%27T%27HH:mm:ss.SSS)"
@@ -151,12 +163,12 @@ def build_url(tmid: int, start_iso: str, stop_iso: str) -> str:
 def fetch_series(
     session: requests.Session,
     series_key: str,
-    tmid: int,
+    spec: SeriesSpec,
     start_iso: str,
     stop_iso: str,
 ) -> SeriesData:
     """Download one series from WebTCAD and return as SeriesData."""
-    url = build_url(tmid, start_iso, stop_iso)
+    url = build_url(spec, start_iso, stop_iso)
     resp = session.get(url)
     resp.raise_for_status()
 
@@ -582,14 +594,18 @@ class MainWindow(QMainWindow):
         series_map: Dict[str, SeriesData] = {}
         warnings: List[str] = list(SERIES_CONFIG_WARNINGS)
 
-        for key, tmid in SERIES_TMIDS.items():
+        for key, spec in SERIES_SPECS.items():
             try:
-                self.statusBar().showMessage(f"Fetching {key} (TMID={tmid})…")
+                self.statusBar().showMessage(
+                    f"Fetching {key} ({spec.query_param}={spec.value})…"
+                )
                 QApplication.processEvents()  # keep UI responsive
-                s = fetch_series(session, key, tmid, start_iso, stop_iso)
+                s = fetch_series(session, key, spec, start_iso, stop_iso)
                 series_map[key] = s
             except Exception as e:
-                warnings.append(f"Skipped {key} (TMID={tmid}): {e}")
+                warnings.append(
+                    f"Skipped {key} ({spec.query_param}={spec.value}): {e}"
+                )
 
         if not series_map:
             raise RuntimeError("No series downloaded.")
