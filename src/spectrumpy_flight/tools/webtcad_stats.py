@@ -18,6 +18,7 @@ import os
 import sys
 from pathlib import Path
 from dataclasses import dataclass
+from urllib.parse import quote
 from typing import Dict, Tuple, List
 
 import pandas as pd
@@ -147,17 +148,38 @@ class SeriesData:
 # Networking + data helpers
 # ----------------------------------------------------------------------
 
+def _query_value(spec: SeriesSpec) -> str:
+    """
+    Prepare a query value for the series.
+
+    String-based KEY filters need quoting to be parsed correctly by the
+    WebTCAD service; numeric TMIDs can be passed as-is.
+    """
+    if spec.query_param.upper() != "KEY":
+        return spec.value
+
+    if spec.value.startswith('"') and spec.value.endswith('"'):
+        return spec.value
+
+    return f'"{spec.value}"'
+
+
 def build_url(spec: SeriesSpec, start_iso: str, stop_iso: str) -> str:
     """
     Construct a URL matching the format you supplied, with
     time>=start_iso and time<=stop_iso, and the formatted time column.
     """
-    return (
-        f"{BASE_URL}?{spec.query_param}={spec.value}"
-        f"&time%3E={start_iso}"
-        f"&time%3C={stop_iso}"
-        f"&format_time(yyyy-DDD%27T%27HH:mm:ss.SSS)"
-    )
+    params = {
+        spec.query_param: _query_value(spec),
+        "time>": start_iso,
+        "time<": stop_iso,
+    }
+
+    req = requests.PreparedRequest()
+    req.prepare_url(BASE_URL, params)
+
+    format_param = quote("format_time(yyyy-DDD'T'HH:mm:ss.SSS)", safe="()")
+    return f"{req.url}&{format_param}"
 
 
 def fetch_series(
