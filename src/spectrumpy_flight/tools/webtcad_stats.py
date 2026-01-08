@@ -171,14 +171,17 @@ def build_url(spec: SeriesSpec, start_iso: str, stop_iso: str) -> str:
     """
     params = {
         spec.query_param: _query_value(spec),
-        "time>": start_iso,
-        "time<": stop_iso,
+        "time>=": start_iso,
+        "time<=": stop_iso,
     }
 
     req = requests.PreparedRequest()
     req.prepare_url(BASE_URL, params)
 
-    format_param = quote("format_time(yyyy-DDD'T'HH:mm:ss.SSS)", safe="()")
+    format_param = quote(
+        "format_time(time,yyyy-DDD'T'HH:mm:ss.SSS)",
+        safe="(),",
+    )
     return f"{req.url}&{format_param}"
 
 
