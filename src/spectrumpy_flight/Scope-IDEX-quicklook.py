@@ -639,6 +639,89 @@ class MainWindow(QMainWindow):
         self.helpContentAction = QAction("&Help Content", self)
         self.aboutAction = QAction("&About", self)
 
+    def _current_event_key(self) -> str:
+        """Return the currently selected event identifier as a string."""
+
+        return str(eventnum)
+
+    def _collect_exportable_paths(self, event_key: str) -> list[str]:
+        """Return a sorted list of dataset paths available for export for *event_key*."""
+
+        exportable: list[str] = []
+
+        def _walk(group, prefix: str = ""):
+            for name, obj in group.items():
+                current_path = f"{prefix}{name}"
+                if isinstance(obj, h5py.Dataset):
+                    try:
+                        if obj.size == 0:
+                            continue
+                    except Exception:
+                        continue
+                    exportable.append(current_path)
+                elif isinstance(obj, h5py.Group):
+                    _walk(obj, f"{current_path}/")
+
+        if event_key in self.dataset:
+            _walk(self.dataset[event_key])
+
+        return sorted(exportable)
+
+    def _resolve_time_series(self, event_key: str, data_path: str, data_length: int):
+        """Determine an appropriate time array for the dataset at *data_path*."""
+
+        parent_path, leaf = os.path.split(data_path)
+        parent_group = self.dataset[event_key] if parent_path == "" else self.dataset[f"{event_key}/{parent_path}"]
+
+        def _try_candidate(candidate: str):
+            candidate_path = "/".join(filter(None, [parent_path, candidate]))
+            full_candidate = f"{event_key}/{candidate_path}"
+            if full_candidate in self.dataset:
+                series = np.asarray(self.dataset[full_candidate][:]).squeeze()
+                if series.ndim == 1 and len(series) == data_length:
+                    return series
+            return None
+
+        for old, new in (("FitData", "FitTime"), ("FitResult", "FitTime"), ("Data", "Time")):
+            if old in leaf:
+                candidate_leaf = leaf.replace(old, new)
+                series = _try_candidate(candidate_leaf)
+                if series is not None:
+                    return series
+
+        for name, obj in parent_group.items():
+            if isinstance(obj, h5py.Dataset) and "time" in name.lower():
+                series = np.asarray(obj[:]).squeeze()
+                if series.ndim == 1 and len(series) == data_length:
+                    return series
+
+        global_time_path = f"{event_key}/Time"
+        if global_time_path in self.dataset:
+            series = np.asarray(self.dataset[global_time_path][:]).squeeze()
+            if series.ndim == 1 and len(series) == data_length:
+                return series
+
+        raise ValueError(
+            f"Could not locate a time array matching '{data_path}' (length {data_length}). "
+            "Ensure a corresponding Time dataset exists."
+        )
+
+    def _build_export_dataframe(self, event_key: str, data_path: str):
+        """Create a two-column DataFrame pairing timestamps with the requested dataset."""
+
+        full_path = f"{event_key}/{data_path}"
+        if full_path not in self.dataset:
+            raise ValueError(f"Dataset '{data_path}' not found for event {event_key}.")
+
+        values = np.asarray(self.dataset[full_path][:]).squeeze()
+        if values.ndim != 1:
+            raise ValueError(f"Dataset '{data_path}' is not one-dimensional and cannot be exported as a series.")
+
+        time_series = self._resolve_time_series(event_key, data_path, len(values))
+        label = data_path.split("/")[-1]
+
+        return pd.DataFrame({"Time": time_series, label: values}), label
+
 # %%WRITE TIMES AND AMPS TO CSV
     def writeSQL(self, s):
         pass
@@ -647,7 +730,51 @@ class MainWindow(QMainWindow):
 
 # %%WRITE TIMES AND AMPS TO CSV
     def exportScopeData(self, s):
-        pass
+        event_key = self._current_event_key()
+
+        dataset_paths = self._collect_exportable_paths(event_key)
+        if not dataset_paths:
+            QMessageBox.warning(self, "Export Data", "No datasets available to export for this event.")
+            return
+
+        selection, ok = QInputDialog.getItem(
+            self,
+            "Export Data",
+            "Choose a dataset to export as CSV (Time will be included automatically):",
+            dataset_paths,
+            0,
+            False,
+        )
+
+        if not ok or not selection:
+            return
+
+        default_dir = os.path.dirname(fn) if fn else os.getcwd()
+        suggested_name = selection.split("/")[-1].replace(" ", "_")
+        default_path = os.path.join(default_dir, f"{event_key}_{suggested_name}.csv")
+
+        output_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save CSV",
+            default_path,
+            "CSV Files (*.csv)",
+        )
+
+        if not output_path:
+            return
+
+        try:
+            dataframe, label = self._build_export_dataframe(event_key, selection)
+            dataframe.to_csv(output_path, index=False)
+        except Exception as exc:
+            QMessageBox.critical(self, "Export Failed", f"Unable to export data:\n{exc}")
+            return
+
+        QMessageBox.information(
+            self,
+            "Export Complete",
+            f"Saved '{label}' for event {event_key} to:\n{output_path}",
+        )
 
 
 # %%WRITE TIMES AND AMPS TO CSV
