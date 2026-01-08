@@ -2663,11 +2663,11 @@ class IDEXEvent:
 
     def _high_trigger_offset(self, event_id: Optional[Union[int, str]]) -> float:
         pre_blocks = self._get_header_value(event_id, "HSPretriggerBlocks", getattr(self, "hspretrigblocks", 0))
-        return 512 * (1.0 / 260.0) * (pre_blocks + 1)
+        return 512 * (1.0 / 260.0) * pre_blocks
 
     def _low_trigger_offset(self, event_id: Optional[Union[int, str]]) -> float:
         pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
-        return 8 * (1.0 / 4.0625) * (pre_blocks + 1)
+        return 8 * (1.0 / 4.0625) * pre_blocks
 
     def _low_sampling_delay_seconds(self, event_id: Optional[Union[int, str]]) -> float:
         delay_value = None
@@ -2711,9 +2711,9 @@ class IDEXEvent:
         time_values = np.arange(sample_count, dtype=float) * spacing
         time_values = time_values - offset
         if high_rate:
-            time_values = time_values + self._high_sampling_delay_seconds(event_id, channel) + trigger_offset
+            time_values = time_values - self._high_sampling_delay_seconds(event_id, channel) - trigger_offset
         else:
-            time_values = time_values + self._low_sampling_delay_seconds(event_id) + trigger_offset
+            time_values = time_values - self._low_sampling_delay_seconds(event_id) - trigger_offset
         return time_values
 
     def plot_all_data(self, packets, fname: str):
