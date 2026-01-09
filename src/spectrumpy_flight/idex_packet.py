@@ -2053,7 +2053,7 @@ class IDEXEvent:
         self.hstime = np.array([], dtype=float)
         self.lstime = np.array([], dtype=float)
         self._coarse_period = float(1 << 16)
-        self._time32_period = float((1 << 32) * 20e-6)
+        self._time32_period = float(1 << 32)
         self._seconds_offset: Optional[float] = None
         self._rollover_count = 0
         self._last_base_seconds: Optional[float] = None
@@ -2475,7 +2475,7 @@ class IDEXEvent:
                         pkt.data['IDX__SCI0AID'].derived_value
                     )
                     print(f"Event number = {pkt.data['IDX__SCI0EVTNUM'].raw_value}")  # Event number out of how many events constitute the file
-                    # print(f"Time = {pkt.data['IDX__SCI0TIME32'].derived_value}")  # Time in 20 ns intervals
+                    # print(f"Time = {pkt.data['IDX__SCI0TIME32'].derived_value}")  # Time in seconds since spacecraft epoch
 
 
                     print(f"Rice compression enabled = {bool(pkt.data['IDX__SCI0COMP'].raw_value)}")
@@ -2483,10 +2483,10 @@ class IDEXEvent:
 
 
                     # self.header[evtnum][f"TimeIntervals"] = pkt.data['IDX__SCI0TIME32'].derived_value  # Store the number of 20 us intervals in the respective CDF "Time" variables
-                    time32_ticks = float(pkt.data['IDX__SCI0TIME32'].derived_value)
-                    self.header[(evtnum, 'Time32Ticks')] = time32_ticks
+                    time32_seconds = float(pkt.data['IDX__SCI0TIME32'].derived_value)
+                    self.header[(evtnum, 'Time32Ticks')] = time32_seconds
                     spacecraft_seconds = self._resolve_spacecraft_seconds(
-                        seconds=time32_ticks * 20e-6,
+                        seconds=time32_seconds,
                         period=self._time32_period,
                     )
                     timestamp_seconds = int(math.floor(spacecraft_seconds))
