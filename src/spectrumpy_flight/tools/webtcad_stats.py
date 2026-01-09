@@ -82,20 +82,26 @@ class SeriesSpec:
 # Individual series: label -> SeriesSpec
 def _load_series_specs() -> tuple[Dict[str, SeriesSpec], List[str]]:
     specs: Dict[str, SeriesSpec] = {
-        "TOFHGMIN": SeriesSpec("TMID", "3323"),
+        "TOFHGMIN": SeriesSpec("KEY", "IDX_HW.SCITOFHGMIN"),
         "Det_Voltage": SeriesSpec("TMID", "38"),
-        "Target_Low_Gain_Min": SeriesSpec("TMID", "3356"),
-        "Target_High_Gain_Min": SeriesSpec("TMID", "3349"),
-        "Target_Low_Gain_Max": SeriesSpec("TMID", "3357"),
-        "Target_High_Gain_Max": SeriesSpec("TMID", "3350"),
-        "TOFLGMIN": SeriesSpec("TMID", "3331"),
-        "TOFMGMIN": SeriesSpec("TMID", "3341"),
-        "TOFHGMAX": SeriesSpec("TMID", "3325"),
-        "TOFLGMAX": SeriesSpec("TMID", "3333"),
-        "TOFMGMAX": SeriesSpec("TMID", "3343"),
-        # Ion grid channels are identified by key name instead of TMID.
+        "Target_Low_Gain_Min": SeriesSpec("KEY", "IDX_HW.SCITLRMIN"),
+        "Target_High_Gain_Min": SeriesSpec("KEY", "IDX_HW.SCITHRMIN"),
+        "Target_Low_Gain_Max": SeriesSpec("KEY", "IDX_HW.SCITLRMX"),
+        "Target_High_Gain_Max": SeriesSpec("KEY", "IDX_HW.SCITHRMX"),
+        "TOFLGMIN": SeriesSpec("KEY", "IDX_HW.SCITOFLGMIN"),
+        "TOFMGMIN": SeriesSpec("KEY", "IDX_HW.SCITOFMGMIN"),
+        "TOFHGMAX": SeriesSpec("KEY", "IDX_HW.SCITOFHGMX"),
+        "TOFLGMAX": SeriesSpec("KEY", "IDX_HW.SCITOFLGMX"),
+        "TOFMGMAX": SeriesSpec("KEY", "IDX_HW.SCITOFMGMX"),
         "IONGRIDMIN": SeriesSpec("KEY", "IDX_HW.SCIIONMIN"),
-        "IONGRIDMAX": SeriesSpec("KEY", "IDX_HW.SCIIONMAX"),
+        "IONGRIDMAX": SeriesSpec("KEY", "IDX_HW.SCIIONMX"),
+        "TOFHG_THRESHOLD": SeriesSpec("KEY", "IDX_HW.TRGTOFHGTHOLD"),
+        "TOFLG_THRESHOLD": SeriesSpec("KEY", "IDX_HW.TRGTOFLGTHOLD"),
+        "TOFMG_THRESHOLD": SeriesSpec("KEY", "IDX_HW.TRGTOFMGTHOLD"),
+        "ADC_MODE_TOFLG": SeriesSpec("KEY", "IDX_HW.SCIADCMODETOFLG"),
+        "ADC_MODE_TOFHG": SeriesSpec("KEY", "IDX_HW.SCIADCMODETOFHG"),
+        "SCI_EVENT_CNT": SeriesSpec("KEY", "IDX_SW.SCISEVT_CNT"),
+        "SCI_AID": SeriesSpec("KEY", "IDX_SW.SCIAID"),
     }
 
     warnings: List[str] = []
@@ -122,15 +128,75 @@ def _load_series_specs() -> tuple[Dict[str, SeriesSpec], List[str]]:
 
 SERIES_SPECS, SERIES_CONFIG_WARNINGS = _load_series_specs()
 
-# How the series are grouped for plotting:
-# (axis title, min_key, max_key)
-PLOT_GROUPS: List[Tuple[str, str, str]] = [
-    ("TOF L", "TOFLGMIN", "TOFLGMAX"),
-    ("TOF M", "TOFMGMIN", "TOFMGMAX"),
-    ("TOF H", "TOFHGMIN", "TOFHGMAX"),
-    ("Target L", "Target_Low_Gain_Min", "Target_Low_Gain_Max"),
-    ("Target H", "Target_High_Gain_Min", "Target_High_Gain_Max"),
-    ("Ion Grid", "IONGRIDMIN", "IONGRIDMAX"),
+@dataclass(frozen=True)
+class PlotSeries:
+    key: str
+    label: str
+    linestyle: str = "-"
+    linewidth: float = 0.8
+
+
+@dataclass(frozen=True)
+class PlotGroup:
+    title: str
+    series: List[PlotSeries]
+
+
+PLOT_GROUPS: List[PlotGroup] = [
+    PlotGroup(
+        "TOF L",
+        [
+            PlotSeries("TOFLGMIN", "Min"),
+            PlotSeries("TOFLGMAX", "Max", linestyle="--"),
+        ],
+    ),
+    PlotGroup(
+        "TOF M",
+        [
+            PlotSeries("TOFMGMIN", "Min"),
+            PlotSeries("TOFMGMAX", "Max", linestyle="--"),
+        ],
+    ),
+    PlotGroup(
+        "TOF H",
+        [
+            PlotSeries("TOFHGMIN", "Min"),
+            PlotSeries("TOFHGMAX", "Max", linestyle="--"),
+        ],
+    ),
+    PlotGroup(
+        "Target L",
+        [
+            PlotSeries("Target_Low_Gain_Min", "Min"),
+            PlotSeries("Target_Low_Gain_Max", "Max", linestyle="--"),
+        ],
+    ),
+    PlotGroup(
+        "Target H",
+        [
+            PlotSeries("Target_High_Gain_Min", "Min"),
+            PlotSeries("Target_High_Gain_Max", "Max", linestyle="--"),
+        ],
+    ),
+    PlotGroup(
+        "Ion Grid",
+        [
+            PlotSeries("IONGRIDMIN", "Min"),
+            PlotSeries("IONGRIDMAX", "Max", linestyle="--"),
+        ],
+    ),
+    PlotGroup("TOF H Threshold", [PlotSeries("TOFHG_THRESHOLD", "Threshold")]),
+    PlotGroup("TOF L Threshold", [PlotSeries("TOFLG_THRESHOLD", "Threshold")]),
+    PlotGroup("TOF M Threshold", [PlotSeries("TOFMG_THRESHOLD", "Threshold")]),
+    PlotGroup(
+        "ADC Mode",
+        [
+            PlotSeries("ADC_MODE_TOFLG", "TOF LG"),
+            PlotSeries("ADC_MODE_TOFHG", "TOF HG", linestyle="--"),
+        ],
+    ),
+    PlotGroup("SCI Event Count", [PlotSeries("SCI_EVENT_CNT", "Count")]),
+    PlotGroup("SCI AID", [PlotSeries("SCI_AID", "AID")]),
 ]
 
 DETECTOR_VOLT_KEY = "Det_Voltage"
@@ -307,8 +373,8 @@ class TimeSeriesCanvas(FigureCanvas):
         valid_groups = [
             grp
             for grp in PLOT_GROUPS
-            if visible_groups.get(grp[0], True)
-            and ((grp[1] in series_map) or (grp[2] in series_map))
+            if visible_groups.get(grp.title, True)
+            and any(series.key in series_map for series in grp.series)
         ]
 
         detector_enabled = visible_groups.get("Detector Voltage", True)
@@ -328,34 +394,29 @@ class TimeSeriesCanvas(FigureCanvas):
         ax_idx = 0
 
         # Plot all min/max pairs
-        for title, min_key, max_key in valid_groups:
+        for group in valid_groups:
             ax = axes[ax_idx]
             ax_idx += 1
 
-            if min_key in series_map:
-                s_min = series_map[min_key]
-                df = s_min.df
+            plotted = 0
+            for series in group.series:
+                if series.key not in series_map:
+                    continue
+                s = series_map[series.key]
+                df = s.df
                 ax.plot(
                     df["time_dt"],
-                    df[s_min.value_col],
-                    linewidth=0.8,
-                    label="Min",
+                    df[s.value_col],
+                    linewidth=series.linewidth,
+                    linestyle=series.linestyle,
+                    label=series.label,
                 )
+                plotted += 1
 
-            if max_key in series_map:
-                s_max = series_map[max_key]
-                df = s_max.df
-                ax.plot(
-                    df["time_dt"],
-                    df[s_max.value_col],
-                    linewidth=0.8,
-                    linestyle="--",
-                    label="Max",
-                )
-
-            ax.set_ylabel(title)
+            ax.set_ylabel(group.title)
             ax.grid(True, linestyle="-", linewidth=0.8, alpha=0.35)
-            ax.legend(loc="upper right")
+            if plotted > 1:
+                ax.legend(loc="upper right")
             ax.tick_params(axis="both", labelsize=11)
 
         # Detector voltage in the last panel
@@ -495,11 +556,11 @@ class MainWindow(QMainWindow):
         visibility_layout = QHBoxLayout(visibility_group)
 
         self.visibility_checks: Dict[str, QCheckBox] = {}
-        for title, _, _ in PLOT_GROUPS:
-            cb = QCheckBox(title)
+        for group in PLOT_GROUPS:
+            cb = QCheckBox(group.title)
             cb.setChecked(True)
             cb.stateChanged.connect(self.on_visibility_changed)
-            self.visibility_checks[title] = cb
+            self.visibility_checks[group.title] = cb
             visibility_layout.addWidget(cb)
 
         det_cb = QCheckBox("Detector Voltage")
