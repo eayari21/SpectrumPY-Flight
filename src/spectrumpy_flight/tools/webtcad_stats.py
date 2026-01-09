@@ -632,16 +632,18 @@ class MainWindow(QMainWindow):
 
         # Save merged CSV
         try:
-            out_name = (
-                "CSV/"
-                f"idex_waveforms_{start_dt.toString('yyyyMMdd_HHmmss')}"
+            csv_dir = Path(__file__).resolve().parents[3] / "CSV"
+            csv_dir.mkdir(parents=True, exist_ok=True)
+            out_path = (
+                csv_dir
+                / f"idex_waveforms_{start_dt.toString('yyyyMMdd_HHmmss')}"
                 f"_to_{stop_dt.toString('yyyyMMdd_HHmmss')}.csv"
             )
-            merge_to_single_csv(series_map, out_name)
+            merge_to_single_csv(series_map, str(out_path))
         except Exception as e:
             # Non-fatal for plotting
             QMessageBox.warning(self, "CSV error", f"Could not write CSV:\n{e}")
-            out_name = None
+            out_path = None
 
         # Plot
         self.current_series_map = series_map
@@ -650,8 +652,8 @@ class MainWindow(QMainWindow):
         self.refresh_plots()
 
         msg = "Finished"
-        if out_name:
-            msg += f" – saved merged CSV to {out_name}"
+        if out_path:
+            msg += f" – saved merged CSV to {out_path}"
         self.statusBar().showMessage(msg)
 
         if self.current_warnings:
