@@ -1,0 +1,767 @@
+timeGps (yyyy-D-'T'HH:mm:ss),type,message,filename
+2025-274-T16:19:57,EM,"2010/001-00:00:01.814 UPK boot fsw says hello, version=02.00.0000",f25_oct_01_16_19_30.event_messages
+2025-274-T16:20:03,EM,"2010/001-00:00:01.813 MEM FLASH UErr FOUND, PARAM=0x000000d2",f25_oct_01_16_19_30.event_messages
+2025-274-T16:24:14,EM,"2025/274-16:24:05.921 UPK oper fsw says hello, version=02.00.0000",f25_oct_01_16_19_30.event_messages
+2025-274-T16:24:19,EM,"2025/274-16:24:06.317 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_oct_01_16_19_30.event_messages
+2025-274-T16:24:21,EM,"2025/274-16:24:07.317 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_oct_01_16_19_30.event_messages
+2025-274-T16:24:23,EM,"2025/274-16:24:07.317 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_oct_01_16_19_30.event_messages
+2025-274-T16:27:17,EM,2025/274-16:27:09.114 AUT hvps state changed to hvStateDictionary(STANDBY),f25_oct_01_16_19_30.event_messages
+2025-274-T16:29:26,EM,2025/274-16:29:18.112 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_oct_01_16_19_30.event_messages
+2025-274-T16:29:31,EM,2025/274-16:29:19.112 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_oct_01_16_19_30.event_messages
+2025-274-T16:30:14,EM,2025/274-16:30:06.111 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_oct_01_16_29_38.event_messages
+2025-274-T16:30:17,EM,2025/274-16:30:07.111 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_oct_01_16_29_38.event_messages
+2025-274-T16:30:59,EM,2025/274-16:30:51.110 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_oct_01_16_29_38.event_messages
+2025-274-T16:31:01,EM,2025/274-16:30:52.110 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_oct_01_16_29_38.event_messages
+2025-274-T16:31:44,EM,2025/274-16:31:36.110 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_oct_01_16_29_38.event_messages
+2025-274-T16:31:47,EM,2025/274-16:31:37.110 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_oct_01_16_29_38.event_messages
+2025-274-T16:38:08,EM,"2025/274-16:37:57.303 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_oct_01_16_29_38.event_messages
+2025-274-T16:38:11,EM,"2025/274-16:37:57.303 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_oct_01_16_29_38.event_messages
+2025-274-T16:39:32,EM,2025/274-16:39:21.022 SCI state change: sciState16Dictionary(IDLE) ==&#62; sciState16Dictionary(ACQSETUP),f25_oct_01_16_29_38.event_messages
+2025-274-T16:39:35,EM,2025/274-16:39:23.562 SCI state change: sciState16Dictionary(ACQSETUP) ==&#62; sciState16Dictionary(ACQ),f25_oct_01_16_29_38.event_messages
+2025-274-T16:42:20,EM,"2025/274-16:42:09.899 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_oct_01_16_39_57.event_messages
+2025-274-T16:44:05,EM,"2025/274-16:43:56.898 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_oct_01_16_39_57.event_messages
+2025-274-T16:45:47,EM,"2025/274-16:45:38.897 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_oct_01_16_39_57.event_messages
+2025-274-T16:47:35,EM,"2025/274-16:47:26.895 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_oct_01_16_39_57.event_messages
+2025-274-T16:50:05,EM,2025/274-16:49:55.014 SCI state change: sciState16Dictionary(ACQ) ==&#62; sciState16Dictionary(CHILL),f25_oct_01_16_39_57.event_messages
+2025-274-T16:50:08,EM,2025/274-16:49:56.954 SCI state change: sciState16Dictionary(CHILL) ==&#62; sciState16Dictionary(ACQCLEANUP),f25_oct_01_16_39_57.event_messages
+2025-274-T16:50:11,EM,"2025/274-16:49:59.070 MEM cleanup found sci data, blocks empty=0x002f, blocks w/data=0x0004",f25_oct_01_16_39_57.event_messages
+2025-274-T16:50:14,EM,2025/274-16:50:00.954 SCI science activity completed: sciState16Dictionary(ACQ),f25_oct_01_16_39_57.event_messages
+2025-274-T16:50:17,EM,2025/274-16:50:00.954 SCI state change: sciState16Dictionary(ACQCLEANUP) ==&#62; sciState16Dictionary(IDLE),f25_oct_01_16_39_57.event_messages
+2025-274-T16:51:13,EM,"2025/274-16:51:02.293 SEQ success (len=0x0580, opCodeLCDictionary(haltstim))",f25_oct_01_16_50_22.event_messages
+2025-274-T16:51:14,EM,"2025/274-16:51:03.293 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_oct_01_16_50_22.event_messages
+2025-274-T16:51:17,EM,"2025/274-16:51:03.293 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_oct_01_16_50_22.event_messages
+2025-274-T16:51:34,EM,"2025/274-16:51:25.293 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_oct_01_16_50_22.event_messages
+2025-274-T16:51:36,EM,"2025/274-16:51:25.293 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_oct_01_16_50_22.event_messages
+2025-274-T16:57:05,EM,2025/274-16:56:56.949 SCI science activity completed: sciState16Dictionary(PROCESS),f25_oct_01_16_50_22.event_messages
+2025-274-T16:57:55,EM,"2025/274-16:57:44.289 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_oct_01_16_50_22.event_messages
+2025-274-T16:57:58,EM,"2025/274-16:57:44.289 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_oct_01_16_50_22.event_messages
+2025-274-T17:00:27,EM,2025/274-17:00:19.087 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_oct_01_16_50_22.event_messages
+2025-274-T17:00:28,EM,2025/274-17:00:20.087 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_oct_01_16_50_22.event_messages
+2025-274-T17:00:52,EM,2025/274-17:00:44.087 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_oct_01_17_00_36.event_messages
+2025-274-T17:00:55,EM,2025/274-17:00:45.087 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_oct_01_17_00_36.event_messages
+2025-274-T17:01:40,EM,2025/274-17:01:32.087 AUT hvps state changed to hvStateDictionary(STANDBY),f25_oct_01_17_00_36.event_messages
+2025-274-T17:03:45,EM,2025/274-17:03:36.085 AUT hvps state changed to hvStateDictionary(OFF),f25_oct_01_17_00_36.event_messages
+2025-292-T10:08:54,EM,2025/292-10:08:44.010 SEQ Start Fault Resp: FAULT=faultSeqDictionary(SHUTDOWN_RESET) STATE=seqState3Dictionary(Start) ENG=seqEngineStateDictionary(ACTIV) BUFID=0x20,f25_oct_19_10_03_26.event_messages
+2025-292-T10:08:56,EM,"2025/292-10:08:44.790 SEQ success (len=0x0580, opCodeLCDictionary(setseqst))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:08:57,EM,"2025/292-10:08:45.790 SEQ success (len=0x0580, opCodeLCDictionary(haltstim))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:00,EM,"2025/292-10:08:46.790 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:02,EM,"2025/292-10:08:47.790 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:03,EM,"2025/292-10:08:48.790 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:06,EM,"2025/292-10:08:49.790 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:09,EM,"2025/292-10:08:50.790 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:12,EM,"2025/292-10:08:51.792 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:15,EM,"2025/292-10:08:52.792 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:18,EM,"2025/292-10:08:53.792 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:20,EM,"2025/292-10:08:54.790 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:21,EM,"2025/292-10:08:55.790 SEQ success (len=0x0580, opCodeLCDictionary(dishtr))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:24,EM,"2025/292-10:08:56.790 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:26,EM,"2025/292-10:08:57.790 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:27,EM,"2025/292-10:08:58.790 SEQ success (len=0x0580, opCodeLCDictionary(dumplog))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:09:30,EM,"2025/292-10:08:59.790 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:10:08,EM,"2025/292-10:09:55.790 SEQ success (len=0x0580, opCodeLCDictionary(dshvosc))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:10:09,EM,"2025/292-10:09:56.790 SEQ success (len=0x0580, opCodeLCDictionary(dshvosc))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:10:12,EM,"2025/292-10:09:57.790 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:10:14,EM,"2025/292-10:09:59.790 SEQ success (len=0x0580, opCodeLCDictionary(sethvpwr))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:10:15,EM,"2025/292-10:10:00.790 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_oct_19_10_03_26.event_messages
+2025-292-T10:10:18,EM,"2025/292-10:10:00.790 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_oct_19_10_03_26.event_messages
+2025-292-T14:30:15,EM,"2010/001-00:00:01.782 UPK boot fsw says hello, version=02.00.0000",f25_oct_19_14_27_02.event_messages
+2025-292-T14:30:20,EM,"2010/001-00:00:01.781 MEM FLASH UErr FOUND, PARAM=0x000000d2",f25_oct_19_14_27_02.event_messages
+2025-292-T14:30:45,EM,"2025/292-14:30:36.893 UPK oper fsw says hello, version=02.00.0000",f25_oct_19_14_27_02.event_messages
+2025-292-T14:30:50,EM,"2025/292-14:30:37.289 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_oct_19_14_27_02.event_messages
+2025-292-T14:30:51,EM,"2025/292-14:30:38.289 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_oct_19_14_27_02.event_messages
+2025-292-T14:30:55,EM,"2025/292-14:30:38.289 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_oct_19_14_27_02.event_messages
+2025-308-T13:53:43,EM,2025/308-13:53:33.373 AUT hvps state changed to hvStateDictionary(STANDBY),f25_nov_04_13_45_54.event_messages
+2025-308-T13:56:26,EM,2025/308-13:56:17.369 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_04_13_56_11.event_messages
+2025-308-T13:56:29,EM,2025/308-13:56:18.369 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_04_13_56_11.event_messages
+2025-308-T13:57:26,EM,2025/308-13:57:17.368 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_04_13_56_11.event_messages
+2025-308-T13:57:28,EM,2025/308-13:57:18.368 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_04_13_56_11.event_messages
+2025-308-T13:58:25,EM,2025/308-13:58:17.367 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_04_13_56_11.event_messages
+2025-308-T13:58:28,EM,2025/308-13:58:18.367 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_04_13_56_11.event_messages
+2025-308-T13:59:24,EM,2025/308-13:59:15.366 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_04_13_56_11.event_messages
+2025-308-T13:59:25,EM,2025/308-13:59:16.366 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:26,EM,"2025/308-14:04:17.560 SEQ success (len=0x0580, opCodeLCDictionary(setseqst))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:29,EM,"2025/308-14:04:18.560 SEQ success (len=0x0580, opCodeLCDictionary(haltstim))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:31,EM,"2025/308-14:04:19.560 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:32,EM,"2025/308-14:04:20.562 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:35,EM,"2025/308-14:04:21.562 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:37,EM,"2025/308-14:04:22.562 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:38,EM,"2025/308-14:04:23.560 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:43,EM,"2025/308-14:04:24.560 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:44,EM,"2025/308-14:04:25.560 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:49,EM,"2025/308-14:04:26.560 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:50,EM,2025/308-14:04:27.360 AUT hvps state changed to hvStateDictionary(STANDBY),f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:52,EM,"2025/308-14:04:27.560 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:55,EM,"2025/308-14:04:28.560 SEQ success (len=0x0580, opCodeLCDictionary(dishtr))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:56,EM,"2025/308-14:04:29.559 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:04:59,EM,"2025/308-14:04:30.559 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:05:00,EM,"2025/308-14:04:31.559 SEQ success (len=0x0580, opCodeLCDictionary(dumplog))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:05:01,EM,"2025/308-14:04:32.559 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:05:37,EM,"2025/308-14:05:28.558 SEQ success (len=0x0580, opCodeLCDictionary(dshvosc))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:05:41,EM,"2025/308-14:05:29.558 SEQ success (len=0x0580, opCodeLCDictionary(dshvosc))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:05:43,EM,"2025/308-14:05:30.558 SEQ success (len=0x0580, opCodeLCDictionary(sethvpwr))",f25_nov_04_13_56_11.event_messages
+2025-308-T14:05:44,EM,"2025/308-14:05:30.558 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_04_13_56_11.event_messages
+2025-308-T14:05:47,EM,2025/308-14:05:31.358 AUT hvps state changed to hvStateDictionary(OFF),f25_nov_04_13_56_11.event_messages
+2025-308-T14:07:19,EM,"2025/308-14:07:09.556 SEQ success (len=0x0580, opCodeLCDictionary(dumplog))",f25_nov_04_14_06_36.event_messages
+2025-308-T14:07:25,EM,"2025/308-14:07:09.556 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_04_14_06_36.event_messages
+2025-308-T14:09:08,EM,"2025/308-14:08:59.075 SEQ attempted to erase seq but already empty, BUF=seqBufferDictionary(BUF11)",f25_nov_04_14_06_36.event_messages
+2025-308-T14:13:38,EM,"2025/308-14:13:29.749 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_nov_04_14_06_36.event_messages
+2025-308-T14:13:41,EM,"2025/308-14:13:29.749 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_04_14_06_36.event_messages
+2025-308-T14:19:34,EM,"2025/308-14:19:24.542 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_nov_04_14_16_44.event_messages
+2025-308-T14:19:35,EM,"2025/308-14:19:25.542 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_nov_04_14_16_44.event_messages
+2025-308-T14:19:40,EM,"2025/308-14:19:25.543 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_04_14_16_44.event_messages
+2025-308-T14:23:34,EM,"2025/308-14:23:25.538 SEQ success (len=0x0580, opCodeLCDictionary(dishtr))",f25_nov_04_14_16_44.event_messages
+2025-308-T14:23:35,EM,"2025/308-14:23:26.538 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_nov_04_14_16_44.event_messages
+2025-308-T14:23:38,EM,"2025/308-14:23:27.538 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_nov_04_14_16_44.event_messages
+2025-308-T14:23:40,EM,"2025/308-14:23:27.538 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_04_14_16_44.event_messages
+2025-308-T14:26:02,EM,2025/308-14:25:51.335 AUT hvps state changed to hvStateDictionary(STANDBY),f25_nov_04_14_16_44.event_messages
+2025-308-T14:28:41,EM,2025/308-14:28:32.332 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_04_14_26_52.event_messages
+2025-308-T14:28:46,EM,2025/308-14:28:33.332 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_04_14_26_52.event_messages
+2025-308-T14:29:40,EM,2025/308-14:29:30.331 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_04_14_26_52.event_messages
+2025-308-T14:29:41,EM,2025/308-14:29:31.331 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_04_14_26_52.event_messages
+2025-308-T14:30:37,EM,2025/308-14:30:29.330 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_04_14_26_52.event_messages
+2025-308-T14:30:39,EM,2025/308-14:30:30.330 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_04_14_26_52.event_messages
+2025-308-T14:31:32,EM,2025/308-14:31:23.329 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_04_14_26_52.event_messages
+2025-308-T14:31:34,EM,2025/308-14:31:24.329 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_04_14_26_52.event_messages
+2025-308-T14:38:26,EM,"2025/308-14:38:17.521 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_nov_04_14_37_00.event_messages
+2025-308-T14:38:29,EM,"2025/308-14:38:17.521 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_04_14_37_00.event_messages
+2025-308-T14:39:51,EM,2025/308-14:39:40.039 SCI state change: sciState16Dictionary(IDLE) ==&#62; sciState16Dictionary(ACQSETUP),f25_nov_04_14_37_00.event_messages
+2025-308-T14:39:52,EM,2025/308-14:39:42.579 SCI state change: sciState16Dictionary(ACQSETUP) ==&#62; sciState16Dictionary(ACQ),f25_nov_04_14_37_00.event_messages
+2025-308-T14:42:52,EM,"2025/308-14:42:41.116 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_nov_04_14_37_00.event_messages
+2025-308-T14:44:52,EM,"2025/308-14:44:41.114 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_nov_04_14_37_00.event_messages
+2025-308-T14:46:52,EM,"2025/308-14:46:41.111 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_nov_04_14_37_00.event_messages
+2025-308-T14:48:46,EM,"2025/308-14:48:35.110 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_nov_04_14_47_26.event_messages
+2025-308-T14:50:46,EM,"2025/308-14:50:35.108 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_nov_04_14_47_26.event_messages
+2025-308-T14:51:46,EM,2025/308-14:51:34.027 SCI state change: sciState16Dictionary(ACQ) ==&#62; sciState16Dictionary(CHILL),f25_nov_04_14_47_26.event_messages
+2025-308-T14:51:47,EM,2025/308-14:51:36.166 SCI state change: sciState16Dictionary(CHILL) ==&#62; sciState16Dictionary(ACQCLEANUP),f25_nov_04_14_47_26.event_messages
+2025-308-T14:51:52,EM,"2025/308-14:51:38.287 MEM cleanup found sci data, blocks empty=0x002e, blocks w/data=0x0005",f25_nov_04_14_47_26.event_messages
+2025-308-T14:51:53,EM,2025/308-14:51:40.166 SCI science activity completed: sciState16Dictionary(ACQ),f25_nov_04_14_47_26.event_messages
+2025-308-T14:51:58,EM,2025/308-14:51:40.166 SCI state change: sciState16Dictionary(ACQCLEANUP) ==&#62; sciState16Dictionary(IDLE),f25_nov_04_14_47_26.event_messages
+2025-308-T14:53:04,EM,"2025/308-14:52:55.505 SEQ success (len=0x0580, opCodeLCDictionary(haltstim))",f25_nov_04_14_47_26.event_messages
+2025-308-T14:53:06,EM,"2025/308-14:52:56.505 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_nov_04_14_47_26.event_messages
+2025-308-T14:53:07,EM,"2025/308-14:52:56.505 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_04_14_47_26.event_messages
+2025-308-T14:53:29,EM,"2025/308-14:53:20.505 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_nov_04_14_47_26.event_messages
+2025-308-T14:53:30,EM,"2025/308-14:53:20.505 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_04_14_47_26.event_messages
+2025-308-T15:00:48,EM,2025/308-15:00:39.958 SCI science activity completed: sciState16Dictionary(PROCESS),f25_nov_04_14_57_41.event_messages
+2025-308-T15:01:23,EM,"2025/308-15:01:11.497 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_nov_04_14_57_41.event_messages
+2025-308-T15:01:23,EM,"2025/308-15:01:11.497 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_04_14_57_41.event_messages
+2025-309-T13:51:35,EM,2025/309-13:51:26.463 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_nov_05_13_50_54.event_messages
+2025-309-T13:51:36,EM,2025/309-13:51:27.463 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_05_13_50_54.event_messages
+2025-309-T13:52:06,EM,2025/309-13:51:57.462 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_nov_05_13_50_54.event_messages
+2025-309-T13:52:09,EM,2025/309-13:51:58.462 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_05_13_50_54.event_messages
+2025-309-T13:52:36,EM,2025/309-13:52:27.462 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_nov_05_13_50_54.event_messages
+2025-309-T13:52:39,EM,2025/309-13:52:28.462 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_05_13_50_54.event_messages
+2025-309-T13:53:09,EM,2025/309-13:52:58.462 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_nov_05_13_50_54.event_messages
+2025-309-T13:53:11,EM,2025/309-13:52:59.462 AUT hvps state changed to hvStateDictionary(STANDBY),f25_nov_05_13_50_54.event_messages
+2025-309-T13:55:28,EM,2025/309-13:55:20.460 AUT hvps state changed to hvStateDictionary(OFF),f25_nov_05_13_50_54.event_messages
+2025-309-T14:00:11,EM,"2025/309-14:00:03.657 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_nov_05_13_50_54.event_messages
+2025-309-T14:00:13,EM,"2025/309-14:00:04.657 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_nov_05_13_50_54.event_messages
+2025-309-T14:00:15,EM,"2025/309-14:00:04.657 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_05_13_50_54.event_messages
+2025-309-T14:08:18,EM,"2025/309-14:08:09.852 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_nov_05_14_01_02.event_messages
+2025-309-T21:55:50,EM,"2025/309-21:55:39.075 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(SUSPN) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_05_21_50_27.event_messages
+2025-309-T22:00:56,EM,"2025/309-22:00:46.354 SEQ success (len=0x0580, opCodeLCDictionary(dishtr))",f25_nov_05_22_00_35.event_messages
+2025-309-T22:00:57,EM,"2025/309-22:00:47.354 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_nov_05_22_00_35.event_messages
+2025-309-T22:01:00,EM,"2025/309-22:00:48.354 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_nov_05_22_00_35.event_messages
+2025-309-T22:01:02,EM,"2025/309-22:00:48.354 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_05_22_00_35.event_messages
+2025-310-T13:30:37,EM,2025/310-13:30:29.490 AUT hvps state changed to hvStateDictionary(STANDBY),f25_nov_06_13_20_38.event_messages
+2025-310-T13:33:20,EM,2025/310-13:33:12.487 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_13_30_46.event_messages
+2025-310-T13:33:23,EM,2025/310-13:33:13.487 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_13_30_46.event_messages
+2025-310-T13:34:19,EM,2025/310-13:34:10.486 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_13_30_46.event_messages
+2025-310-T13:34:21,EM,2025/310-13:34:11.486 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_13_30_46.event_messages
+2025-310-T13:35:17,EM,2025/310-13:35:09.485 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_13_30_46.event_messages
+2025-310-T13:35:20,EM,2025/310-13:35:10.485 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_13_30_46.event_messages
+2025-310-T13:36:12,EM,2025/310-13:36:03.484 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_13_30_46.event_messages
+2025-310-T13:36:15,EM,2025/310-13:36:04.484 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_13_30_46.event_messages
+2025-310-T13:48:12,EM,2025/310-13:48:03.470 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_13_41_11.event_messages
+2025-310-T13:48:15,EM,2025/310-13:48:04.471 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_13_41_11.event_messages
+2025-310-T13:49:15,EM,2025/310-13:49:05.469 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_13_41_11.event_messages
+2025-310-T13:49:17,EM,2025/310-13:49:06.469 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_13_41_11.event_messages
+2025-310-T13:50:10,EM,2025/310-13:50:01.468 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_13_41_11.event_messages
+2025-310-T13:50:12,EM,2025/310-13:50:02.468 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_13_41_11.event_messages
+2025-310-T13:53:09,EM,2025/310-13:53:00.465 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_13_51_19.event_messages
+2025-310-T13:53:11,EM,2025/310-13:53:02.465 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_13_51_19.event_messages
+2025-310-T13:54:09,EM,2025/310-13:53:59.464 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_13_51_19.event_messages
+2025-310-T13:54:12,EM,2025/310-13:54:01.465 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_13_51_19.event_messages
+2025-310-T13:55:05,EM,2025/310-13:54:54.464 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_13_51_19.event_messages
+2025-310-T13:55:06,EM,2025/310-13:54:56.464 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_13_51_19.event_messages
+2025-310-T13:58:03,EM,2025/310-13:57:52.461 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_13_51_19.event_messages
+2025-310-T13:58:06,EM,2025/310-13:57:54.461 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_13_51_19.event_messages
+2025-310-T13:59:02,EM,2025/310-13:58:54.460 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_13_51_19.event_messages
+2025-310-T13:59:05,EM,2025/310-13:58:56.460 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_13_51_19.event_messages
+2025-310-T13:59:57,EM,2025/310-13:59:48.459 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_13_51_19.event_messages
+2025-310-T13:59:58,EM,2025/310-13:59:50.459 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_13_51_19.event_messages
+2025-310-T14:02:57,EM,2025/310-14:02:46.456 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_01_27.event_messages
+2025-310-T14:02:59,EM,2025/310-14:02:48.456 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_01_27.event_messages
+2025-310-T14:03:53,EM,2025/310-14:03:44.455 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_01_27.event_messages
+2025-310-T14:03:57,EM,2025/310-14:03:46.455 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_01_27.event_messages
+2025-310-T14:04:53,EM,2025/310-14:04:43.454 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_01_27.event_messages
+2025-310-T14:04:54,EM,2025/310-14:04:45.455 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_01_27.event_messages
+2025-310-T14:07:53,EM,2025/310-14:07:43.452 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_01_27.event_messages
+2025-310-T14:07:54,EM,2025/310-14:07:45.452 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_01_27.event_messages
+2025-310-T14:08:57,EM,2025/310-14:08:45.451 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_01_27.event_messages
+2025-310-T14:08:59,EM,2025/310-14:08:47.451 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_01_27.event_messages
+2025-310-T14:09:52,EM,2025/310-14:09:43.450 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_01_27.event_messages
+2025-310-T14:09:53,EM,2025/310-14:09:45.450 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_01_27.event_messages
+2025-310-T14:16:46,EM,2025/310-14:16:37.444 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_11_35.event_messages
+2025-310-T14:16:47,EM,2025/310-14:16:39.444 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_11_35.event_messages
+2025-310-T14:17:48,EM,2025/310-14:17:39.443 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_11_35.event_messages
+2025-310-T14:17:51,EM,2025/310-14:17:41.443 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_11_35.event_messages
+2025-310-T14:18:47,EM,2025/310-14:18:37.442 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_11_35.event_messages
+2025-310-T14:18:48,EM,2025/310-14:18:39.443 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_11_35.event_messages
+2025-310-T14:21:46,EM,2025/310-14:21:37.440 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_21_43.event_messages
+2025-310-T14:21:47,EM,2025/310-14:21:39.440 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_21_43.event_messages
+2025-310-T14:22:48,EM,2025/310-14:22:39.439 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_21_43.event_messages
+2025-310-T14:22:51,EM,2025/310-14:22:41.439 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_21_43.event_messages
+2025-310-T14:23:47,EM,2025/310-14:23:37.438 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_21_43.event_messages
+2025-310-T14:23:48,EM,2025/310-14:23:39.438 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_21_43.event_messages
+2025-310-T14:26:45,EM,2025/310-14:26:36.436 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_21_43.event_messages
+2025-310-T14:26:47,EM,2025/310-14:26:38.436 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_21_43.event_messages
+2025-310-T14:27:45,EM,2025/310-14:27:35.435 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_21_43.event_messages
+2025-310-T14:27:47,EM,2025/310-14:27:37.435 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_21_43.event_messages
+2025-310-T14:28:41,EM,2025/310-14:28:32.434 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_21_43.event_messages
+2025-310-T14:28:45,EM,2025/310-14:28:34.434 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_21_43.event_messages
+2025-310-T14:31:41,EM,2025/310-14:31:31.432 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_21_43.event_messages
+2025-310-T14:31:42,EM,2025/310-14:31:33.432 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_21_43.event_messages
+2025-310-T14:32:41,EM,2025/310-14:32:32.431 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_31_56.event_messages
+2025-310-T14:32:47,EM,2025/310-14:32:34.431 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_31_56.event_messages
+2025-310-T14:33:39,EM,2025/310-14:33:29.430 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_31_56.event_messages
+2025-310-T14:33:41,EM,2025/310-14:33:31.430 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_31_56.event_messages
+2025-310-T14:36:34,EM,2025/310-14:36:26.428 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_31_56.event_messages
+2025-310-T14:36:40,EM,2025/310-14:36:28.428 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_31_56.event_messages
+2025-310-T14:37:36,EM,2025/310-14:37:27.427 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_31_56.event_messages
+2025-310-T14:37:39,EM,2025/310-14:37:29.427 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_31_56.event_messages
+2025-310-T14:38:35,EM,2025/310-14:38:26.426 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_31_56.event_messages
+2025-310-T14:38:39,EM,2025/310-14:38:28.426 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_31_56.event_messages
+2025-310-T14:45:17,EM,2025/310-14:45:07.421 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_42_16.event_messages
+2025-310-T14:45:21,EM,2025/310-14:45:09.421 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_42_16.event_messages
+2025-310-T14:46:17,EM,2025/310-14:46:09.420 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_42_16.event_messages
+2025-310-T14:46:21,EM,2025/310-14:46:11.420 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_42_16.event_messages
+2025-310-T14:47:17,EM,2025/310-14:47:07.419 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_42_16.event_messages
+2025-310-T14:47:18,EM,2025/310-14:47:09.420 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_42_16.event_messages
+2025-310-T14:50:16,EM,2025/310-14:50:07.417 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_42_16.event_messages
+2025-310-T14:50:18,EM,2025/310-14:50:09.417 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_42_16.event_messages
+2025-310-T14:51:21,EM,2025/310-14:51:10.416 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_42_16.event_messages
+2025-310-T14:51:23,EM,2025/310-14:51:12.416 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_42_16.event_messages
+2025-310-T14:52:17,EM,2025/310-14:52:07.416 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_42_16.event_messages
+2025-310-T14:52:18,EM,2025/310-14:52:09.416 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_42_16.event_messages
+2025-310-T14:55:17,EM,2025/310-14:55:07.413 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_52_24.event_messages
+2025-310-T14:55:21,EM,2025/310-14:55:09.413 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_52_24.event_messages
+2025-310-T14:56:18,EM,2025/310-14:56:09.413 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_52_24.event_messages
+2025-310-T14:56:21,EM,2025/310-14:56:11.413 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_52_24.event_messages
+2025-310-T14:57:15,EM,2025/310-14:57:04.412 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_52_24.event_messages
+2025-310-T14:57:17,EM,2025/310-14:57:06.412 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_52_24.event_messages
+2025-310-T15:00:11,EM,2025/310-15:00:01.410 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_52_24.event_messages
+2025-310-T15:00:12,EM,2025/310-15:00:03.410 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_52_24.event_messages
+2025-310-T15:01:11,EM,2025/310-15:01:02.409 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_52_24.event_messages
+2025-310-T15:01:15,EM,2025/310-15:01:04.409 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_52_24.event_messages
+2025-310-T15:02:10,EM,2025/310-15:02:02.408 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_14_52_24.event_messages
+2025-310-T15:02:15,EM,2025/310-15:02:04.408 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_14_52_24.event_messages
+2025-310-T15:05:11,EM,2025/310-15:05:02.406 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_02_32.event_messages
+2025-310-T15:05:17,EM,2025/310-15:05:04.406 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_02_32.event_messages
+2025-310-T15:06:15,EM,2025/310-15:06:04.405 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_02_32.event_messages
+2025-310-T15:06:17,EM,2025/310-15:06:06.405 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_02_32.event_messages
+2025-310-T15:07:08,EM,2025/310-15:06:59.404 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_02_32.event_messages
+2025-310-T15:07:10,EM,2025/310-15:07:01.404 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_02_32.event_messages
+2025-310-T15:20:00,EM,2025/310-15:19:51.395 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_12_40.event_messages
+2025-310-T15:20:03,EM,2025/310-15:19:53.395 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_12_40.event_messages
+2025-310-T15:20:59,EM,2025/310-15:20:51.394 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_12_40.event_messages
+2025-310-T15:21:02,EM,2025/310-15:20:53.394 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_12_40.event_messages
+2025-310-T15:21:58,EM,2025/310-15:21:49.393 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_12_40.event_messages
+2025-310-T15:22:00,EM,2025/310-15:21:51.393 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_12_40.event_messages
+2025-310-T15:24:59,EM,2025/310-15:24:49.391 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_22_48.event_messages
+2025-310-T15:25:00,EM,2025/310-15:24:51.391 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_22_48.event_messages
+2025-310-T15:26:05,EM,2025/310-15:25:52.390 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_22_48.event_messages
+2025-310-T15:26:05,EM,2025/310-15:25:54.390 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_22_48.event_messages
+2025-310-T15:27:03,EM,2025/310-15:26:52.389 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_22_48.event_messages
+2025-310-T15:27:05,EM,2025/310-15:26:54.390 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_22_48.event_messages
+2025-310-T15:39:05,EM,2025/310-15:38:56.381 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_32_56.event_messages
+2025-310-T15:39:09,EM,2025/310-15:38:58.381 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_32_56.event_messages
+2025-310-T15:40:06,EM,2025/310-15:39:57.380 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_32_56.event_messages
+2025-310-T15:40:08,EM,2025/310-15:39:59.380 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_32_56.event_messages
+2025-310-T15:41:02,EM,2025/310-15:40:53.379 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_32_56.event_messages
+2025-310-T15:41:04,EM,2025/310-15:40:55.379 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_32_56.event_messages
+2025-310-T15:54:21,EM,2025/310-15:54:12.370 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_53_12.event_messages
+2025-310-T15:54:23,EM,2025/310-15:54:14.370 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_53_12.event_messages
+2025-310-T15:55:23,EM,2025/310-15:55:14.369 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_53_12.event_messages
+2025-310-T15:55:26,EM,2025/310-15:55:16.369 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_53_12.event_messages
+2025-310-T15:56:15,EM,2025/310-15:56:06.368 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_15_53_12.event_messages
+2025-310-T15:56:16,EM,2025/310-15:56:08.368 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_15_53_12.event_messages
+2025-310-T16:04:17,EM,2025/310-16:04:08.363 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_16_03_20.event_messages
+2025-310-T16:04:21,EM,2025/310-16:04:10.363 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_16_03_20.event_messages
+2025-310-T16:05:20,EM,2025/310-16:05:10.362 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_16_03_20.event_messages
+2025-310-T16:05:23,EM,2025/310-16:05:12.362 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_16_03_20.event_messages
+2025-310-T16:06:16,EM,2025/310-16:06:07.361 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_16_03_20.event_messages
+2025-310-T16:06:17,EM,2025/310-16:06:09.361 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_16_03_20.event_messages
+2025-310-T16:19:48,EM,2025/310-16:19:37.352 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_16_13_29.event_messages
+2025-310-T16:19:51,EM,2025/310-16:19:39.352 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_16_13_29.event_messages
+2025-310-T16:20:50,EM,2025/310-16:20:40.351 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_16_13_29.event_messages
+2025-310-T16:20:52,EM,2025/310-16:20:42.351 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_16_13_29.event_messages
+2025-310-T16:21:42,EM,2025/310-16:21:33.351 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_16_13_29.event_messages
+2025-310-T16:21:45,EM,2025/310-16:21:35.351 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_16_13_29.event_messages
+2025-310-T16:28:51,EM,2025/310-16:28:42.346 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_16_23_37.event_messages
+2025-310-T16:28:54,EM,2025/310-16:28:44.346 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_16_23_37.event_messages
+2025-310-T16:29:53,EM,2025/310-16:29:45.345 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_16_23_37.event_messages
+2025-310-T16:29:57,EM,2025/310-16:29:47.345 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_16_23_37.event_messages
+2025-310-T16:30:51,EM,2025/310-16:30:41.344 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_16_23_37.event_messages
+2025-310-T16:30:53,EM,2025/310-16:30:43.345 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_16_23_37.event_messages
+2025-310-T16:55:47,EM,2025/310-16:55:37.328 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_16_54_01.event_messages
+2025-310-T16:55:48,EM,2025/310-16:55:39.328 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_16_54_01.event_messages
+2025-310-T16:56:48,EM,2025/310-16:56:39.327 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_16_54_01.event_messages
+2025-310-T16:56:51,EM,2025/310-16:56:41.327 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_16_54_01.event_messages
+2025-310-T16:59:44,EM,2025/310-16:59:36.325 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_16_54_01.event_messages
+2025-310-T16:59:47,EM,2025/310-16:59:38.325 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_16_54_01.event_messages
+2025-310-T17:00:45,EM,2025/310-17:00:34.325 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_16_54_01.event_messages
+2025-310-T17:00:47,EM,2025/310-17:00:36.325 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_16_54_01.event_messages
+2025-310-T17:11:14,EM,2025/310-17:11:06.318 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_04_09.event_messages
+2025-310-T17:11:17,EM,2025/310-17:11:08.318 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_04_09.event_messages
+2025-310-T17:12:14,EM,2025/310-17:12:04.317 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_04_09.event_messages
+2025-310-T17:12:16,EM,2025/310-17:12:06.317 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_04_09.event_messages
+2025-310-T17:19:10,EM,2025/310-17:19:01.312 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_14_17.event_messages
+2025-310-T17:19:11,EM,2025/310-17:19:03.312 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_14_17.event_messages
+2025-310-T17:20:12,EM,2025/310-17:20:03.312 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_14_17.event_messages
+2025-310-T17:20:15,EM,2025/310-17:20:05.312 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_14_17.event_messages
+2025-310-T17:23:10,EM,2025/310-17:23:02.310 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_14_17.event_messages
+2025-310-T17:23:14,EM,2025/310-17:23:04.310 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_14_17.event_messages
+2025-310-T17:27:11,EM,2025/310-17:27:02.307 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_24_25.event_messages
+2025-310-T17:27:15,EM,2025/310-17:27:04.307 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_24_25.event_messages
+2025-310-T17:30:11,EM,2025/310-17:30:02.305 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_24_25.event_messages
+2025-310-T17:30:15,EM,2025/310-17:30:04.305 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_24_25.event_messages
+2025-310-T17:33:10,EM,2025/310-17:33:02.303 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_24_25.event_messages
+2025-310-T17:33:15,EM,2025/310-17:33:04.303 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_24_25.event_messages
+2025-310-T17:35:53,EM,2025/310-17:35:43.302 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_34_33.event_messages
+2025-310-T17:35:54,EM,2025/310-17:35:45.302 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_34_33.event_messages
+2025-310-T17:38:51,EM,2025/310-17:38:42.300 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_34_33.event_messages
+2025-310-T17:38:52,EM,2025/310-17:38:43.300 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_34_33.event_messages
+2025-310-T17:52:32,EM,2025/310-17:52:24.291 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_44_41.event_messages
+2025-310-T17:52:50,EM,2025/310-17:52:41.291 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_44_41.event_messages
+2025-310-T17:54:30,EM,2025/310-17:54:21.290 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_44_41.event_messages
+2025-310-T17:54:42,EM,2025/310-17:54:32.290 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_44_41.event_messages
+2025-310-T17:57:38,EM,2025/310-17:57:30.288 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_54_49.event_messages
+2025-310-T17:57:50,EM,2025/310-17:57:41.288 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_54_49.event_messages
+2025-310-T18:00:48,EM,2025/310-18:00:39.286 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_17_54_49.event_messages
+2025-310-T18:00:57,EM,2025/310-18:00:47.286 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_17_54_49.event_messages
+2025-310-T18:12:08,EM,2025/310-18:11:58.279 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_nov_06_18_04_57.event_messages
+2025-310-T18:12:28,EM,2025/310-18:12:17.279 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_18_04_57.event_messages
+2025-310-T18:13:22,EM,2025/310-18:13:14.278 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_nov_06_18_04_57.event_messages
+2025-310-T18:13:28,EM,2025/310-18:13:20.278 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_18_04_57.event_messages
+2025-310-T18:13:56,EM,2025/310-18:13:46.278 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_nov_06_18_04_57.event_messages
+2025-310-T18:14:02,EM,2025/310-18:13:53.278 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_18_04_57.event_messages
+2025-310-T20:18:40,EM,2025/310-20:18:32.205 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_nov_06_20_16_02.event_messages
+2025-310-T20:18:45,EM,2025/310-20:18:34.205 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_20_16_02.event_messages
+2025-310-T20:21:51,EM,"2025/310-20:21:41.403 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_nov_06_20_16_02.event_messages
+2025-310-T20:21:54,EM,"2025/310-20:21:41.403 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_06_20_16_02.event_messages
+2025-310-T20:23:35,EM,2025/310-20:23:27.022 SCI state change: sciState16Dictionary(IDLE) ==&#62; sciState16Dictionary(ACQSETUP),f25_nov_06_20_16_02.event_messages
+2025-310-T20:23:38,EM,2025/310-20:23:29.662 SCI state change: sciState16Dictionary(ACQSETUP) ==&#62; sciState16Dictionary(ACQ),f25_nov_06_20_16_02.event_messages
+2025-310-T20:26:54,EM,"2025/310-20:26:46.000 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_nov_06_20_26_10.event_messages
+2025-310-T20:29:05,EM,"2025/310-20:28:56.999 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_nov_06_20_26_10.event_messages
+2025-310-T20:31:12,EM,"2025/310-20:31:03.998 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_nov_06_20_26_10.event_messages
+2025-310-T20:33:18,EM,"2025/310-20:33:08.996 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_nov_06_20_26_10.event_messages
+2025-310-T20:35:24,EM,"2025/310-20:35:14.995 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_nov_06_20_26_10.event_messages
+2025-310-T20:36:39,EM,2025/310-20:36:29.015 SCI state change: sciState16Dictionary(ACQ) ==&#62; sciState16Dictionary(CHILL),f25_nov_06_20_26_10.event_messages
+2025-310-T20:36:42,EM,2025/310-20:36:31.055 SCI state change: sciState16Dictionary(CHILL) ==&#62; sciState16Dictionary(ACQCLEANUP),f25_nov_06_20_36_41.event_messages
+2025-310-T20:36:45,EM,"2025/310-20:36:33.176 MEM cleanup found sci data, blocks empty=0x002f, blocks w/data=0x0004",f25_nov_06_20_36_41.event_messages
+2025-310-T20:36:47,EM,2025/310-20:36:35.055 SCI science activity completed: sciState16Dictionary(ACQ),f25_nov_06_20_36_41.event_messages
+2025-310-T20:36:50,EM,2025/310-20:36:35.055 SCI state change: sciState16Dictionary(ACQCLEANUP) ==&#62; sciState16Dictionary(IDLE),f25_nov_06_20_36_41.event_messages
+2025-310-T20:38:02,EM,"2025/310-20:37:53.394 SEQ success (len=0x0580, opCodeLCDictionary(haltstim))",f25_nov_06_20_36_41.event_messages
+2025-310-T20:38:05,EM,"2025/310-20:37:54.394 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_nov_06_20_36_41.event_messages
+2025-310-T20:38:06,EM,"2025/310-20:37:54.394 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_06_20_36_41.event_messages
+2025-310-T20:38:29,EM,"2025/310-20:38:20.394 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_nov_06_20_36_41.event_messages
+2025-310-T20:38:30,EM,"2025/310-20:38:20.394 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_06_20_36_41.event_messages
+2025-310-T20:44:08,EM,2025/310-20:44:00.050 SCI science activity completed: sciState16Dictionary(PROCESS),f25_nov_06_20_36_41.event_messages
+2025-310-T20:44:56,EM,"2025/310-20:44:43.390 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_nov_06_20_36_41.event_messages
+2025-310-T20:44:57,EM,"2025/310-20:44:43.390 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_06_20_36_41.event_messages
+2025-310-T20:46:24,EM,"2025/310-20:46:14.389 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_nov_06_20_36_41.event_messages
+2025-310-T20:46:26,EM,"2025/310-20:46:14.389 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_06_20_36_41.event_messages
+2025-310-T20:48:27,EM,2025/310-20:48:18.188 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_20_46_49.event_messages
+2025-310-T20:48:30,EM,2025/310-20:48:20.188 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_20_46_49.event_messages
+2025-310-T20:49:50,EM,2025/310-20:49:42.008 SCI state change: sciState16Dictionary(IDLE) ==&#62; sciState16Dictionary(ACQSETUP),f25_nov_06_20_46_49.event_messages
+2025-310-T20:49:55,EM,2025/310-20:49:44.647 SCI state change: sciState16Dictionary(ACQSETUP) ==&#62; sciState16Dictionary(ACQ),f25_nov_06_20_46_49.event_messages
+2025-310-T20:50:54,EM,2025/310-20:50:44.187 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_20_46_49.event_messages
+2025-310-T20:50:57,EM,2025/310-20:50:47.187 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_20_46_49.event_messages
+2025-310-T20:55:08,EM,2025/310-20:55:01.185 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_nov_06_20_46_49.event_messages
+2025-310-T20:55:12,EM,2025/310-20:55:03.185 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_20_46_49.event_messages
+2025-310-T20:59:06,EM,2025/310-20:58:58.183 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_nov_06_20_56_58.event_messages
+2025-310-T20:59:09,EM,2025/310-20:59:01.183 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_20_56_58.event_messages
+2025-310-T21:02:08,EM,2025/310-21:02:00.181 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_nov_06_20_56_58.event_messages
+2025-310-T21:02:14,EM,2025/310-21:02:02.181 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_20_56_58.event_messages
+2025-310-T21:04:48,EM,2025/310-21:04:38.180 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_06_20_56_58.event_messages
+2025-310-T21:04:50,EM,2025/310-21:04:41.180 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_20_56_58.event_messages
+2025-310-T21:06:29,EM,2025/310-21:06:21.099 SCI state change: sciState16Dictionary(ACQ) ==&#62; sciState16Dictionary(CHILL),f25_nov_06_20_56_58.event_messages
+2025-310-T21:06:32,EM,2025/310-21:06:23.038 SCI state change: sciState16Dictionary(CHILL) ==&#62; sciState16Dictionary(ACQCLEANUP),f25_nov_06_20_56_58.event_messages
+2025-310-T21:06:35,EM,"2025/310-21:06:25.160 MEM cleanup found sci data, blocks empty=0x0032, blocks w/data=0x0001",f25_nov_06_20_56_58.event_messages
+2025-310-T21:06:37,EM,2025/310-21:06:27.038 SCI science activity completed: sciState16Dictionary(ACQ),f25_nov_06_20_56_58.event_messages
+2025-310-T21:06:38,EM,2025/310-21:06:27.038 SCI state change: sciState16Dictionary(ACQCLEANUP) ==&#62; sciState16Dictionary(IDLE),f25_nov_06_20_56_58.event_messages
+2025-310-T21:07:27,EM,"2025/310-21:07:18.378 SEQ success (len=0x0580, opCodeLCDictionary(haltstim))",f25_nov_06_21_07_06.event_messages
+2025-310-T21:07:29,EM,"2025/310-21:07:19.378 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_nov_06_21_07_06.event_messages
+2025-310-T21:07:30,EM,"2025/310-21:07:19.378 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_06_21_07_06.event_messages
+2025-310-T21:07:54,EM,"2025/310-21:07:45.378 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_nov_06_21_07_06.event_messages
+2025-310-T21:07:55,EM,"2025/310-21:07:45.378 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_06_21_07_06.event_messages
+2025-310-T21:14:04,EM,2025/310-21:13:56.034 SCI science activity completed: sciState16Dictionary(PROCESS),f25_nov_06_21_07_06.event_messages
+2025-310-T21:15:28,EM,"2025/310-21:15:16.374 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_nov_06_21_07_06.event_messages
+2025-310-T21:15:29,EM,"2025/310-21:15:16.374 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_06_21_07_06.event_messages
+2025-310-T21:16:57,EM,2025/310-21:16:48.173 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_nov_06_21_07_06.event_messages
+2025-310-T21:16:59,EM,2025/310-21:16:51.173 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_06_21_07_06.event_messages
+2025-318-T13:50:17,EM,2025/318-13:50:10.010 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_14_13_46_02.event_messages
+2025-318-T13:50:23,EM,2025/318-13:50:16.010 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_14_13_46_02.event_messages
+2025-327-T22:15:10,EM,2025/327-22:15:03.022 SEQ Start Fault Resp: FAULT=faultSeqDictionary(SHUTDOWN_RESET) STATE=seqState3Dictionary(Start) ENG=seqEngineStateDictionary(ACTIV) BUFID=0x20,f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:13,EM,"2025/327-22:15:03.402 SEQ success (len=0x0580, opCodeLCDictionary(setseqst))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:15,EM,"2025/327-22:15:04.401 SEQ success (len=0x0580, opCodeLCDictionary(haltstim))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:16,EM,"2025/327-22:15:05.401 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:19,EM,"2025/327-22:15:06.401 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:21,EM,2025/327-22:15:07.202 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:27,EM,"2025/327-22:15:07.401 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:28,EM,"2025/327-22:15:08.401 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:31,EM,"2025/327-22:15:09.401 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:33,EM,"2025/327-22:15:10.403 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:34,EM,"2025/327-22:15:11.403 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:37,EM,"2025/327-22:15:12.403 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:39,EM,"2025/327-22:15:13.401 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:40,EM,"2025/327-22:15:14.401 SEQ success (len=0x0580, opCodeLCDictionary(dishtr))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:43,EM,"2025/327-22:15:15.401 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:45,EM,"2025/327-22:15:16.401 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:46,EM,"2025/327-22:15:17.401 SEQ success (len=0x0580, opCodeLCDictionary(dumplog))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:51,EM,"2025/327-22:15:18.401 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:15:57,EM,2025/327-22:15:50.201 AUT hvps state changed to hvStateDictionary(STANDBY),f25_nov_23_22_14_00.event_messages
+2025-327-T22:16:21,EM,"2025/327-22:16:14.401 SEQ success (len=0x0580, opCodeLCDictionary(dshvosc))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:16:22,EM,"2025/327-22:16:15.401 SEQ success (len=0x0580, opCodeLCDictionary(dshvosc))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:16:25,EM,"2025/327-22:16:16.401 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:16:27,EM,"2025/327-22:16:18.401 SEQ success (len=0x0580, opCodeLCDictionary(sethvpwr))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:16:28,EM,2025/327-22:16:19.201 AUT hvps state changed to hvStateDictionary(OFF),f25_nov_23_22_14_00.event_messages
+2025-327-T22:16:31,EM,"2025/327-22:16:19.401 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_nov_23_22_14_00.event_messages
+2025-327-T22:16:33,EM,"2025/327-22:16:19.401 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_23_22_14_00.event_messages
+2025-327-T23:09:43,EM,"2010/001-00:00:01.812 UPK boot fsw says hello, version=02.00.0000",f25_nov_23_23_04_40.event_messages
+2025-327-T23:09:48,EM,"2010/001-00:00:01.811 MEM FLASH UErr FOUND, PARAM=0x000000d2",f25_nov_23_23_04_40.event_messages
+2025-327-T23:10:14,EM,"2025/327-23:10:07.923 UPK oper fsw says hello, version=02.00.0000",f25_nov_23_23_04_40.event_messages
+2025-327-T23:10:19,EM,"2025/327-23:10:08.319 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_nov_23_23_04_40.event_messages
+2025-327-T23:10:20,EM,"2025/327-23:10:09.319 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_nov_23_23_04_40.event_messages
+2025-327-T23:10:23,EM,"2025/327-23:10:09.319 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_23_23_04_40.event_messages
+2025-328-T00:25:08,EM,"2025/328-00:25:00.447 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:09,EM,"2025/328-00:25:01.447 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:12,EM,"2025/328-00:25:03.447 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:14,EM,"2025/328-00:25:04.447 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:18,EM,"2025/328-00:25:06.447 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:19,EM,"2025/328-00:25:07.447 SEQ success (len=0x0580, opCodeLCDictionary(sethvpwr))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:20,EM,2025/328-00:25:08.047 AUT hvps state changed to hvStateDictionary(STANDBY),f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:24,EM,"2025/328-00:25:08.447 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:26,EM,"2025/328-00:25:09.447 SEQ success (len=0x0580, opCodeLCDictionary(enahvosc))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:27,EM,"2025/328-00:25:10.447 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:30,EM,"2025/328-00:25:11.447 SEQ success (len=0x0580, opCodeLCDictionary(enahvosc))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:31,EM,"2025/328-00:25:12.447 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:33,EM,"2025/328-00:25:16.447 SEQ success (len=0x0580, opCodeLCDictionary(sethvmax))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:35,EM,"2025/328-00:25:17.447 SEQ success (len=0x0580, opCodeLCDictionary(sethvmax))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:38,EM,"2025/328-00:25:18.447 SEQ success (len=0x0580, opCodeLCDictionary(sethvmax))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:38,EM,"2025/328-00:25:19.447 SEQ success (len=0x0580, opCodeLCDictionary(sethvmax))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:44,EM,"2025/328-00:25:20.447 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_nov_24_00_15_37.event_messages
+2025-328-T00:25:45,EM,2025/328-00:25:21.047 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_nov_24_00_25_45.event_messages
+2025-328-T00:25:48,EM,"2025/328-00:25:21.447 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:25:49,EM,"2025/328-00:25:22.447 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:25:50,EM,"2025/328-00:25:23.447 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:25:53,EM,"2025/328-00:25:24.449 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:25:55,EM,"2025/328-00:25:25.449 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:25:56,EM,"2025/328-00:25:26.449 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:25:59,EM,"2025/328-00:25:27.447 SEQ success (len=0x0580, opCodeLCDictionary(initadc))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:26:01,EM,"2025/328-00:25:28.447 SEQ success (len=0x0580, opCodeLCDictionary(initadc))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:26:03,EM,"2025/328-00:25:29.447 SEQ success (len=0x0580, opCodeLCDictionary(caladc))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:26:05,EM,"2025/328-00:25:30.447 SEQ success (len=0x0580, opCodeLCDictionary(caladc))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:26:09,EM,"2025/328-00:25:31.447 SEQ success (len=0x0580, opCodeLCDictionary(trainadcclk))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:26:12,EM,"2025/328-00:25:32.447 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:26:14,EM,"2025/328-00:25:39.446 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:26:15,EM,"2025/328-00:25:39.446 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_24_00_25_45.event_messages
+2025-328-T00:26:17,EM,2025/328-00:26:02.046 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_nov_24_00_25_45.event_messages
+2025-328-T00:28:07,EM,"2025/328-00:28:00.444 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:28:08,EM,"2025/328-00:28:01.444 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:28:11,EM,"2025/328-00:28:03.444 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:28:14,EM,"2025/328-00:28:04.444 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:28:16,EM,"2025/328-00:28:06.444 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:28:17,EM,"2025/328-00:28:07.244 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:28:22,EM,"2025/328-00:28:07.244 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_24_00_25_45.event_messages
+2025-328-T00:28:24,EM,"2025/328-00:28:07.444 SEQ success (len=0x0580, opCodeLCDictionary(cfgsciacq))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:28:26,EM,"2025/328-00:28:08.444 SEQ success (len=0x0580, opCodeLCDictionary(cfgadctof))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:28:29,EM,"2025/328-00:28:08.444 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_24_00_25_45.event_messages
+2025-328-T00:30:15,EM,"2025/328-00:30:05.442 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:30:18,EM,"2025/328-00:30:06.442 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:30:21,EM,"2025/328-00:30:08.442 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:30:23,EM,"2025/328-00:30:09.442 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:30:24,EM,"2025/328-00:30:11.442 SEQ success (len=0x0580, opCodeLCDictionary(setprm))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:30:29,EM,"2025/328-00:30:12.442 SEQ success (len=0x0580, opCodeLCDictionary(acquire))",f25_nov_24_00_25_45.event_messages
+2025-328-T00:30:30,EM,"2025/328-00:30:12.442 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_nov_24_00_25_45.event_messages
+2025-328-T00:30:33,EM,2025/328-00:30:12.442 SCI state change: sciState16Dictionary(IDLE) ==&#62; sciState16Dictionary(ACQSETUP),f25_nov_24_00_25_45.event_messages
+2025-328-T00:30:35,EM,2025/328-00:30:15.102 SCI state change: sciState16Dictionary(ACQSETUP) ==&#62; sciState16Dictionary(ACQ),f25_nov_24_00_25_45.event_messages
+2025-340-T18:17:35,EM,"2025/340-18:17:30.026 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_06_18_10_12.event_messages
+2025-340-T18:17:37,EM,2025/340-18:17:30.026 SCI state change: sciState16Dictionary(ACQ) ==&#62; sciState16Dictionary(CHILL),f25_dec_06_18_10_12.event_messages
+2025-340-T18:17:38,EM,"2025/340-18:17:31.026 SEQ success (len=0x0580, opCodeLCDictionary(setprm))",f25_dec_06_18_10_12.event_messages
+2025-340-T18:17:43,EM,"2025/340-18:17:32.026 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_06_18_10_12.event_messages
+2025-340-T18:17:44,EM,"2025/340-18:17:33.607 MEM cleanup found sci data, blocks empty=0x002e, blocks w/data=0x0005",f25_dec_06_18_10_12.event_messages
+2025-340-T18:17:47,EM,2025/340-18:17:35.486 SCI science activity completed: sciState16Dictionary(ACQ),f25_dec_06_18_10_12.event_messages
+2025-340-T18:17:49,EM,"2025/340-18:17:37.026 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_dec_06_18_10_12.event_messages
+2025-340-T18:17:50,EM,"2025/340-18:17:38.026 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_06_18_10_12.event_messages
+2025-340-T18:17:53,EM,"2025/340-18:17:40.026 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_dec_06_18_10_12.event_messages
+2025-340-T18:17:55,EM,"2025/340-18:17:40.026 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_06_18_10_12.event_messages
+2025-340-T18:17:56,EM,"2025/340-18:17:40.826 SEQ success (len=0x0580, opCodeLCDictionary(haltstim))",f25_dec_06_18_10_12.event_messages
+2025-340-T18:17:59,EM,"2025/340-18:17:41.826 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_06_18_10_12.event_messages
+2025-340-T18:18:01,EM,"2025/340-18:17:41.826 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_06_18_10_12.event_messages
+2025-340-T18:20:50,EM,2025/340-18:20:44.625 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_dec_06_18_20_20.event_messages
+2025-340-T18:21:05,EM,2025/340-18:20:57.625 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_dec_06_18_20_20.event_messages
+2025-340-T18:21:55,EM,2025/340-18:21:48.625 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_dec_06_18_20_20.event_messages
+2025-340-T18:21:59,EM,2025/340-18:21:51.625 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_dec_06_18_20_20.event_messages
+2025-343-T00:00:05,EM,"2025/343-00:00:00.944 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_08_23_50_18.event_messages
+2025-343-T00:00:07,EM,2025/343-00:00:00.944 SCI state change: sciState16Dictionary(ACQ) ==&#62; sciState16Dictionary(CHILL),f25_dec_08_23_50_18.event_messages
+2025-343-T00:00:12,EM,"2025/343-00:00:01.944 SEQ success (len=0x0580, opCodeLCDictionary(setprm))",f25_dec_08_23_50_18.event_messages
+2025-343-T00:00:13,EM,"2025/343-00:00:02.944 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_08_23_50_18.event_messages
+2025-343-T00:00:16,EM,"2025/343-00:00:04.526 MEM cleanup found sci data, blocks empty=0x0021, blocks w/data=0x0012",f25_dec_08_23_50_18.event_messages
+2025-343-T00:00:18,EM,2025/343-00:00:06.404 SCI science activity completed: sciState16Dictionary(ACQ),f25_dec_08_23_50_18.event_messages
+2025-343-T00:00:21,EM,"2025/343-00:00:07.944 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_dec_08_23_50_18.event_messages
+2025-343-T00:00:22,EM,"2025/343-00:00:08.944 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_08_23_50_18.event_messages
+2025-343-T00:00:25,EM,"2025/343-00:00:10.944 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_dec_08_23_50_18.event_messages
+2025-343-T00:00:27,EM,"2025/343-00:00:10.944 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_09_00_00_26.event_messages
+2025-343-T00:00:28,EM,"2025/343-00:00:11.744 SEQ success (len=0x0580, opCodeLCDictionary(haltstim))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:00:31,EM,"2025/343-00:00:12.744 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:00:33,EM,"2025/343-00:00:12.744 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:21,EM,"2025/343-00:01:15.943 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:22,EM,"2025/343-00:01:16.943 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:25,EM,"2025/343-00:01:18.943 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:27,EM,"2025/343-00:01:19.943 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:30,EM,"2025/343-00:01:21.943 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:31,EM,"2025/343-00:01:22.743 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:36,EM,"2025/343-00:01:22.743 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:37,EM,"2025/343-00:01:22.943 SEQ success (len=0x0580, opCodeLCDictionary(cfgsciacq))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:40,EM,"2025/343-00:01:23.943 SEQ success (len=0x0580, opCodeLCDictionary(cfgadctof))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:43,EM,"2025/343-00:01:24.943 SEQ success (len=0x0580, opCodeLCDictionary(setprm))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:46,EM,"2025/343-00:01:25.943 SEQ success (len=0x0580, opCodeLCDictionary(acquire))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:48,EM,2025/343-00:01:25.943 SCI state change: sciState16Dictionary(IDLE) ==&#62; sciState16Dictionary(ACQSETUP),f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:49,EM,"2025/343-00:01:26.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:01:54,EM,2025/343-00:01:28.603 SCI state change: sciState16Dictionary(ACQSETUP) ==&#62; sciState16Dictionary(ACQ),f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:04,EM,"2025/343-00:01:57.943 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:06,EM,"2025/343-00:01:58.943 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:07,EM,"2025/343-00:01:59.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:12,EM,"2025/343-00:02:03.943 SEQ success (len=0x0580, opCodeLCDictionary(cfgstim))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:13,EM,"2025/343-00:02:04.943 SEQ success (len=0x0580, opCodeLCDictionary(enstim))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:16,EM,"2025/343-00:02:05.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:19,EM,"2025/343-00:02:06.343 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:22,EM,"2025/343-00:02:11.943 SEQ success (len=0x0580, opCodeLCDictionary(cfgstim))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:24,EM,"2025/343-00:02:12.943 SEQ success (len=0x0580, opCodeLCDictionary(enstim))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:25,EM,"2025/343-00:02:13.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:30,EM,"2025/343-00:02:14.343 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:31,EM,"2025/343-00:02:19.943 SEQ success (len=0x0580, opCodeLCDictionary(cfgstim))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:34,EM,"2025/343-00:02:20.943 SEQ success (len=0x0580, opCodeLCDictionary(enstim))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:37,EM,"2025/343-00:02:21.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:40,EM,"2025/343-00:02:22.343 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:42,EM,"2025/343-00:02:27.943 SEQ success (len=0x0580, opCodeLCDictionary(cfgstim))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:44,EM,"2025/343-00:02:28.943 SEQ success (len=0x0580, opCodeLCDictionary(enstim))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:48,EM,"2025/343-00:02:29.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:49,EM,"2025/343-00:02:30.343 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:53,EM,"2025/343-00:02:35.943 SEQ success (len=0x0580, opCodeLCDictionary(cfgstim))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:55,EM,"2025/343-00:02:36.943 SEQ success (len=0x0580, opCodeLCDictionary(enstim))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:02:59,EM,"2025/343-00:02:37.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:00,EM,"2025/343-00:02:38.343 UPK stim pulser operation completed, , PulserSel=0x00000007",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:01,EM,"2025/343-00:02:43.943 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:06,EM,2025/343-00:02:44.543 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:07,EM,"2025/343-00:02:44.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:10,EM,2025/343-00:02:47.543 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:13,EM,"2025/343-00:02:49.943 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:16,EM,"2025/343-00:02:50.943 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:18,EM,"2025/343-00:02:51.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:20,EM,"2025/343-00:02:55.943 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:24,EM,2025/343-00:02:56.543 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:25,EM,"2025/343-00:02:56.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:28,EM,2025/343-00:02:57.543 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:31,EM,"2025/343-00:03:01.943 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:34,EM,"2025/343-00:03:02.943 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:36,EM,"2025/343-00:03:03.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:37,EM,"2025/343-00:03:07.943 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:42,EM,2025/343-00:03:08.543 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:43,EM,"2025/343-00:03:08.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:48,EM,2025/343-00:03:11.543 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:49,EM,"2025/343-00:03:13.943 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:52,EM,"2025/343-00:03:14.943 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:54,EM,"2025/343-00:03:15.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:55,EM,"2025/343-00:03:19.943 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:03:58,EM,2025/343-00:03:20.543 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:00,EM,"2025/343-00:03:20.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:01,EM,2025/343-00:03:21.543 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:04,EM,"2025/343-00:03:25.943 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:06,EM,"2025/343-00:03:26.943 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:07,EM,"2025/343-00:03:27.943 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:12,EM,"2025/343-00:03:31.943 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:13,EM,2025/343-00:03:32.543 AUT hvps state changed to hvStateDictionary(RAMPUP),f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:16,EM,"2025/343-00:03:32.943 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:18,EM,2025/343-00:03:32.943 SCI state change: sciState16Dictionary(ACQ) ==&#62; sciState16Dictionary(CHILL),f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:19,EM,"2025/343-00:03:33.943 SEQ success (len=0x0580, opCodeLCDictionary(setprm))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:22,EM,"2025/343-00:03:34.943 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:24,EM,2025/343-00:03:35.543 AUT hvps state changed to hvStateDictionary(ACTIVE),f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:25,EM,"2025/343-00:03:36.524 MEM cleanup found sci data, blocks empty=0x0031, blocks w/data=0x0002",f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:28,EM,2025/343-00:03:38.402 SCI science activity completed: sciState16Dictionary(ACQ),f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:30,EM,"2025/343-00:03:39.943 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:31,EM,"2025/343-00:03:39.943 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:34,EM,"2025/343-00:03:40.743 SEQ success (len=0x0580, opCodeLCDictionary(haltstim))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:37,EM,"2025/343-00:03:41.743 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:04:40,EM,"2025/343-00:03:41.743 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_09_00_00_26.event_messages
+2025-343-T00:06:22,EM,"2025/343-00:06:15.942 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:06:24,EM,"2025/343-00:06:16.942 SEQ success (len=0x0580, opCodeLCDictionary(setprm))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:06:25,EM,"2025/343-00:06:17.942 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:06:28,EM,"2025/343-00:06:19.942 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:06:28,EM,"2025/343-00:06:20.942 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:06:30,EM,"2025/343-00:06:22.942 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:06:31,EM,"2025/343-00:06:22.942 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_09_00_00_26.event_messages
+2025-343-T00:06:32,EM,"2025/343-00:06:23.742 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_dec_09_00_00_26.event_messages
+2025-343-T00:06:33,EM,"2025/343-00:06:23.742 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_09_00_00_26.event_messages
+2025-343-T00:09:48,EM,2025/343-00:09:43.000 SCI science activity completed: sciState16Dictionary(PROCESS),f25_dec_09_00_00_26.event_messages
+2025-343-T00:12:37,EM,2025/343-00:12:31.999 SCI science activity completed: sciState16Dictionary(PROCESS),f25_dec_09_00_10_35.event_messages
+2025-343-T00:36:40,EM,2025/343-00:36:34.991 SCI science activity completed: sciState16Dictionary(PROCESS),f25_dec_09_00_30_51.event_messages
+2025-343-T00:58:40,EM,2025/343-00:58:33.984 SCI science activity completed: sciState16Dictionary(PROCESS),f25_dec_09_00_51_07.event_messages
+2025-343-T01:32:12,EM,2025/343-01:32:06.773 SCI science activity completed: sciState16Dictionary(PROCESS),f25_dec_09_01_31_39.event_messages
+2025-343-T01:32:22,EM,"2025/343-01:32:16.913 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:32:23,EM,"2025/343-01:32:17.913 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:32:25,EM,"2025/343-01:32:19.913 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:32:26,EM,"2025/343-01:32:20.913 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:32:28,EM,"2025/343-01:32:22.913 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:32:30,EM,"2025/343-01:32:22.913 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_09_01_31_39.event_messages
+2025-343-T01:32:31,EM,"2025/343-01:32:23.713 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:32:34,EM,"2025/343-01:32:23.713 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_09_01_31_39.event_messages
+2025-343-T01:33:34,EM,"2025/343-01:33:26.913 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:33:36,EM,"2025/343-01:33:27.913 SEQ success (len=0x0580, opCodeLCDictionary(setprm))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:33:40,EM,"2025/343-01:33:28.913 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:33:42,EM,"2025/343-01:33:30.913 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:33:43,EM,"2025/343-01:33:31.913 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:33:46,EM,"2025/343-01:33:33.912 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:33:48,EM,"2025/343-01:33:33.913 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_09_01_31_39.event_messages
+2025-343-T01:34:42,EM,"2025/343-01:34:36.912 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:34:43,EM,"2025/343-01:34:37.912 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:34:46,EM,"2025/343-01:34:39.912 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:34:48,EM,"2025/343-01:34:40.912 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:34:49,EM,"2025/343-01:34:42.912 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:34:52,EM,2025/343-01:34:43.512 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f25_dec_09_01_31_39.event_messages
+2025-343-T01:34:54,EM,"2025/343-01:34:43.912 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:34:58,EM,"2025/343-01:34:44.912 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:35:00,EM,"2025/343-01:34:45.912 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:35:01,EM,"2025/343-01:34:46.914 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:35:04,EM,"2025/343-01:34:47.914 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:35:06,EM,"2025/343-01:34:48.914 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:35:07,EM,"2025/343-01:34:49.912 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:35:34,EM,2025/343-01:35:27.512 AUT hvps state changed to hvStateDictionary(STANDBY),f25_dec_09_01_31_39.event_messages
+2025-343-T01:35:58,EM,"2025/343-01:35:50.912 SEQ success (len=0x0580, opCodeLCDictionary(dshvosc))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:36:00,EM,"2025/343-01:35:51.912 SEQ success (len=0x0580, opCodeLCDictionary(dshvosc))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:36:01,EM,"2025/343-01:35:52.912 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:36:04,EM,"2025/343-01:35:54.912 SEQ success (len=0x0580, opCodeLCDictionary(sethvpwr))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:36:06,EM,"2025/343-01:35:54.912 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_09_01_31_39.event_messages
+2025-343-T01:36:07,EM,2025/343-01:35:55.512 AUT hvps state changed to hvStateDictionary(OFF),f25_dec_09_01_31_39.event_messages
+2025-343-T01:37:48,EM,"2025/343-01:37:41.911 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:37:49,EM,"2025/343-01:37:42.911 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:37:52,EM,"2025/343-01:37:44.911 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:37:55,EM,"2025/343-01:37:45.911 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:37:57,EM,"2025/343-01:37:47.911 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:37:58,EM,"2025/343-01:37:48.711 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:38:03,EM,"2025/343-01:37:48.911 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:38:04,EM,"2025/343-01:37:49.711 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:38:07,EM,"2025/343-01:37:49.711 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_09_01_31_39.event_messages
+2025-343-T01:38:10,EM,"2025/343-01:37:49.911 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:38:13,EM,"2025/343-01:37:50.911 SEQ success (len=0x0580, opCodeLCDictionary(cfghtr))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:38:15,EM,"2025/343-01:37:51.911 SEQ success (len=0x0580, opCodeLCDictionary(cfghtr))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:38:16,EM,"2025/343-01:37:52.911 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_01_31_39.event_messages
+2025-343-T01:52:01,EM,"2025/343-01:51:53.904 SEQ success (len=0x0580, opCodeLCDictionary(cfghtr))",f25_dec_09_01_51_55.event_messages
+2025-343-T01:52:03,EM,"2025/343-01:51:54.904 SEQ success (len=0x0580, opCodeLCDictionary(cfghtr))",f25_dec_09_01_51_55.event_messages
+2025-343-T01:52:04,EM,"2025/343-01:51:55.904 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_01_51_55.event_messages
+2025-343-T02:16:03,EM,"2025/343-02:15:56.889 SEQ success (len=0x0580, opCodeLCDictionary(cfghtr))",f25_dec_09_02_12_11.event_messages
+2025-343-T02:16:04,EM,"2025/343-02:15:57.889 SEQ success (len=0x0580, opCodeLCDictionary(cfghtr))",f25_dec_09_02_12_11.event_messages
+2025-343-T02:16:09,EM,"2025/343-02:15:58.889 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_02_12_11.event_messages
+2025-343-T02:40:07,EM,"2025/343-02:39:59.871 SEQ success (len=0x0580, opCodeLCDictionary(cfghtr))",f25_dec_09_02_32_27.event_messages
+2025-343-T02:40:10,EM,"2025/343-02:40:00.871 SEQ success (len=0x0580, opCodeLCDictionary(cfghtr))",f25_dec_09_02_32_27.event_messages
+2025-343-T02:40:12,EM,"2025/343-02:40:01.871 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_02_32_27.event_messages
+2025-343-T03:04:10,EM,"2025/343-03:04:02.853 SEQ success (len=0x0580, opCodeLCDictionary(cfghtr))",f25_dec_09_03_02_51.event_messages
+2025-343-T03:04:12,EM,"2025/343-03:04:03.852 SEQ success (len=0x0580, opCodeLCDictionary(cfghtr))",f25_dec_09_03_02_51.event_messages
+2025-343-T03:04:13,EM,"2025/343-03:04:04.853 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f25_dec_09_03_02_51.event_messages
+2025-345-T00:00:09,EM,"2025/345-00:00:00.229 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_10_23_51_08.event_messages
+2025-345-T00:00:10,EM,2025/345-00:00:00.229 SCI state change: sciState16Dictionary(ACQ) ==&#62; sciState16Dictionary(CHILL),f25_dec_10_23_51_08.event_messages
+2025-345-T00:00:12,EM,"2025/345-00:00:01.229 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_10_23_51_08.event_messages
+2025-345-T00:00:16,EM,2025/345-00:00:01.689 SCI state change: sciState16Dictionary(CHILL) ==&#62; sciState16Dictionary(ACQCLEANUP),f25_dec_10_23_51_08.event_messages
+2025-345-T00:00:19,EM,"2025/345-00:00:03.811 MEM cleanup found sci data, blocks empty=0x0026, blocks w/data=0x000d",f25_dec_10_23_51_08.event_messages
+2025-345-T00:00:21,EM,2025/345-00:00:05.689 SCI science activity completed: sciState16Dictionary(ACQ),f25_dec_10_23_51_08.event_messages
+2025-345-T00:00:21,EM,2025/345-00:00:05.689 SCI state change: sciState16Dictionary(ACQCLEANUP) ==&#62; sciState16Dictionary(IDLE),f25_dec_10_23_51_08.event_messages
+2025-345-T00:00:27,EM,"2025/345-00:00:07.229 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_dec_10_23_51_08.event_messages
+2025-345-T00:00:27,EM,"2025/345-00:00:08.229 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_10_23_51_08.event_messages
+2025-345-T00:00:31,EM,"2025/345-00:00:10.229 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_dec_10_23_51_08.event_messages
+2025-345-T00:00:33,EM,"2025/345-00:00:11.229 SEQ success (len=0x0580, opCodeLCDictionary(cfgsciacq))",f25_dec_10_23_51_08.event_messages
+2025-345-T00:00:37,EM,"2025/345-00:00:12.229 SEQ success (len=0x0580, opCodeLCDictionary(cfgadctof))",f25_dec_10_23_51_08.event_messages
+2025-345-T00:00:39,EM,"2025/345-00:00:12.229 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_10_23_51_08.event_messages
+2025-345-T00:02:15,EM,"2025/345-00:02:05.228 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_11_00_01_16.event_messages
+2025-345-T00:02:16,EM,"2025/345-00:02:06.229 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_11_00_01_16.event_messages
+2025-345-T00:02:19,EM,"2025/345-00:02:08.228 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_dec_11_00_01_16.event_messages
+2025-345-T00:02:22,EM,"2025/345-00:02:09.229 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_11_00_01_16.event_messages
+2025-345-T00:02:25,EM,"2025/345-00:02:11.228 SEQ success (len=0x0580, opCodeLCDictionary(setprm))",f25_dec_11_00_01_16.event_messages
+2025-345-T00:02:27,EM,"2025/345-00:02:12.229 SEQ success (len=0x0580, opCodeLCDictionary(acquire))",f25_dec_11_00_01_16.event_messages
+2025-345-T00:02:28,EM,"2025/345-00:02:12.229 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_11_00_01_16.event_messages
+2025-345-T00:02:33,EM,2025/345-00:02:12.228 SCI state change: sciState16Dictionary(IDLE) ==&#62; sciState16Dictionary(ACQSETUP),f25_dec_11_00_01_16.event_messages
+2025-345-T00:02:34,EM,2025/345-00:02:14.888 SCI state change: sciState16Dictionary(ACQSETUP) ==&#62; sciState16Dictionary(ACQ),f25_dec_11_00_01_16.event_messages
+2025-352-T16:53:44,EM,"2025/352-16:53:38.527 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_18_16_49_01.event_messages
+2025-352-T16:53:47,EM,2025/352-16:53:38.527 SCI state change: sciState16Dictionary(ACQ) ==&#62; sciState16Dictionary(CHILL),f25_dec_18_16_49_01.event_messages
+2025-352-T16:53:50,EM,"2025/352-16:53:39.527 SEQ success (len=0x0580, opCodeLCDictionary(setprm))",f25_dec_18_16_49_01.event_messages
+2025-352-T16:53:52,EM,"2025/352-16:53:40.527 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_18_16_49_01.event_messages
+2025-352-T16:53:55,EM,"2025/352-16:53:42.108 MEM cleanup found sci data, blocks empty=0x002f, blocks w/data=0x0004",f25_dec_18_16_49_01.event_messages
+2025-352-T16:53:56,EM,2025/352-16:53:43.986 SCI science activity completed: sciState16Dictionary(ACQ),f25_dec_18_16_49_01.event_messages
+2025-352-T16:53:59,EM,"2025/352-16:53:45.527 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_dec_18_16_49_01.event_messages
+2025-352-T16:54:01,EM,"2025/352-16:53:46.527 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_18_16_49_01.event_messages
+2025-352-T16:54:02,EM,"2025/352-16:53:48.527 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_dec_18_16_49_01.event_messages
+2025-352-T16:54:05,EM,"2025/352-16:53:48.527 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_18_16_49_01.event_messages
+2025-352-T16:54:07,EM,"2025/352-16:53:49.326 SEQ success (len=0x0580, opCodeLCDictionary(haltstim))",f25_dec_18_16_49_01.event_messages
+2025-352-T16:54:08,EM,"2025/352-16:53:50.327 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_18_16_49_01.event_messages
+2025-352-T16:54:11,EM,"2025/352-16:53:50.327 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_18_16_49_01.event_messages
+2025-352-T16:59:25,EM,"2025/352-16:59:20.325 SEQ success (len=0x0580, opCodeLCDictionary(noop))",f25_dec_18_16_59_09.event_messages
+2025-352-T16:59:26,EM,"2025/352-16:59:20.325 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_18_16_59_09.event_messages
+2025-352-T17:27:00,EM,2025/352-17:26:55.975 SCI science activity completed: sciState16Dictionary(PROCESS),f25_dec_18_17_19_41.event_messages
+2025-352-T17:28:04,EM,"2025/352-17:27:55.315 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_18_17_19_41.event_messages
+2025-352-T17:28:05,EM,"2025/352-17:27:55.315 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_18_17_19_41.event_messages
+2025-361-T00:00:05,EM,"2025/361-00:00:00.552 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_26_23_52_06.event_messages
+2025-361-T00:00:07,EM,2025/361-00:00:00.552 SCI state change: sciState16Dictionary(ACQ) ==&#62; sciState16Dictionary(CHILL),f25_dec_26_23_52_06.event_messages
+2025-361-T00:00:08,EM,"2025/361-00:00:01.552 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_26_23_52_06.event_messages
+2025-361-T00:00:13,EM,2025/361-00:00:02.012 SCI state change: sciState16Dictionary(CHILL) ==&#62; sciState16Dictionary(ACQCLEANUP),f25_dec_26_23_52_06.event_messages
+2025-361-T00:00:14,EM,"2025/361-00:00:04.133 MEM cleanup found sci data, blocks empty=0x002d, blocks w/data=0x0006",f25_dec_26_23_52_06.event_messages
+2025-361-T00:00:17,EM,2025/361-00:00:06.012 SCI science activity completed: sciState16Dictionary(ACQ),f25_dec_26_23_52_06.event_messages
+2025-361-T00:00:20,EM,2025/361-00:00:06.012 SCI state change: sciState16Dictionary(ACQCLEANUP) ==&#62; sciState16Dictionary(IDLE),f25_dec_26_23_52_06.event_messages
+2025-361-T00:00:23,EM,"2025/361-00:00:07.552 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_dec_26_23_52_06.event_messages
+2025-361-T00:00:25,EM,"2025/361-00:00:08.552 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_26_23_52_06.event_messages
+2025-361-T00:00:26,EM,"2025/361-00:00:10.552 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f25_dec_26_23_52_06.event_messages
+2025-361-T00:00:32,EM,"2025/361-00:00:11.552 SEQ success (len=0x0580, opCodeLCDictionary(cfgsciacq))",f25_dec_26_23_52_06.event_messages
+2025-361-T00:00:33,EM,"2025/361-00:00:12.552 SEQ success (len=0x0580, opCodeLCDictionary(cfgadctof))",f25_dec_26_23_52_06.event_messages
+2025-361-T00:00:36,EM,"2025/361-00:00:12.552 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_26_23_52_06.event_messages
+2025-361-T00:02:09,EM,"2025/361-00:02:05.551 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f25_dec_26_23_52_06.event_messages
+2025-361-T00:02:12,EM,"2025/361-00:02:06.551 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_26_23_52_06.event_messages
+2025-361-T00:02:14,EM,"2025/361-00:02:08.551 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f25_dec_27_00_02_14.event_messages
+2025-361-T00:02:15,EM,"2025/361-00:02:09.551 SEQ success (len=0x0580, opCodeLCDictionary(suspidlesci))",f25_dec_27_00_02_14.event_messages
+2025-361-T00:02:20,EM,"2025/361-00:02:11.551 SEQ success (len=0x0580, opCodeLCDictionary(setprm))",f25_dec_27_00_02_14.event_messages
+2025-361-T00:02:21,EM,"2025/361-00:02:12.551 SEQ success (len=0x0580, opCodeLCDictionary(acquire))",f25_dec_27_00_02_14.event_messages
+2025-361-T00:02:24,EM,"2025/361-00:02:12.551 SEQ engine has changed state, eng=seqEngineDictionary(OPER) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f25_dec_27_00_02_14.event_messages
+2025-361-T00:02:27,EM,2025/361-00:02:12.551 SCI state change: sciState16Dictionary(IDLE) ==&#62; sciState16Dictionary(ACQSETUP),f25_dec_27_00_02_14.event_messages
+2025-361-T00:02:30,EM,2025/361-00:02:15.211 SCI state change: sciState16Dictionary(ACQSETUP) ==&#62; sciState16Dictionary(ACQ),f25_dec_27_00_02_14.event_messages
+2026-5T0-1:30:09,EM,2026/005-01:30:06.048 SEQ Start Fault Resp: FAULT=faultSeqDictionary(SHUTDOWN_RESET) STATE=seqState3Dictionary(Start) ENG=seqEngineStateDictionary(ACTIV) BUFID=0x20,f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:14,EM,"2026/005-01:30:07.028 SEQ success (len=0x0580, opCodeLCDictionary(setseqst))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:15,EM,"2026/005-01:30:08.028 SEQ success (len=0x0580, opCodeLCDictionary(haltstim))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:18,EM,"2026/005-01:30:09.028 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:21,EM,2026/005-01:30:09.028 SCI state change: sciState16Dictionary(ACQ) ==&#62; sciState16Dictionary(CHILL),f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:26,EM,"2026/005-01:30:10.028 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:27,EM,2026/005-01:30:10.688 SCI state change: sciState16Dictionary(CHILL) ==&#62; sciState16Dictionary(ACQCLEANUP),f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:32,EM,2026/005-01:30:10.828 AUT hvps state changed to hvStateDictionary(RAMPDOWN),f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:33,EM,"2026/005-01:30:11.028 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:36,EM,"2026/005-01:30:12.028 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:39,EM,"2026/005-01:30:12.810 MEM cleanup found sci data, blocks empty=0x002f, blocks w/data=0x0004",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:42,EM,"2026/005-01:30:13.028 SEQ success (len=0x0580, opCodeLCDictionary(sethvsetpt))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:44,EM,"2026/005-01:30:14.030 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:45,EM,2026/005-01:30:14.688 SCI science activity completed: sciState16Dictionary(ACQ),f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:50,EM,2026/005-01:30:14.688 SCI state change: sciState16Dictionary(ACQCLEANUP) ==&#62; sciState16Dictionary(IDLE),f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:51,EM,"2026/005-01:30:15.030 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:54,EM,"2026/005-01:30:16.030 SEQ success (len=0x0580, opCodeLCDictionary(pwradc))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:30:57,EM,"2026/005-01:30:17.028 SEQ success (len=0x0580, opCodeLCDictionary(haltmem))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:00,EM,"2026/005-01:30:18.028 SEQ success (len=0x0580, opCodeLCDictionary(dishtr))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:02,EM,"2026/005-01:30:19.028 SEQ success (len=0x0580, opCodeLCDictionary(dualcmd))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:03,EM,"2026/005-01:30:20.028 SEQ success (len=0x0580, opCodeLCDictionary(rawwrt))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:08,EM,"2026/005-01:30:21.028 SEQ success (len=0x0580, opCodeLCDictionary(dumplog))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:09,EM,"2026/005-01:30:22.028 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:12,EM,2026/005-01:30:53.828 AUT hvps state changed to hvStateDictionary(STANDBY),f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:19,EM,"2026/005-01:31:18.028 SEQ success (len=0x0580, opCodeLCDictionary(dshvosc))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:21,EM,"2026/005-01:31:19.028 SEQ success (len=0x0580, opCodeLCDictionary(dshvosc))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:26,EM,"2026/005-01:31:20.028 SEQ success (len=0x0580, opCodeLCDictionary(susprel))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:26,EM,"2026/005-01:31:22.028 SEQ success (len=0x0580, opCodeLCDictionary(sethvpwr))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:29,EM,2026/005-01:31:22.828 AUT hvps state changed to hvStateDictionary(OFF),f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:31,EM,"2026/005-01:31:23.028 SEQ success (len=0x0580, opCodeLCDictionary(chgmode))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:32,EM,"2026/005-01:31:23.028 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:35,EM,"2026/005-01:31:24.028 SEQ success (len=0x0580, opCodeLCDictionary(haltstim))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:38,EM,"2026/005-01:31:25.028 SEQ success (len=0x0580, opCodeLCDictionary(haltsci))",f26_jan_05_01_21_43.event_messages
+2026-5T0-1:31:39,EM,"2026/005-01:31:25.028 SEQ engine has changed state, eng=seqEngineDictionary(AUTO) was=seqEngineStateDictionary(ACTIV) is=seqEngineStateDictionary(IDLE) 0x00",f26_jan_05_01_21_43.event_messages
