@@ -25,8 +25,9 @@ def test_first_transmit_test_trigger_params(tmp_path):
 
     assert result.returncode == 0, f"Command failed: {result.stderr or result.stdout}"
 
-    reports_dir = repo_root / "reports"
-    actual_path = reports_dir / "first_transmit_trigger_params.csv"
+    csv_dir = repo_root / "CSV"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    actual_path = csv_dir / "first_transmit_trigger_params.csv"
     assert actual_path.exists(), "Trigger summary was not produced"
 
     expected_path = repo_root / "tests" / "data" / "first_transmit_expected_trigger_params.csv"
@@ -43,7 +44,7 @@ def test_first_transmit_test_trigger_params(tmp_path):
     for column in expected_df.columns:
         comparison_report[f"{column} matches"] = actual_df[column] == expected_df[column]
 
-    report_path = reports_dir / "first_transmit_test_trigger_params_report.csv"
+    report_path = csv_dir / "first_transmit_test_trigger_params_report.csv"
     comparison_report.to_csv(report_path, index=False)
 
     hdf5_path = script_dir / "Data" / "Flight" / "imap_idex_l0_raw_20251130_v002.h5"

@@ -3818,9 +3818,9 @@ def _write_trigger_summary(packets: Any, source_file: str) -> Optional[Path]:
         return None
 
     project_root = Path(__file__).resolve().parents[2]
-    reports_dir = project_root / "reports"
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    out_path = reports_dir / "first_transmit_trigger_params.csv"
+    csv_dir = project_root / "CSV"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    out_path = csv_dir / "first_transmit_trigger_params.csv"
 
     df = pd.DataFrame(rows)
     df.insert(0, "Source file", Path(source_file).name)
