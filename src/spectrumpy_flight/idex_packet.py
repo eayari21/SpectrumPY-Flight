@@ -256,7 +256,7 @@ def _parse_filename_epoch(filename: str) -> Tuple[Optional[datetime], bool]:
                 True,
             )
         except ValueError:
-            return (None, False)
+            pass
 
     date_only_match = _FILENAME_DATE_ONLY_PATTERN.search(name)
     if not date_only_match:
@@ -271,6 +271,25 @@ def _parse_filename_epoch(filename: str) -> Tuple[Optional[datetime], bool]:
         return (datetime(year, month, day, tzinfo=timezone.utc), False)
     except ValueError:
         return (None, False)
+
+
+def _spacecraft_seconds_time_fields(spacecraft_seconds: float) -> Dict[str, object]:
+    timestamp_seconds = int(math.floor(spacecraft_seconds))
+    timestamp_subseconds = int(round((spacecraft_seconds - timestamp_seconds) * 50000.0))
+    if timestamp_subseconds >= 50000:
+        timestamp_seconds += timestamp_subseconds // 50000
+        timestamp_subseconds = timestamp_subseconds % 50000
+    epoch_ms = float(timestamp_seconds) * 1000.0 + float(timestamp_subseconds) * 0.02
+    utc_time = spacecraft_seconds_to_datetime(spacecraft_seconds)
+    utc_iso = utc_time.isoformat().replace("+00:00", "Z")
+    return {
+        "TimestampSeconds": timestamp_seconds,
+        "TimestampSubseconds": timestamp_subseconds,
+        "Epoch": epoch_ms,
+        "Timestamp": spacecraft_seconds_to_unix_seconds(spacecraft_seconds),
+        "TimestampUTC": utc_iso,
+        "SpacecraftSeconds": spacecraft_seconds,
+    }
 
 
 def _collection_efficiency_ratio(
@@ -2489,13 +2508,9 @@ class IDEXEvent:
                         seconds=time32_seconds,
                         period=self._time32_period,
                     )
-                    timestamp_seconds = int(math.floor(spacecraft_seconds))
-                    timestamp_subseconds = int(
-                        round((spacecraft_seconds - timestamp_seconds) * 50000.0)
-                    )
-                    if timestamp_subseconds >= 50000:
-                        timestamp_seconds += timestamp_subseconds // 50000
-                        timestamp_subseconds = timestamp_subseconds % 50000
+                    time_fields = _spacecraft_seconds_time_fields(spacecraft_seconds)
+                    timestamp_seconds = time_fields["TimestampSeconds"]
+                    timestamp_subseconds = time_fields["TimestampSubseconds"]
 
                     print(
                         "Timestamp ="
@@ -2507,16 +2522,9 @@ class IDEXEvent:
                     # mst_offset = timedelta(hours=-7)
                     # mst_time = utc_time + mst_offset
                     print(f"Trigger time = {utc_time}")
-                    unix_seconds = spacecraft_seconds_to_unix_seconds(
-                        spacecraft_seconds
-                    )
-                    epoch_ms = spacecraft_seconds * 1000.0
 
-                    self.header[(evtnum, 'TimestampSeconds')] = timestamp_seconds
-                    self.header[(evtnum, 'TimestampSubseconds')] = timestamp_subseconds
-                    self.header[(evtnum, 'Timestamp')] = unix_seconds
-                    self.header[(evtnum, 'SpacecraftSeconds')] = spacecraft_seconds
-                    self.header[(evtnum, 'Epoch')] = epoch_ms
+                    for key, value in time_fields.items():
+                        self.header[(evtnum, key)] = value
 
 
                 if pkt.data['IDX__SCI0TYPE'].raw_value in [2, 4, 8, 16, 32, 64]:
@@ -3029,22 +3037,14 @@ class IDEXEvent:
                 timestamp_seconds = header_entries.get('TimestampSeconds')
                 timestamp_subseconds = header_entries.get('TimestampSubseconds')
                 spacecraft_seconds = header_entries.get('SpacecraftSeconds')
-                if (timestamp_seconds is None or timestamp_subseconds is None) and spacecraft_seconds is not None:
-                    timestamp_seconds = int(math.floor(spacecraft_seconds))
-                    timestamp_subseconds = int(
-                        round((spacecraft_seconds - timestamp_seconds) * 50000.0)
-                    )
-                    if timestamp_subseconds >= 50000:
-                        timestamp_seconds += timestamp_subseconds // 50000
-                        timestamp_subseconds = timestamp_subseconds % 50000
-                    header_entries['TimestampSeconds'] = timestamp_seconds
-                    header_entries['TimestampSubseconds'] = timestamp_subseconds
-                    self.header[(event_id, 'TimestampSeconds')] = timestamp_seconds
-                    self.header[(event_id, 'TimestampSubseconds')] = timestamp_subseconds
+                if spacecraft_seconds is None and timestamp_seconds is not None and timestamp_subseconds is not None:
+                    spacecraft_seconds = float(timestamp_seconds) + float(timestamp_subseconds) * 20e-6
 
-                if header_entries.get('Epoch') is None and timestamp_seconds is not None and timestamp_subseconds is not None:
-                    header_entries['Epoch'] = float(timestamp_seconds) * 1000.0 + float(timestamp_subseconds) * 0.02
-                    self.header[(event_id, 'Epoch')] = header_entries['Epoch']
+                if spacecraft_seconds is not None:
+                    time_fields = _spacecraft_seconds_time_fields(spacecraft_seconds)
+                    for key, value in time_fields.items():
+                        header_entries[key] = value
+                        self.header[(event_id, key)] = value
 
                 unpacked_entries = {}
                 for key, value in header_entries.items():
@@ -3144,18 +3144,23 @@ class IDEXEvent:
                 header_key = int(event_key)
                 timestamp_seconds = self.header.get((header_key, 'TimestampSeconds'))
                 timestamp_subseconds = self.header.get((header_key, 'TimestampSubseconds'))
-                if timestamp_seconds is None or timestamp_subseconds is None:
-                    spacecraft_seconds = self.header.get(
-                        (header_key, 'SpacecraftSeconds')
-                    )
-                    if spacecraft_seconds is not None:
-                        timestamp_seconds = int(math.floor(spacecraft_seconds))
-                        timestamp_subseconds = int(
-                            round((spacecraft_seconds - timestamp_seconds) * 50000.0)
-                        )
-                        if timestamp_subseconds >= 50000:
-                            timestamp_seconds += timestamp_subseconds // 50000
-                            timestamp_subseconds = timestamp_subseconds % 50000
+                spacecraft_seconds = self.header.get((header_key, 'SpacecraftSeconds'))
+                if spacecraft_seconds is None and timestamp_seconds is not None and timestamp_subseconds is not None:
+                    spacecraft_seconds = float(timestamp_seconds) + float(timestamp_subseconds) * 20e-6
+
+                if spacecraft_seconds is not None:
+                    time_fields = _spacecraft_seconds_time_fields(spacecraft_seconds)
+                    timestamp_seconds = time_fields["TimestampSeconds"]
+                    timestamp_subseconds = time_fields["TimestampSubseconds"]
+                    epoch_ms = time_fields["Epoch"]
+                    timestamp_utc = time_fields["TimestampUTC"]
+                    self.header[(header_key, 'TimestampSeconds')] = timestamp_seconds
+                    self.header[(header_key, 'TimestampSubseconds')] = timestamp_subseconds
+                    self.header[(header_key, 'Epoch')] = epoch_ms
+                    self.header[(header_key, 'TimestampUTC')] = timestamp_utc
+                else:
+                    epoch_ms = None
+                    timestamp_utc = None
 
                 if timestamp_seconds is not None and timestamp_subseconds is not None:
                     ts_path = f"/{event_key}/Metadata/unpacked/TimestampSeconds"
@@ -3180,9 +3185,19 @@ class IDEXEvent:
                         tss_path,
                         (f"/{event_key}/Metadata/TimestampSubseconds",),
                     )
-                    epoch_ms = float(timestamp_seconds) * 1000.0 + float(timestamp_subseconds) * 0.02
-                else:
-                    epoch_ms = None
+                if timestamp_utc is not None:
+                    tsu_path = f"/{event_key}/Metadata/unpacked/TimestampUTC"
+                    create_dataset_if_not_exists(
+                        h,
+                        tsu_path,
+                        data=np.array([timestamp_utc], dtype=object),
+                        dtype=h5py.string_dtype(encoding='utf-8'),
+                    )
+                    _ensure_dataset_aliases(
+                        h,
+                        tsu_path,
+                        (f"/{event_key}/Metadata/TimestampUTC",),
+                    )
 
                 if metadata_path in h:
                     if epoch_ms is not None:
