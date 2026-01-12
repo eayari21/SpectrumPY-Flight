@@ -12,9 +12,10 @@ IDEX Quicklook GUI.
 from __future__ import annotations
 
 import argparse
+import csv
 import os
 import sys
-from typing import Iterable, Optional, Sequence, Tuple
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 import h5py
 import numpy as np
@@ -25,6 +26,7 @@ import numpy as np
 _QT_API = None
 try:  # pragma: no cover - import guard
     from PySide6.QtCore import Qt
+    from PySide6.QtGui import QAction
     from PySide6.QtWidgets import (
         QApplication,
         QFileDialog,
@@ -36,6 +38,7 @@ try:  # pragma: no cover - import guard
         QTableWidget,
         QTableWidgetItem,
         QTabWidget,
+        QToolBar,
         QTreeWidget,
         QTreeWidgetItem,
         QVBoxLayout,
@@ -44,6 +47,7 @@ try:  # pragma: no cover - import guard
     _QT_API = "PySide6"
 except Exception:  # pragma: no cover - import guard
     from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QAction
     from PyQt6.QtWidgets import (
         QApplication,
         QFileDialog,
@@ -55,6 +59,7 @@ except Exception:  # pragma: no cover - import guard
         QTableWidget,
         QTableWidgetItem,
         QTabWidget,
+        QToolBar,
         QTreeWidget,
         QTreeWidgetItem,
         QVBoxLayout,
@@ -96,6 +101,14 @@ class HDFViewWindow(QMainWindow):
 
     MAX_PREVIEW_ROWS = 200
     MAX_PREVIEW_COLS = 50
+    TIME_DATASET_CANDIDATES = (
+        "/Metadata/unpacked/SCI0Time32",
+        "/Metadata/unpacked/SCI0TIME32",
+        "/Metadata/raw/IDX__SCI0TIME32",
+        "/Metadata/SCI0Time32",
+        "/Metadata/SCI0TIME32",
+        "/Metadata/IDX__SCI0TIME32",
+    )
 
     def __init__(self, filename: str, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -128,6 +141,14 @@ class HDFViewWindow(QMainWindow):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
+        toolbar = QToolBar("HDF Tools", self)
+        toolbar.setMovable(False)
+        export_action = QAction("Export Selected to CSV", self)
+        export_action.setToolTip("Export selected datasets with SCI0TIME32 to CSV")
+        export_action.triggered.connect(self._export_selected_to_csv)
+        toolbar.addAction(export_action)
+        self.addToolBar(toolbar)
+
         splitter = QSplitter(Qt.Orientation.Horizontal, central)
         splitter.setChildrenCollapsible(False)
         if hasattr(splitter, "setCollapsible"):
@@ -138,6 +159,7 @@ class HDFViewWindow(QMainWindow):
         self._tree = QTreeWidget(splitter)
         self._tree.setHeaderLabels(["Name", "Type", "Shape"])
         self._tree.setAlternatingRowColors(True)
+        self._tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
         self._tree.header().setStretchLastSection(False)
         self._tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -261,6 +283,113 @@ class HDFViewWindow(QMainWindow):
 
         attr_items = sorted(dset.attrs.items(), key=lambda item: item[0])
         self._populate_attrs(attr_items)
+
+    def _find_time_dataset(self) -> Tuple[np.ndarray, str]:
+        for path in self.TIME_DATASET_CANDIDATES:
+            if path in self._h5:
+                return np.asarray(self._h5[path][()]), path
+
+        matches: List[str] = []
+
+        def visitor(name: str, obj: h5py.Dataset) -> None:
+            if isinstance(obj, h5py.Dataset):
+                dataset_name = obj.name.split("/")[-1].lower()
+                if dataset_name == "sci0time32":
+                    matches.append(obj.name)
+
+        self._h5.visititems(visitor)
+        if not matches:
+            raise ValueError("SCI0TIME32 dataset not found in the HDF5 file.")
+        path = matches[0]
+        return np.asarray(self._h5[path][()]), path
+
+    def _coerce_vector(self, data: np.ndarray, label: str) -> np.ndarray:
+        if data.ndim == 0:
+            return np.array([data.item()])
+        if data.ndim != 1:
+            raise ValueError(f"{label} must be a 1D dataset to export.")
+        return data
+
+    def _selected_dataset_paths(self) -> List[str]:
+        datasets: List[str] = []
+        for item in self._tree.selectedItems():
+            if item.data(1, Qt.ItemDataRole.UserRole) == "dataset":
+                path = item.data(0, Qt.ItemDataRole.UserRole)
+                if path:
+                    datasets.append(path)
+        return datasets
+
+    def _export_selected_to_csv(self) -> None:
+        datasets = self._selected_dataset_paths()
+        if not datasets:
+            QMessageBox.information(self, "Export to CSV", "Select one or more datasets to export.")
+            return
+
+        try:
+            time_data, time_path = self._find_time_dataset()
+            time_vector = self._coerce_vector(np.asarray(time_data), time_path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Export Error", f"Unable to locate SCI0TIME32.\n{exc}")
+            return
+
+        if len(datasets) == 1:
+            dataset_path = datasets[0]
+            default_name = os.path.basename(dataset_path.strip("/")) or "export"
+            filename, _ = QFileDialog.getSaveFileName(
+                self,
+                "Export CSV",
+                f"{default_name}.csv",
+                "CSV Files (*.csv);;All files (*)",
+                options=QFileDialog.Option.DontUseNativeDialog,
+            )
+            if not filename:
+                return
+            try:
+                self._export_dataset_to_csv(dataset_path, time_vector, filename)
+            except Exception as exc:
+                QMessageBox.critical(self, "Export Error", str(exc))
+                return
+            QMessageBox.information(self, "Export Complete", f"Saved {filename}")
+            return
+
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Select Export Folder",
+            os.getcwd(),
+            options=QFileDialog.Option.DontUseNativeDialog,
+        )
+        if not directory:
+            return
+        exported: List[str] = []
+        errors: List[str] = []
+        for dataset_path in datasets:
+            filename = os.path.join(directory, f"{os.path.basename(dataset_path.strip('/'))}.csv")
+            try:
+                self._export_dataset_to_csv(dataset_path, time_vector, filename)
+                exported.append(filename)
+            except Exception as exc:
+                errors.append(f"{dataset_path}: {exc}")
+        message = f"Exported {len(exported)} file(s)."
+        if errors:
+            message += "\n\nErrors:\n" + "\n".join(errors)
+        QMessageBox.information(self, "Export Complete", message)
+
+    def _export_dataset_to_csv(self, dataset_path: str, time_vector: np.ndarray, filename: str) -> None:
+        if dataset_path not in self._h5:
+            raise ValueError(f"Dataset not found: {dataset_path}")
+        data = np.asarray(self._h5[dataset_path][()])
+        values = self._coerce_vector(data, dataset_path)
+        if values.shape[0] != time_vector.shape[0]:
+            raise ValueError(
+                "Dataset length does not match SCI0TIME32 length "
+                f"({values.shape[0]} vs {time_vector.shape[0]})."
+            )
+        header_name = os.path.basename(dataset_path.strip("/")) or dataset_path
+        with open(filename, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["SCI0TIME32", header_name])
+            for time_value, data_value in zip(time_vector, values):
+                writer.writerow([_format_scalar(time_value), _format_scalar(data_value)])
 
     def _populate_data_preview(self, data: np.ndarray) -> None:
         if data.ndim == 0:
