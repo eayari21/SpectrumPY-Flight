@@ -1865,7 +1865,13 @@ def FitTargetSignal(time, targetAmp,
         (m_est, b_est), _ = curve_fit(LinearFit, baselinedomain, baselineraw,
                                       p0=[slopeguess, float(np.median(baselineraw))],
                                       maxfev=100_000)
-        signal = signal - LinearFit(time, m_est, b_est)
+        span = float(np.nanmax(time) - np.nanmin(time)) if time.size else 0.0
+        baseline_sigma = _robust_sigma(baselineraw) if baselineraw.size else 0.0
+        drift = abs(m_est) * span if np.isfinite(span) else 0.0
+        if baseline_sigma > 0.0 and np.isfinite(drift) and drift < baseline_sigma * 0.5:
+            signal = signal - float(b_est)
+        else:
+            signal = signal - LinearFit(time, m_est, b_est)
     except Exception:
         # fallback: simple scipy detrend
         try:
