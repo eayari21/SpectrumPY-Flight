@@ -500,12 +500,14 @@ class MainWindow(QMainWindow):
         self.pass_edit.setPlaceholderText("password")
 
         self.start_edit = QDateTimeEdit()
-        self.start_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
+        self.start_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss 'UTC'")
         self.start_edit.setCalendarPopup(True)
+        self.start_edit.setTimeSpec(Qt.TimeSpec.UTC)
 
         self.stop_edit = QDateTimeEdit()
-        self.stop_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
+        self.stop_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss 'UTC'")
         self.stop_edit.setCalendarPopup(True)
+        self.stop_edit.setTimeSpec(Qt.TimeSpec.UTC)
 
         # Defaults: last 24 hours in UTC
         now_utc = QDateTime.currentDateTimeUtc()
