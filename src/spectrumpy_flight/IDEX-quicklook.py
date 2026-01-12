@@ -1653,6 +1653,18 @@ def _fit_paths_from_param(dataset_path: str) -> Optional[Tuple[str, str]]:
     if not dataset_path:
         return None
 
+    legacy_mapping = {
+        "Fit Parameters": ("Fit Result", "Fit Time"),
+        "Fit Parameter": ("Fit Result", "Fit Time"),
+        "Fit Params": ("Fit Result", "Fit Time"),
+    }
+    for needle, replacements in legacy_mapping.items():
+        if needle in dataset_path:
+            result_token, time_token = replacements
+            result_path = dataset_path.replace(needle, result_token)
+            time_path = dataset_path.replace(needle, time_token)
+            return result_path, time_path
+
     for needle in ("FitParams", "FitParameters", "FitParam"):
         if needle in dataset_path:
             result_path = dataset_path.replace(needle, "FitResult")
@@ -5935,10 +5947,16 @@ class FitParameterDialog(QDialog):
         self.formula_label.setStyleSheet("font-size: 16px;")
         self.formula_label.setWordWrap(True)
         self.formula_label.setMinimumHeight(70)
+        self.formula_label.setScaledContents(True)
         self.formula_label.setTextFormat(Qt.TextFormat.RichText)
         self._default_formula_text = "Select a dataset to view its fit function."
         self.formula_label.setText(html.escape(self._default_formula_text))
         content_layout.addWidget(self.formula_label)
+
+        self.source_label = QLabel("", self)
+        self.source_label.setStyleSheet("color: #495057; font-size: 13px;")
+        self.source_label.setWordWrap(True)
+        content_layout.addWidget(self.source_label)
 
         chooser_row = QHBoxLayout()
         chooser_row.setSpacing(10)
@@ -6006,7 +6024,7 @@ class FitParameterDialog(QDialog):
         selector_row.setContentsMargins(0, 0, 0, 0)
         selector_row.setSpacing(6)
         selector_label = QLabel("Interactive selectors:", preview_box)
-        selector_label.setStyleSheet("font-weight: 600; font-size: 14px;")
+        selector_label.setStyleSheet("font-weight: 600; font-size: 13px;")
         selector_row.addWidget(selector_label)
 
         def _create_selector_button(text: str, mode: str, tooltip: str) -> QToolButton:
@@ -6016,7 +6034,7 @@ class FitParameterDialog(QDialog):
             button.setToolTip(tooltip)
             button.setStyleSheet(
                 "QToolButton { padding: 4px 10px; border-radius: 6px; }"
-                "QToolButton:checked { background-color: #4263eb; color: white; }"
+                "QToolButton:checked { background-color: #845ef7; color: white; }"
             )
             button.clicked.connect(lambda checked, m=mode: self._on_selector_toggled(m, checked))
             self._selector_buttons[mode] = button
@@ -6074,12 +6092,12 @@ class FitParameterDialog(QDialog):
         self.image_charge_checkbox.stateChanged.connect(self._on_image_charge_toggled)
         self.image_charge_checkbox.setVisible(False)
 
-        table_panel = QWidget(self)
+        table_panel = QGroupBox("Editable parameters", self)
         table_panel.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         table_panel.setMinimumHeight(220)
         table_layout = QVBoxLayout(table_panel)
-        table_layout.setContentsMargins(0, 0, 0, 0)
-        table_layout.setSpacing(8)
+        table_layout.setContentsMargins(12, 12, 12, 12)
+        table_layout.setSpacing(6)
         table_layout.addWidget(self.image_charge_checkbox, alignment=Qt.AlignmentFlag.AlignLeft)
         table_layout.addWidget(self.table, stretch=1)
         table_layout.addWidget(self.info_label)
@@ -6323,16 +6341,19 @@ class FitParameterDialog(QDialog):
     ):
         if not channel or dataset_path is None:
             self._update_formula_display(None)
+            self.source_label.setText("")
             self._clear_table("No fit parameters are available for this channel.")
             return
 
         base_array = self._param_arrays.get((channel, dataset_path))
         if base_array is None:
             self._update_formula_display(None)
+            self.source_label.setText("")
             self._clear_table("No fit parameters are available for this channel.")
             return
 
         self._update_formula_display(channel)
+        self.source_label.setText(f"Signal source: {channel} waveform")
 
         values = self._value_getter(self._event_name, channel, dataset_path, base_array)
         array = np.asarray(values)
@@ -6592,6 +6613,7 @@ class FitParameterDialog(QDialog):
         self.table.setRowCount(0)
         self.info_label.setText(message)
         self.feedback_label.clear()
+        self.source_label.setText("")
         self._current_channel = None
         self._current_dataset = None
         self._current_shape = None
