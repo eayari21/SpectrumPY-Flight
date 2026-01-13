@@ -2422,6 +2422,7 @@ class IDEXEvent:
                     if(pkt.data['IDX__TXHDRLSTRIGMODE'].derived_value!='DIS'):  # If this was a LS (Target Low Gain) trigger (DIS=disabled)
                         print(f"Low sampling trigger mode = {pkt.data['IDX__TXHDRLSTRIGMODE'].derived_value}")
                         self.Triggerorigin = 'LS' 
+                        self.header[(evtnum, 'TriggerOrigin')] = self.Triggerorigin
                         print("Low sampling trigger mode enabled.")
                         # Check the first 25th-bit integer for a coincidence trigger
                         # coincidence = (trigmode >> 24) &  0b1
@@ -2436,6 +2437,7 @@ class IDEXEvent:
                     if(pkt.data['IDX__TXHDRLGTRIGMODE'].derived_value!=0):
                         print("Low gain TOF trigger mode enabled.")
                         self.Triggerorigin = 'LG'
+                        self.header[(evtnum, 'TriggerOrigin')] = self.Triggerorigin
                         # Extract the first 11 bits (bits 21-31)
                         minsamples = pkt.data['IDX__TXHDRLGTRIGCTRL1'].derived_value & mask_11_bit
                         # Extract the second 11 bits (bits 10-20)
@@ -2457,6 +2459,7 @@ class IDEXEvent:
                     if(pkt.data['IDX__TXHDRMGTRIGMODE'].derived_value!=0):
                         print("Mid gain TOF trigger mode enabled.")
                         self.Triggerorigin = 'MG'
+                        self.header[(evtnum, 'TriggerOrigin')] = self.Triggerorigin
                         # Extract the first 11 bits (bits 21-31)
                         minsamples = pkt.data['IDX__TXHDRMGTRIGCTRL1'].derived_value & mask_11_bit
                         # Extract the second 11 bits (bits 10-20)
@@ -2477,6 +2480,7 @@ class IDEXEvent:
                     if(pkt.data['IDX__TXHDRHGTRIGMODE'].derived_value!=0):
                         print("High gain trigger mode enabled.")
                         self.Triggerorigin = 'HG'
+                        self.header[(evtnum, 'TriggerOrigin')] = self.Triggerorigin
                         # Extract the first 11 bits (bits 21-31)
                         minsamples = pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value & mask_11_bit
                         # Extract the second 11 bits (bits 10-20)
@@ -2698,6 +2702,20 @@ class IDEXEvent:
         channel_delay = delays.get(channel, 0)
         return float(channel_delay) * (1.0 / 260.0)
 
+    def _trigger_origin(self, event_id: Optional[Union[int, str]]) -> str:
+        origin = self._get_header_value(event_id, 'TriggerOrigin', '')
+        if isinstance(origin, str) and origin:
+            return origin
+        return getattr(self, 'Triggerorigin', 'HG') or 'HG'
+
+    def _trigger_sample_delay(self, event_id: Optional[Union[int, str]]) -> float:
+        origin = self._trigger_origin(event_id)
+        if origin == 'LG':
+            return self._get_header_value(event_id, 'TOFDelay_L', getattr(self, 'lgdelay', 0))
+        if origin == 'MG':
+            return self._get_header_value(event_id, 'TOFDelay_M', getattr(self, 'mgdelay', 0))
+        return self._get_header_value(event_id, 'TOFDelay_H', getattr(self, 'hgdelay', 0))
+
     def _trigger_offset_seconds(self, event_id: Optional[Union[int, str]]) -> float:
         trigger_offset = self._get_header_value(event_id, 'TriggerOffset', getattr(self, 'trig_offset', 0))
         return float(trigger_offset) * (1.0 / 32.5)
@@ -2712,18 +2730,21 @@ class IDEXEvent:
     ) -> np.ndarray:
         if sample_count <= 0:
             return np.array([], dtype=float)
-        spacing = 1.0 / 260.0 if high_rate else 1.0 / 4.0625
-        time_values = np.arange(sample_count, dtype=float) * spacing
         if high_rate:
-            pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
-            low_trigger_offset = 8 * (1.0 / 4.0625) * (pre_blocks + 1)
-            high_gain_delay = self._get_header_value(event_id, "TOFDelay_H", getattr(self, "hgdelay", 0))
-            time_values = time_values - low_trigger_offset + (high_gain_delay * (1.0 / 260.0))
+            spacing = 1.0 / 260.0
+            pre_blocks = self._get_header_value(event_id, "HSPretriggerBlocks", getattr(self, "hspretrigblocks", 0))
+            t0_index = (pre_blocks + 1) * 512 - 1
         else:
-            offset = self._low_trigger_offset(event_id)
-            trigger_offset = self._trigger_offset_seconds(event_id)
-            time_values = time_values - offset
-            time_values = time_values - self._low_sampling_delay_seconds(event_id) - trigger_offset
+            spacing = 1.0 / 4.0625
+            pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
+            t0_index = (pre_blocks + 1) * 8 - 1
+
+        time_values = (np.arange(sample_count, dtype=float) - t0_index) * spacing
+
+        sample_delay = self._trigger_sample_delay(event_id)
+        if sample_delay:
+            delay_offset = ((t0_index - sample_delay) - t0_index) * (1.0 / 260.0)
+            time_values = time_values - delay_offset
         return time_values
 
     def plot_all_data(self, packets, fname: str):
