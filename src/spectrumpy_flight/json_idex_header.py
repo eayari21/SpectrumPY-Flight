@@ -273,6 +273,29 @@ def _parse_filename_epoch(filename: str) -> Tuple[Optional[datetime], bool]:
         return (None, False)
 
 
+def _txhdr_time_fields(
+    seconds_high: Optional[int],
+    seconds_low: Optional[int],
+    subseconds: Optional[int],
+) -> Dict[str, Optional[object]]:
+    """Return epoch seconds and UTC timestamp based on TXHDR time fields."""
+
+    if seconds_high is None or seconds_low is None or subseconds is None:
+        return {"epoch": None, "timestamp_utc": None}
+    try:
+        epoch_seconds = (
+            (float(1 << 16) * float(seconds_high))
+            + float(seconds_low)
+            + 20e-6 * float(subseconds)
+        )
+    except (TypeError, ValueError):
+        return {"epoch": None, "timestamp_utc": None}
+
+    utc_time = (SPACECRAFT_EPOCH + timedelta(seconds=epoch_seconds)).replace(tzinfo=timezone.utc)
+    utc_iso = utc_time.isoformat().replace("+00:00", "Z")
+    return {"epoch": epoch_seconds, "timestamp_utc": utc_iso}
+
+
 def _collection_efficiency_ratio(
     ion_charge: Optional[float],
     target_charge: Optional[float],
@@ -740,6 +763,15 @@ def _resolve_plot_dir(filename: str) -> Path:
         target_parent = Path(__file__).resolve().parent / "Plots"
     target_parent.mkdir(parents=True, exist_ok=True)
     return target_parent / stem
+
+
+def _resolve_json_dir(filename: str) -> Path:
+    input_path = Path(filename).expanduser()
+    target_parent = _swap_data_root(input_path.parent, "JSON")
+    if target_parent == input_path.parent and not target_parent.is_absolute():
+        target_parent = Path(__file__).resolve().parent / "JSON"
+    target_parent.mkdir(parents=True, exist_ok=True)
+    return target_parent
 
 
 _SQL_DB_URI = os.environ.get("IDEX_SQL_URI")
@@ -1354,7 +1386,7 @@ def _event_timestamp_ms(header: Dict[Tuple[int, str], Any], event_key: str) -> O
         event_index = int(event_key)
     except Exception:
         return None
-    timestamp = header.get((event_index, 'Timestamp'))
+    timestamp = header.get((event_index, 'epoch'))
     if timestamp is None:
         return None
     try:
@@ -1366,7 +1398,7 @@ def _event_timestamp_ms(header: Dict[Tuple[int, str], Any], event_key: str) -> O
 def _collect_event_timestamps(header: Dict[Tuple[int, str], Any]) -> List[Tuple[int, float]]:
     timestamps: List[Tuple[int, float]] = []
     for (event_idx, field), value in header.items():
-        if field != "Timestamp":
+        if field != "epoch":
             continue
         try:
             idx = int(event_idx)
@@ -2025,9 +2057,6 @@ class IDEXEvent:
         if base.endswith(".pkts"):
             base = base[:-5]  # strip 5 chars: len(".pkts")
 
-        # Construct final output filename
-        json_file = os.path.join("./JSON", base + ".jsonl")
-
         idex_packet_file = filename
         print(f"Reading in data file {idex_packet_file}")
         idex_binary_data = bitstring.ConstBitStream(filename=idex_packet_file)
@@ -2046,6 +2075,9 @@ class IDEXEvent:
         self.data = {}
         self.header={}
         self.raw_header = {}
+        self._packet_field_order: Dict[int, List[str]] = {}
+        self._header_field_order: Dict[int, List[str]] = {}
+        self._json_base = base
         self.lspretrigblocks = 0
         self.lsposttrigblocks = 0
         self.hspretrigblocks = 0
@@ -2097,23 +2129,23 @@ class IDEXEvent:
                     evtnum += 1
                     print(pkt.data)
 
-                    # Convert pkt.data to a plain dictionary
-                    pkt_dict = {k: v.raw_value for k, v in pkt.data.items()}
-
-                    # Append as one JSON object per line
-                    with open(json_file, "a") as f:
-                        f.write(json.dumps(pkt_dict) + "\n")
-
-
                     # Iterate over all items in pkt.data and store them in the header
+                    packet_order: List[str] = []
+                    header_order = self._header_field_order.setdefault(evtnum, [])
                     for key, item in pkt.data.items():
+                        packet_order.append(key)
+                        header_order.append(key)
                         try:
                             self.raw_header[(evtnum, key)] = item.raw_value
                         except Exception:
                             self.raw_header[(evtnum, key)] = item.derived_value
                         self.header[(evtnum, key)] = item.derived_value
                         print(f"{key} = {self.header[(evtnum, key)]}")
+                    self._packet_field_order[evtnum] = packet_order
                     print(f"^*****Event header {evtnum}******^")
+                    def _append_header_key(new_key: str) -> None:
+                        if new_key not in header_order:
+                            header_order.append(new_key)
 
                     # sciEvtnum = bin(pkt.data['IDX__SCI0EVTNUM'].derived_value).replace('b', '')
 
@@ -2144,9 +2176,13 @@ class IDEXEvent:
                     print("LS post trig sampling blocks: ", self.lsposttrigblocks)
 
                     self.header[(evtnum, 'HSPretriggerBlocks')] = int(self.hspretrigblocks)
+                    _append_header_key('HSPretriggerBlocks')
                     self.header[(evtnum, 'HSPosttriggerBlocks')] = int(self.hsposttrigblocks)
+                    _append_header_key('HSPosttriggerBlocks')
                     self.header[(evtnum, 'LSPretriggerBlocks')] = int(self.lspretrigblocks)
+                    _append_header_key('LSPretriggerBlocks')
                     self.header[(evtnum, 'LSPosttriggerBlocks')] = int(self.lsposttrigblocks)
+                    _append_header_key('LSPosttriggerBlocks')
 
                     print(f"IDX__TXHDRHVPSHKCH01 = {pkt.data['IDX__TXHDRHVPSHKCH01'].derived_value}")
 
@@ -2495,35 +2531,30 @@ class IDEXEvent:
                     # self.header[evtnum][f"TimeIntervals"] = pkt.data['IDX__SCI0TIME32'].derived_value  # Store the number of 20 us intervals in the respective CDF "Time" variables
                     time32_seconds = float(pkt.data['IDX__SCI0TIME32'].derived_value)
                     self.header[(evtnum, 'Time32Ticks')] = time32_seconds
-                    seconds_since_spacecraft_epoch = self._resolve_spacecraft_seconds(
-                        seconds=time32_seconds,
-                        period=self._time32_period,
-                    )
-                    print(
-                        "Timestamp ="
-                        f" {seconds_since_spacecraft_epoch} seconds since epoch (Midnight January 1st,"
-                        f" {SPACECRAFT_EPOCH.year})"
-                    )
+                    _append_header_key('Time32Ticks')
 
-                    utc_time = spacecraft_seconds_to_datetime(seconds_since_spacecraft_epoch)
-                    # mst_offset = timedelta(hours=-7)
-                    # mst_time = utc_time + mst_offset
-                    print(f"Trigger time = {utc_time}")
-                    unix_seconds = spacecraft_seconds_to_unix_seconds(
-                        seconds_since_spacecraft_epoch
+                    sec1_item = pkt.data.get('IDX__TXHDRTIMESEC1')
+                    sec2_item = pkt.data.get('IDX__TXHDRTIMESEC2')
+                    subs_item = pkt.data.get('IDX__TXHDRTIMESUBS')
+                    time_fields = _txhdr_time_fields(
+                        sec1_item.raw_value if sec1_item is not None else None,
+                        sec2_item.raw_value if sec2_item is not None else None,
+                        subs_item.raw_value if subs_item is not None else None,
                     )
-                    timestamp_seconds = int(math.floor(seconds_since_spacecraft_epoch))
-                    timestamp_subseconds = int(
-                        round((seconds_since_spacecraft_epoch - timestamp_seconds) * 50000.0)
-                    )
-                    if timestamp_subseconds >= 50000:
-                        timestamp_seconds += timestamp_subseconds // 50000
-                        timestamp_subseconds = timestamp_subseconds % 50000
-                    self.header[(evtnum, 'Timestamp')] = unix_seconds
-                    self.header[(evtnum, 'TimestampSeconds')] = timestamp_seconds
-                    self.header[(evtnum, 'TimestampSubseconds')] = timestamp_subseconds
-                    self.header[(evtnum, 'SpacecraftSeconds')] = seconds_since_spacecraft_epoch
-                    self.header[(evtnum, 'Epoch')] = seconds_since_spacecraft_epoch * 1000.0
+                    if time_fields["epoch"] is not None:
+                        print(
+                            "Timestamp ="
+                            f" {time_fields['epoch']} seconds since epoch (Midnight January 1st,"
+                            f" {SPACECRAFT_EPOCH.year})"
+                        )
+                    if time_fields["timestamp_utc"] is not None:
+                        print(f"Trigger time = {time_fields['timestamp_utc']}")
+                    if time_fields["epoch"] is not None:
+                        self.header[(evtnum, 'epoch')] = time_fields["epoch"]
+                        _append_header_key('epoch')
+                    if time_fields["timestamp_utc"] is not None:
+                        self.header[(evtnum, 'timestamp_utc')] = time_fields["timestamp_utc"]
+                        _append_header_key('timestamp_utc')
 
 
                 if pkt.data['IDX__SCI0TYPE'].raw_value in [2, 4, 8, 16, 32, 64]:
@@ -2806,7 +2837,7 @@ class IDEXEvent:
             _draw_axis(axes[2], hstime_map.get("TOF H", np.array([])), packets[(event_id, "TOF H")], "TOF H", colors[2])
             _draw_axis(axes[3], lstime_map.get("Ion Grid", np.array([])), packets[(event_id, "Ion Grid")], "Ion Grid", colors[3])
 
-            if self.header[(event_id, "Timestamp")] < 494_733_600:
+            if self.header.get((event_id, "epoch"), 0) < 494_733_600:
                 _draw_axis(
                     axes[4], lstime_map.get("Target L", np.array([])), packets[(event_id, "Target L")], "Target LG", colors[4]
                 )
@@ -2872,6 +2903,8 @@ class IDEXEvent:
         event_saturation_flags: Dict[str, bool] = {}
         flags_by_event: Dict[str, Dict[str, List[str]]] = {}
         event_results: Dict[str, Dict[str, object]] = {}
+        packed_records: List[Dict[str, object]] = []
+        unpacked_records: List[Dict[str, object]] = []
 
         def _prepare_waveform(item):
             (event_id, channel), data = item
@@ -2983,7 +3016,7 @@ class IDEXEvent:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             analyses = list(executor.map(_prepare_waveform, waveform_items))
 
-        with h5py.File(output_path, 'w') as h:
+        with h5py.File(output_path, 'w', track_order=True) as h:
             event_ids = sorted({evtnum for (evtnum, _) in self.header.keys()})
 
             def _write_metadata_value(group: h5py.Group, name: str, value: object, *, alias_paths=()):
@@ -3011,57 +3044,28 @@ class IDEXEvent:
             for event_id in event_ids:
                 event_key = str(event_id)
                 metadata_root = h.require_group(f"/{event_key}/Metadata")
-                raw_group = metadata_root.require_group("raw")
+                packed_group = metadata_root.require_group("packed")
                 unpacked_group = metadata_root.require_group("unpacked")
 
-                raw_entries = {
-                    key: value
-                    for (evtnum, key), value in self.raw_header.items()
-                    if evtnum == event_id
-                }
-                for key, value in raw_entries.items():
-                    _write_metadata_value(raw_group, key, value)
+                packet_order = self._packet_field_order.get(
+                    event_id,
+                    [
+                        key
+                        for (evtnum, key) in self.raw_header.keys()
+                        if evtnum == event_id
+                    ],
+                )
+                for key in packet_order:
+                    value = self.raw_header.get((event_id, key))
+                    _write_metadata_value(packed_group, key, value)
+                packed_records.append(
+                    {key: self.raw_header.get((event_id, key)) for key in packet_order}
+                )
 
                 header_entries = {
                     key: value for (evtnum, key), value in self.header.items() if evtnum == event_id
                 }
-
-                timestamp_seconds = header_entries.get('TimestampSeconds')
-                timestamp_subseconds = header_entries.get('TimestampSubseconds')
-                spacecraft_seconds = header_entries.get('SpacecraftSeconds')
-                if (timestamp_seconds is None or timestamp_subseconds is None) and spacecraft_seconds is not None:
-                    timestamp_seconds = int(math.floor(spacecraft_seconds))
-                    timestamp_subseconds = int(
-                        round((spacecraft_seconds - timestamp_seconds) * 50000.0)
-                    )
-                    if timestamp_subseconds >= 50000:
-                        timestamp_seconds += timestamp_subseconds // 50000
-                        timestamp_subseconds = timestamp_subseconds % 50000
-                    header_entries['TimestampSeconds'] = timestamp_seconds
-                    header_entries['TimestampSubseconds'] = timestamp_subseconds
-                    self.header[(event_id, 'TimestampSeconds')] = timestamp_seconds
-                    self.header[(event_id, 'TimestampSubseconds')] = timestamp_subseconds
-
-                if header_entries.get('Epoch') is None and timestamp_seconds is not None and timestamp_subseconds is not None:
-                    header_entries['Epoch'] = float(timestamp_seconds) * 1000.0 + float(timestamp_subseconds) * 0.02
-                    self.header[(event_id, 'Epoch')] = header_entries['Epoch']
-
-                unpacked_entries = {}
-                for key, value in header_entries.items():
-                    if value is None or str(key).startswith("IDX__"):
-                        continue
-                    unpacked_entries[key] = value
-
-                sci_field_aliases = {
-                    "SCI0AID": "IDX__SCI0AID",
-                    "SCI0Type": "IDX__SCI0TYPE",
-                    "SCI0EventNumber": "IDX__SCI0EVTNUM",
-                    "SCI0Time32": "IDX__SCI0TIME32",
-                }
-                for alias_name, raw_key in sci_field_aliases.items():
-                    raw_value = header_entries.get(raw_key)
-                    if raw_value is not None:
-                        unpacked_entries.setdefault(alias_name, raw_value)
+                unpacked_entries = dict(header_entries)
 
                 trigger_offset_us = self._trigger_offset_seconds(event_id)
                 hs_offset_us = self._high_trigger_offset(event_id)
@@ -3071,28 +3075,37 @@ class IDEXEvent:
                 tof_m_delay = self._high_sampling_delay_seconds(event_id, 'TOF M')
                 tof_l_delay = self._high_sampling_delay_seconds(event_id, 'TOF L')
 
-                derived_entries = {
-                    'TriggerOffsetTicks': header_entries.get('TriggerOffset'),
-                    'TriggerOffsetMicroseconds': trigger_offset_us,
-                    'HSPretriggerOffsetMicroseconds': hs_offset_us,
-                    'LSPretriggerOffsetMicroseconds': ls_offset_us,
-                    'FIFODelayMicroseconds': fifo_delay_us,
-                    'SampleDelayMicroseconds_TOF_H': tof_h_delay,
-                    'SampleDelayMicroseconds_TOF_M': tof_m_delay,
-                    'SampleDelayMicroseconds_TOF_L': tof_l_delay,
-                }
-                for key, value in derived_entries.items():
+                derived_entries = [
+                    ('TriggerOffsetTicks', header_entries.get('TriggerOffset')),
+                    ('TriggerOffsetMicroseconds', trigger_offset_us),
+                    ('HSPretriggerOffsetMicroseconds', hs_offset_us),
+                    ('LSPretriggerOffsetMicroseconds', ls_offset_us),
+                    ('FIFODelayMicroseconds', fifo_delay_us),
+                    ('SampleDelayMicroseconds_TOF_H', tof_h_delay),
+                    ('SampleDelayMicroseconds_TOF_M', tof_m_delay),
+                    ('SampleDelayMicroseconds_TOF_L', tof_l_delay),
+                ]
+                for key, value in derived_entries:
                     if value is None:
                         continue
                     unpacked_entries[key] = value
 
-                for key, value in unpacked_entries.items():
-                    _write_metadata_value(
-                        unpacked_group,
-                        key,
-                        value,
-                        alias_paths=[f"/{event_key}/Metadata/{key}"],
-                    )
+                header_order = list(
+                    self._header_field_order.get(event_id, header_entries.keys())
+                )
+                for key, _value in derived_entries:
+                    if key in unpacked_entries and key not in header_order:
+                        header_order.append(key)
+                for key in unpacked_entries.keys():
+                    if key not in header_order:
+                        header_order.append(key)
+                for key in header_order:
+                    if key not in unpacked_entries:
+                        continue
+                    _write_metadata_value(unpacked_group, key, unpacked_entries[key])
+                unpacked_records.append(
+                    {key: unpacked_entries[key] for key in header_order if key in unpacked_entries}
+                )
 
             for analysis in analyses:
                 event_key, channel = analysis['key']
@@ -3140,25 +3153,6 @@ class IDEXEvent:
                     create_dataset_if_not_exists(h, f"/{event_key}/SpiceData/Ephemeris/VelocityZ", velocity_z)
                     event_info['spice_written'] = True
 
-                metadata_path = f"/{event_key}/Metadata/unpacked/Epoch"
-                if metadata_path not in h:
-                    header_key = int(event_key)
-                    timestamp = self.header.get((header_key, 'Timestamp'))
-                    if timestamp is None:
-                        spacecraft_seconds = self.header.get(
-                            (header_key, 'SpacecraftSeconds')
-                        )
-                        if spacecraft_seconds is not None:
-                            timestamp = spacecraft_seconds_to_unix_seconds(spacecraft_seconds)
-                    if timestamp is None:
-                        timestamp = 0
-                    create_dataset_if_not_exists(h, metadata_path, data=np.array(timestamp))
-                    _ensure_dataset_aliases(
-                        h,
-                        metadata_path,
-                        (f"/{event_key}/Metadata/Epoch",),
-                    )
-
                 transformed = analysis['transformed']
                 if transformed is not None:
                     dataset_path = f"/{event_key}/{channel}"
@@ -3166,11 +3160,6 @@ class IDEXEvent:
                         del h[dataset_path]
                     h.create_dataset(dataset_path, data=transformed)
                     channel_saturated = analysis['channel_saturated']
-                    create_dataset_if_not_exists(
-                        h,
-                        f"/{event_key}/Metadata/{channel} Saturated",
-                        data=np.array([int(channel_saturated)], dtype=np.int8),
-                    )
                     if channel_saturated:
                         event_saturation_flags[event_key] = True
                         event_flags['saturated_channels'].append(channel)
@@ -3296,13 +3285,6 @@ class IDEXEvent:
                         param_path,
                         legacy_param_aliases,
                     )
-
-            for event_key, saturated in event_saturation_flags.items():
-                create_dataset_if_not_exists(
-                    h,
-                    f"/{event_key}/Metadata/AnyChannelSaturated",
-                    data=np.array([int(saturated)], dtype=np.int8),
-                )
 
             # Ensure every event that was processed records a flags group even if
             # no individual flags were generated.  Some downstream tooling (and
@@ -3617,6 +3599,12 @@ class IDEXEvent:
                     precomputed_matches,
                 )
 
+        json_dir = _resolve_json_dir(filename)
+        packed_path = json_dir / f"{self._json_base}_packed.json"
+        unpacked_path = json_dir / f"{self._json_base}_unpacked.json"
+        packed_path.write_text(json.dumps(packed_records, ensure_ascii=False))
+        unpacked_path.write_text(json.dumps(unpacked_records, ensure_ascii=False))
+
 # ||
 # ||
 # || Parse the high sampling rate data, this
@@ -3691,7 +3679,7 @@ def write_to_cdf(packets):
         if(varinfo['Variable']=="Epoch"):
             vardata = None
         if(varinfo['Variable']=="IDEX_Trigger"):
-            vardata = packets.header[(1,"Timestamp")]
+            vardata = packets.header.get((1, "epoch"))
         if(varinfo['Variable']=="TOF_Low"):
             print(len(np.array(packets.data[(1,"TOF L")])))
             vardata = np.array(packets.data[(1,"TOF L")], float)
