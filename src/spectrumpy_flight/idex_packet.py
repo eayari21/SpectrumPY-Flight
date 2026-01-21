@@ -2790,15 +2790,11 @@ class IDEXEvent:
             t0_index = (pre_blocks + 1) * 8 - 1
 
         time_values = (np.arange(sample_count, dtype=float) - t0_index) * spacing
-
         if high_rate:
-            if channel:
-                sample_delay_seconds = self._high_sampling_delay_seconds(event_id, channel)
-            else:
-                sample_delay = self._trigger_sample_delay(event_id)
-                sample_delay_seconds = float(sample_delay) * (1.0 / 260.0)
+            sample_delay = self._trigger_sample_delay(event_id)
+            sample_delay_seconds = float(sample_delay) * (1.0 / 260.0)
             if sample_delay_seconds:
-                time_values = time_values - sample_delay_seconds
+                time_values = time_values + sample_delay_seconds
         return time_values
 
     def plot_all_data(self, packets, fname: str):
