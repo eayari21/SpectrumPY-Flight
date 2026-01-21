@@ -23,6 +23,7 @@ images/*.pdf
 reports/*
 !reports/.gitkeep
 !reports/fm_laser_testing_categories.csv
+!reports/idex_algorithm_template_variable_mapping.csv
 
 # node / misc
 node_modules/
