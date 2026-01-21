@@ -2303,6 +2303,27 @@ _EVENT_VELOCITY_DATASETS: List[Tuple[str, str]] = [
     ("Analysis/Target L Velocity Estimate", "kmps"),
 ]
 
+_TRIGGER_LEVEL_DATASETS: Tuple[str, ...] = (
+    "Metadata/TriggerLevel",
+    "Metadata/Trigger Level",
+    "Metadata/unpacked/TriggerLevel",
+    "Metadata/unpacked/Trigger Level",
+    "Analysis/TriggerLevel",
+    "Analysis/Trigger Level",
+)
+
+_TRIGGER_MODE_DATASETS: Tuple[str, ...] = (
+    "Metadata/TriggerMode",
+    "Metadata/TriggerType",
+    "Metadata/Trigger Type",
+    "Metadata/TriggerID",
+    "Metadata/Trigger Id",
+    "Metadata/TriggerOrigin",
+    "Metadata/Trigger Origin",
+    "Metadata/unpacked/TriggerMode",
+    "Metadata/unpacked/TriggerType",
+)
+
 
 def _guess_event_timestamp_ms(data_source: BaseDataSource, event: str) -> Optional[float]:
     getter = getattr(data_source, "get_epoch_seconds", None)
@@ -2341,6 +2362,55 @@ def _guess_event_velocity_kmps(data_source: BaseDataSource, event: str) -> Optio
         if unit == "mps":
             return float(value) / 1000.0
     return None
+
+
+def _get_dataset_text(data_source: BaseDataSource, event: str, dataset: str) -> Optional[str]:
+    try:
+        data = data_source.get_dataset(event, dataset)
+    except Exception:
+        return None
+    if data is None:
+        return None
+    if isinstance(data, (str, bytes, bytearray, np.generic)):
+        return _coerce_optional_str(data)
+    try:
+        arr = np.asarray(data)
+    except Exception:
+        return None
+    if arr.size == 0:
+        return None
+    return _coerce_optional_str(arr.reshape(-1)[0])
+
+
+def _guess_trigger_level(data_source: BaseDataSource, event: str) -> Optional[float]:
+    for dataset in _TRIGGER_LEVEL_DATASETS:
+        value = _get_dataset_scalar(data_source, event, dataset)
+        if value is not None:
+            return float(value)
+    return None
+
+
+def _guess_trigger_mode(data_source: BaseDataSource, event: str) -> Optional[str]:
+    for dataset in _TRIGGER_MODE_DATASETS:
+        text = _get_dataset_text(data_source, event, dataset)
+        if text:
+            return text
+    return None
+
+
+def _trigger_channel_from_mode(trigger_mode: Optional[str]) -> Optional[str]:
+    if not trigger_mode:
+        return None
+    token = re.sub(r"[^a-z0-9]", "", str(trigger_mode).strip().lower())
+    if not token:
+        return None
+    match = re.search(r"(?:^|tof)(hg|mg|lg)", token)
+    if match is None:
+        match = re.search(r"(hg|mg|lg)", token)
+    if match is None:
+        return None
+    channel_code = match.group(1)
+    return {"hg": "TOF H", "mg": "TOF M", "lg": "TOF L"}.get(channel_code)
 
 
 def _timestamp_to_iso(ms: Optional[float]) -> str:
@@ -5291,6 +5361,7 @@ class MainWindow(QMainWindow):
         fit_plotted = self._plot_fit(ax, event_name, channel, overlay_mode)
 
         if base_plotted or fit_plotted:
+            self._plot_trigger_level(ax, event_name, channel)
             if not overlay_mode:
                 ax.set_ylabel(y_label_with_units(channel), fontsize=16)
             return True
@@ -5300,6 +5371,25 @@ class MainWindow(QMainWindow):
                 self._draw_missing_message(ax, channel, reason)
             missing_channels.append(channel)
         return False
+
+    def _plot_trigger_level(self, ax, event_name: str, channel: str) -> None:
+        if not self._data_source:
+            return
+        trigger_level = _guess_trigger_level(self._data_source, event_name)
+        if trigger_level is None or not np.isfinite(trigger_level):
+            return
+        trigger_mode = _guess_trigger_mode(self._data_source, event_name)
+        trigger_channel = _trigger_channel_from_mode(trigger_mode)
+        if trigger_channel != channel:
+            return
+        ax.axhline(
+            trigger_level,
+            color="#0ca678",
+            linestyle="--",
+            linewidth=1.4,
+            alpha=0.8,
+            zorder=1,
+        )
 
     def _estimate_baseline(self, event_name: str, channel: str, reference_time: Optional[np.ndarray]) -> float:
         key = (event_name, channel)
