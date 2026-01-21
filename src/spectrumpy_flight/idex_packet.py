@@ -2791,10 +2791,14 @@ class IDEXEvent:
 
         time_values = (np.arange(sample_count, dtype=float) - t0_index) * spacing
 
-        sample_delay = self._trigger_sample_delay(event_id)
-        if sample_delay:
-            delay_offset = ((t0_index - sample_delay) - t0_index) * (1.0 / 260.0)
-            time_values = time_values - delay_offset
+        if high_rate:
+            if channel:
+                sample_delay_seconds = self._high_sampling_delay_seconds(event_id, channel)
+            else:
+                sample_delay = self._trigger_sample_delay(event_id)
+                sample_delay_seconds = float(sample_delay) * (1.0 / 260.0)
+            if sample_delay_seconds:
+                time_values = time_values - sample_delay_seconds
         return time_values
 
     def plot_all_data(self, packets, fname: str):
@@ -3775,6 +3779,9 @@ def write_to_cdf(packets):
                         var_data=[varrecs,vardata])
     cdf_master.close()
     cdf_file.close()
+
+# Preserve the full decoder class even if we swap in the synthetic fallback.
+BaseIDEXEvent = IDEXEvent
 
 # When the lasp_packets dependency is unavailable (as is common in CI test
 # environments) fall back to the synthetic writer so downstream tooling still
