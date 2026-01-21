@@ -3028,9 +3028,21 @@ class IDEXEvent:
                 data = value if isinstance(value, np.ndarray) else np.atleast_1d(value)
                 if data.dtype.kind in {'U', 'S'}:
                     dtype = h5py.string_dtype(encoding='utf-8')
+                    data = data.astype(object)
                 elif data.dtype == object:
-                    dtype = h5py.string_dtype(encoding='utf-8')
-                    data = np.array([str(value)])
+                    if any(isinstance(item, (str, bytes, bytearray, np.str_)) for item in np.ravel(data)):
+                        dtype = h5py.string_dtype(encoding='utf-8')
+                        data = np.array(
+                            [
+                                item.decode('utf-8', errors='backslashreplace')
+                                if isinstance(item, (bytes, bytearray))
+                                else str(item)
+                                for item in np.ravel(data)
+                            ],
+                            dtype=object,
+                        ).reshape(data.shape)
+                    else:
+                        data = np.atleast_1d(value)
                 dataset_path = f"{group.name}/{name}"
                 if dataset_path in h:
                     del h[dataset_path]
