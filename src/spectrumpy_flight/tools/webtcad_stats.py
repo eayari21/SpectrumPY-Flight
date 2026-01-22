@@ -245,7 +245,7 @@ def build_url(spec: SeriesSpec, start_iso: str, stop_iso: str) -> str:
     req.prepare_url(BASE_URL, params)
 
     format_param = quote(
-        "format_time(time,yyyy-DDD'T'HH:mm:ss.SSS)",
+        "format_time(yyyy-DDD'T'HH:mm:ss.SSS)",
         safe="(),",
     )
     return f"{req.url}&{format_param}"
