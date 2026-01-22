@@ -2757,17 +2757,13 @@ class IDEXEvent:
         return float(trigger_offset) * (1.0 / 32.5)
 
     def _high_trigger_time_seconds(self, event_id: Optional[Union[int, str]], channel: Optional[str]) -> float:
-        pre_blocks = self._get_header_value(event_id, "HSPretriggerBlocks", getattr(self, "hspretrigblocks", 0))
-        delay_samples = {
-            'TOF H': self._get_header_value(event_id, 'TOFDelay_H', getattr(self, 'hgdelay', 0)),
-            'TOF M': self._get_header_value(event_id, 'TOFDelay_M', getattr(self, 'mgdelay', 0)),
-            'TOF L': self._get_header_value(event_id, 'TOFDelay_L', getattr(self, 'lgdelay', 0)),
-        }.get(channel, self._get_header_value(event_id, 'TOFDelay_H', getattr(self, 'hgdelay', 0)))
-        return (512.0 * pre_blocks - (delay_samples + 1)) * (1.0 / 260.0)
+        pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
+        high_gain_delay = self._get_header_value(event_id, 'TOFDelay_H', getattr(self, 'hgdelay', 0))
+        return 8.0 * (1.0 / 4.0625) * (pre_blocks + 1) - (high_gain_delay * (1.0 / 260.0))
 
     def _low_trigger_time_seconds(self, event_id: Optional[Union[int, str]]) -> float:
-        pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
-        return 8.0 * pre_blocks * (1.0 / 4.0625)
+        pre_blocks = self._get_header_value(event_id, "HSPretriggerBlocks", getattr(self, "hspretrigblocks", 0))
+        return 512.0 * (1.0 / 260.0) * (pre_blocks + 1)
 
     def _build_time_array(
         self,
@@ -2782,16 +2778,16 @@ class IDEXEvent:
         if high_rate:
             spacing = 1.0 / 260.0
             time_values = np.linspace(0, sample_count, sample_count, dtype=float) * spacing
-            delay_seconds = self._high_sampling_delay_seconds(event_id, channel)
-            if delay_seconds:
-                time_values = time_values - delay_seconds
+            pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
+            low_trigger_offset = 8.0 * (1.0 / 4.0625) * (pre_blocks + 1)
+            high_gain_delay = self._get_header_value(event_id, "TOFDelay_H", getattr(self, "hgdelay", 0))
+            time_values = time_values - low_trigger_offset + (high_gain_delay * spacing)
         else:
             spacing = 1.0 / 4.0625
-            pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
             time_values = np.linspace(0, sample_count, sample_count, dtype=float) * spacing
-            trigger_time = 8.0 * pre_blocks * spacing
-            if trigger_time:
-                time_values = time_values - trigger_time
+            pre_blocks = self._get_header_value(event_id, "HSPretriggerBlocks", getattr(self, "hspretrigblocks", 0))
+            high_trigger_offset = 512.0 * (1.0 / 260.0) * (pre_blocks + 1)
+            time_values = time_values - high_trigger_offset
         return time_values
 
     def plot_all_data(self, packets, fname: str):
