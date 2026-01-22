@@ -2741,8 +2741,8 @@ class IDEXEvent:
             time_values = np.linspace(0, sample_count, sample_count, dtype=float) * spacing
             pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
             low_trigger_offset = 8.0 * (1.0 / 4.0625) * (pre_blocks + 1)
-            high_gain_delay = self._get_header_value(event_id, "TOFDelay_H", getattr(self, "hgdelay", 0))
-            time_values = time_values - low_trigger_offset + ((high_gain_delay + 1) * spacing)
+            low_gain_delay = self._get_header_value(event_id, "TOFDelay_L", getattr(self, "lgdelay", 0))
+            time_values = time_values - low_trigger_offset + ((low_gain_delay + 1) * spacing)
         else:
             spacing = 1.0 / 4.0625
             time_values = np.linspace(0, sample_count, sample_count, dtype=float) * spacing
