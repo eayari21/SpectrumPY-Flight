@@ -133,7 +133,17 @@ class ScrollFriendlyFigureCanvas(FigureCanvas):
 _QT = None
 try:
     from PySide6.QtCore import Qt, QSize, QTimer, QUrl, QBuffer, QIODevice, QSignalBlocker
-    from PySide6.QtGui import QAction, QFont, QIcon, QPixmap, QImage, QTextCursor, QTextDocument
+    from PySide6.QtGui import (
+        QAction,
+        QFont,
+        QIcon,
+        QKeySequence,
+        QPixmap,
+        QImage,
+        QTextCursor,
+        QTextDocument,
+        QShortcut,
+    )
     from PySide6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
@@ -145,7 +155,17 @@ try:
     _QT = "PySide6"
 except Exception:
     from PyQt6.QtCore import Qt, QSize, QTimer, QUrl, QBuffer, QIODevice, QSignalBlocker
-    from PyQt6.QtGui import QAction, QFont, QIcon, QPixmap, QImage, QTextCursor, QTextDocument
+    from PyQt6.QtGui import (
+        QAction,
+        QFont,
+        QIcon,
+        QKeySequence,
+        QPixmap,
+        QImage,
+        QTextCursor,
+        QTextDocument,
+        QShortcut,
+    )
     from PyQt6.QtWidgets import (
         QApplication, QFileDialog, QMainWindow, QMessageBox, QStatusBar, QToolBar,
         QVBoxLayout, QWidget, QComboBox, QLabel, QSizePolicy, QDialog, QPushButton,
@@ -3650,6 +3670,7 @@ class MainWindow(QMainWindow):
         self._build_menubar()
         self._build_toolbar()
         self._build_controls()
+        self._setup_event_shortcuts()
 
         self.figure = Figure(figsize=(12, 8), constrained_layout=True)
         self.canvas = FigureCanvas(self.figure)
@@ -4109,6 +4130,36 @@ class MainWindow(QMainWindow):
 
         toolbar_container.adjustSize()
         scroll.setMinimumHeight(tb.sizeHint().height() + 16)
+
+    def _setup_event_shortcuts(self) -> None:
+        """Attach arrow-key shortcuts for stepping between events."""
+
+        self._event_prev_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Left), self)
+        self._event_prev_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._event_prev_shortcut.activated.connect(lambda: self._step_event(-1))
+
+        self._event_next_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Right), self)
+        self._event_next_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._event_next_shortcut.activated.connect(lambda: self._step_event(1))
+
+    def _step_event(self, delta: int) -> None:
+        """Safely move the current event index by ``delta``."""
+
+        try:
+            if not self._events or self.event_combo is None:
+                return
+            current_index = self.event_combo.currentIndex()
+            if current_index < 0:
+                if self._current_event and self._current_event in self._events:
+                    current_index = self._events.index(self._current_event)
+                else:
+                    return
+            target_index = max(0, min(current_index + delta, len(self._events) - 1))
+            if target_index == current_index:
+                return
+            self.event_combo.setCurrentIndex(target_index)
+        except Exception:
+            return
 
     def _build_branding_banner(self) -> Optional[QWidget]:
         pixmap = _load_brand_pixmap(max_height=64)
