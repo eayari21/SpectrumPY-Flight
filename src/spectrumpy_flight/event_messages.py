@@ -35,7 +35,11 @@ def doy_to_datetime(ts):
     )
 
 def parse_dust_time(s):
-    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%d-%b-%Y %H:%M:%S.%f"):
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%S.%fZ",
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%d-%b-%Y %H:%M:%S.%f",
+    ):
         try:
             return datetime.strptime(s, fmt)
         except ValueError:
@@ -80,16 +84,21 @@ for t, state in events:
         on_time = None
 
 # ============================================================
-# Dust hits
+# Dust hits (FULL, UNIQUE)
 # ============================================================
 dust_hit_strings = [
-    "2025-11-28 21:23:56.726200",
-    "2025-11-28 22:28:41.346840",
-    "25-Dec-2025 01:19:21.763000",
-    "2025-12-25 08:46:58.15714",
-    "2025-12-28 23:17:27.27143",
+    "2025-11-26T12:13:06.552647Z",
+    "2025-11-28T21:23:56.726200Z",
+    "2025-11-28T22:28:41.346840Z",
+    "2025-11-29T12:08:49.962823Z",
+    "2025-12-08T22:56:21.604477Z",
+    "2025-12-15T08:08:12.610856Z",
+    "2025-12-24T17:33:17.770637Z",
+    "2025-12-25T01:19:21.763000Z",
+    "2025-12-25T08:46:58.157140Z",
 ]
-dust_hits = [parse_dust_time(s) for s in dust_hit_strings]
+
+dust_hits = sorted({parse_dust_time(s) for s in dust_hit_strings})
 
 # ============================================================
 # Transmit dates
@@ -124,23 +133,23 @@ Y_TX = 2
 Y_DUST = 3
 
 # ============================================================
-# Determine full time span
+# Time span
 # ============================================================
 t_min = min(t for t, _ in events)
 t_max = max(t for t, _ in events)
 
 # ============================================================
-# Plot OFF background (red)
+# OFF background
 # ============================================================
 ax.plot([t_min, t_max], [Y_ON, Y_ON],
         lw=12, color="tab:red", solid_capstyle="butt")
 
 # ============================================================
-# Plot ON intervals (blue)
+# ON intervals
 # ============================================================
 for i, (start, end) in enumerate(intervals):
     if i == len(intervals) - 1:
-        start = start - timedelta(days=2)
+        start -= timedelta(days=2)
 
     days = (end - start).total_seconds() / 86400
 
@@ -158,7 +167,7 @@ for i, (start, end) in enumerate(intervals):
     )
 
 # ============================================================
-# Plot transmit dates (closer labels, stronger staggering)
+# Transmits
 # ============================================================
 tx_colors = plt.cm.tab10.colors
 TX_LABEL_STEP = 0.22
@@ -178,33 +187,27 @@ for i, t in enumerate(tx_dates, 1):
     )
 
 # ============================================================
-# Plot dust hits (closer labels, stronger vertical staggering)
+# Dust hits — ABSOLUTE NON-OVERLAP (FORCED STACK)
 # ============================================================
 dust_colors = plt.cm.tab10.colors
-dust_offsets = defaultdict(int)
-time_bin = timedelta(hours=12)
 
-DUST_STEP = 0.22
-DUST_LABEL_OFFSET = 0.08
+DUST_STEP = 0.35
+DUST_LABEL_OFFSET = 0.10
 
-for i, t in enumerate(sorted(dust_hits), 1):
-    key = None
-    for prev_t in dust_offsets:
-        if abs(t - prev_t) < time_bin:
-            key = prev_t
-            break
-
-    if key is None:
-        dust_offsets[t] = 0
-        offset = 0
-    else:
-        dust_offsets[key] += 1
-        offset = dust_offsets[key]
-
+for i, t in enumerate(dust_hits, 1):
     c = dust_colors[(i - 1) % len(dust_colors)]
-    y = Y_DUST + DUST_STEP * offset
 
-    ax.scatter(t, y, s=180, marker="*", color=c)
+    # force every dust hit onto its own row
+    y = Y_DUST + (i - 1) * DUST_STEP
+
+    ax.scatter(
+        t, y,
+        s=180,
+        marker="*",
+        color=c,
+        zorder=3,
+    )
+
     ax.text(
         t,
         y + DUST_LABEL_OFFSET,
@@ -214,19 +217,14 @@ for i, t in enumerate(sorted(dust_hits), 1):
         fontsize=16,
         weight="bold",
         color=c,
+        zorder=4,
     )
 
-# ============================================================
-# Axes formatting
-# ============================================================
-ax.set_yticks([Y_ON, Y_TX, Y_DUST])
-ax.set_yticklabels([
-    "Science Acquisition",
-    "Downlink / Transmit",
-    "Dust Hits",
-])
+# expand y-limits to fit all dust hits
+ax.set_ylim(0.6, Y_DUST + DUST_STEP * (len(dust_hits) + 1))
 
-ax.set_ylim(0.6, 4.1)
+
+
 ax.set_xlabel("Date (UTC)")
 ax.set_title(
     "IDEX Science Acquisition, Dust Hits, and Transmit Timeline\n(Since Launch – September 24)",
