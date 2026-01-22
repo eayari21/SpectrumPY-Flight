@@ -2736,18 +2736,19 @@ class IDEXEvent:
     ) -> np.ndarray:
         if sample_count <= 0:
             return np.array([], dtype=float)
-        spacing = 1.0 / 260.0 if high_rate else 1.0 / 4.0625
-        time_values = np.arange(sample_count, dtype=float) * spacing
         if high_rate:
+            spacing = 1.0 / 260.0
+            time_values = np.linspace(0, sample_count, sample_count, dtype=float) * spacing
             pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
-            low_trigger_offset = 8 * (1.0 / 4.0625) * (pre_blocks + 1)
+            low_trigger_offset = 8.0 * (1.0 / 4.0625) * (pre_blocks + 1)
             high_gain_delay = self._get_header_value(event_id, "TOFDelay_H", getattr(self, "hgdelay", 0))
-            time_values = time_values - low_trigger_offset + (high_gain_delay * (1.0 / 260.0))
+            time_values = time_values - low_trigger_offset + (high_gain_delay * spacing)
         else:
-            offset = self._low_trigger_offset(event_id)
-            trigger_offset = self._trigger_offset_seconds(event_id)
-            time_values = time_values - offset
-            time_values = time_values - self._low_sampling_delay_seconds(event_id) - trigger_offset
+            spacing = 1.0 / 4.0625
+            time_values = np.linspace(0, sample_count, sample_count, dtype=float) * spacing
+            pre_blocks = self._get_header_value(event_id, "HSPretriggerBlocks", getattr(self, "hspretrigblocks", 0))
+            high_trigger_offset = 512.0 * (1.0 / 260.0) * (pre_blocks + 1)
+            time_values = time_values - high_trigger_offset
         return time_values
 
     def plot_all_data(self, packets, fname: str):
