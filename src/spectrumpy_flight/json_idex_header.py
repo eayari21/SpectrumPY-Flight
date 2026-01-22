@@ -281,7 +281,7 @@ def _txhdr_time_fields(
     """Return epoch seconds and UTC timestamp based on TXHDR time fields."""
 
     if seconds_high is None or seconds_low is None or subseconds is None:
-        return {"epoch": None, "timestamp_utc": None}
+        return {"epoch": None, "timestamp_utc": None, "utc_timestamp": None}
     try:
         epoch_seconds = (
             (float(1 << 16) * float(seconds_high))
@@ -289,11 +289,11 @@ def _txhdr_time_fields(
             + 20e-6 * float(subseconds)
         )
     except (TypeError, ValueError):
-        return {"epoch": None, "timestamp_utc": None}
+        return {"epoch": None, "timestamp_utc": None, "utc_timestamp": None}
 
     utc_time = (SPACECRAFT_EPOCH + timedelta(seconds=epoch_seconds)).replace(tzinfo=timezone.utc)
     utc_iso = utc_time.isoformat().replace("+00:00", "Z")
-    return {"epoch": epoch_seconds, "timestamp_utc": utc_iso}
+    return {"epoch": epoch_seconds, "timestamp_utc": utc_iso, "utc_timestamp": utc_iso}
 
 
 def _collection_efficiency_ratio(
@@ -2555,6 +2555,9 @@ class IDEXEvent:
                     if time_fields["timestamp_utc"] is not None:
                         self.header[(evtnum, 'timestamp_utc')] = time_fields["timestamp_utc"]
                         _append_header_key('timestamp_utc')
+                    if time_fields["utc_timestamp"] is not None:
+                        self.header[(evtnum, 'utc_timestamp')] = time_fields["utc_timestamp"]
+                        _append_header_key('utc_timestamp')
 
 
                 if pkt.data['IDX__SCI0TYPE'].raw_value in [2, 4, 8, 16, 32, 64]:
