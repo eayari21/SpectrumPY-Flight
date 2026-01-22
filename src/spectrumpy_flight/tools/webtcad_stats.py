@@ -683,6 +683,7 @@ class MainWindow(QMainWindow):
 
         series_map: Dict[str, SeriesData] = {}
         warnings: List[str] = list(SERIES_CONFIG_WARNINGS)
+        failures: List[str] = []
 
         for key, spec in SERIES_SPECS.items():
             try:
@@ -693,12 +694,17 @@ class MainWindow(QMainWindow):
                 s = fetch_series(session, key, spec, start_iso, stop_iso)
                 series_map[key] = s
             except Exception as e:
-                warnings.append(
-                    f"Skipped {key} ({spec.query_param}={spec.value}): {e}"
-                )
+                msg = f"Skipped {key} ({spec.query_param}={spec.value}): {e}"
+                warnings.append(msg)
+                failures.append(msg)
 
         if not series_map:
-            raise RuntimeError("No series downloaded.")
+            detail = "\n".join(f"- {failure}" for failure in failures) or "- unknown error"
+            raise RuntimeError(
+                "No series downloaded.\n"
+                "Check credentials, time range, and WebTCAD availability.\n"
+                f"Failures:\n{detail}"
+            )
 
         return series_map, warnings
 
