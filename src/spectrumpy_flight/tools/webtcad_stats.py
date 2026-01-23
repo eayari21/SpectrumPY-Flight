@@ -214,23 +214,35 @@ class SeriesData:
 # Networking + data helpers
 # ----------------------------------------------------------------------
 
-def _query_value(spec: SeriesSpec) -> str:
+def _strip_wrapping_quotes(value: str) -> str:
+    if value.startswith('"') and value.endswith('"'):
+        return value[1:-1]
+    return value
+
+
+def _query_value(spec: SeriesSpec, quote_key: bool) -> str:
     """
     Prepare a query value for the series.
 
-    String-based KEY filters need quoting to be parsed correctly by the
-    WebTCAD service; numeric TMIDs can be passed as-is.
+    String-based KEY filters sometimes require quotes; numeric TMIDs can be
+    passed as-is.
     """
     if spec.query_param.upper() != "KEY":
         return spec.value
 
-    if spec.value.startswith('"') and spec.value.endswith('"'):
-        return spec.value
+    raw_value = _strip_wrapping_quotes(spec.value)
+    if quote_key:
+        return f'"{raw_value}"'
+    return raw_value
 
-    return f'"{spec.value}"'
 
-
-def build_url(spec: SeriesSpec, start_iso: str, stop_iso: str) -> str:
+def build_url(
+    spec: SeriesSpec,
+    start_iso: str,
+    stop_iso: str,
+    *,
+    quote_key: bool = False,
+) -> str:
     """
     Construct a URL matching the format you supplied, with
     time>=start_iso and time<=stop_iso, and the formatted time column.
@@ -239,7 +251,7 @@ def build_url(spec: SeriesSpec, start_iso: str, stop_iso: str) -> str:
         return f"{quote(name, safe='')}={quote(value, safe=safe)}"
 
     query_parts = [
-        _encode_param(spec.query_param, _query_value(spec)),
+        _encode_param(spec.query_param, _query_value(spec, quote_key)),
         _encode_param("time>", start_iso, safe=":-T.Z"),
         _encode_param("time<", stop_iso, safe=":-T.Z"),
     ]
@@ -260,8 +272,13 @@ def fetch_series(
     stop_iso: str,
 ) -> SeriesData:
     """Download one series from WebTCAD and return as SeriesData."""
-    url = build_url(spec, start_iso, stop_iso)
+    url = build_url(spec, start_iso, stop_iso, quote_key=False)
     resp = session.get(url)
+
+    if resp.status_code == 400 and spec.query_param.upper() == "KEY":
+        alt_url = build_url(spec, start_iso, stop_iso, quote_key=True)
+        resp = session.get(alt_url)
+
     resp.raise_for_status()
 
     buf = io.StringIO(resp.text)
