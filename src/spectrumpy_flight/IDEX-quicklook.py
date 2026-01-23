@@ -118,6 +118,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.ticker import FuncFormatter
+from matplotlib.widgets import SpanSelector
 
 
 class ScrollFriendlyFigureCanvas(FigureCanvas):
@@ -2481,6 +2482,61 @@ def _format_charge(value: Optional[float]) -> str:
 DEFAULT_RESULT_LIMIT = 5
 
 
+class WaveformStatisticsDialog(QDialog):
+    """Display summary statistics for a selected waveform region."""
+
+    def __init__(
+        self,
+        *,
+        parent: Optional[QWidget],
+        region_label: str,
+        stats_rows: Sequence[Tuple[str, float, float, float, float]],
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Waveform Statistics")
+        self.setMinimumWidth(460)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        region_text = QLabel(f"Selected region: {region_label}", self)
+        region_text.setStyleSheet("font-size: 14px; font-weight: 600; color: #1f2937;")
+        layout.addWidget(region_text)
+
+        table = QTableWidget(self)
+        table.setColumnCount(5)
+        table.setRowCount(len(stats_rows))
+        table.setHorizontalHeaderLabels(["Waveform", "Min", "Mean", "Max", "Std Dev"])
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        table.setAlternatingRowColors(True)
+        table.setStyleSheet("QTableWidget { font-size: 13px; }")
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        for row, (label, min_val, mean_val, max_val, std_val) in enumerate(stats_rows):
+            values = [
+                label,
+                _format_float(min_val, precision=4),
+                _format_float(mean_val, precision=4),
+                _format_float(max_val, precision=4),
+                _format_float(std_val, precision=4),
+            ]
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                if col > 0:
+                    item.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
+                table.setItem(row, col, item)
+
+        layout.addWidget(table)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
+        button_box.rejected.connect(self.reject)
+        button_box.accepted.connect(self.accept)
+        layout.addWidget(button_box)
+
+
 @dataclass
 class SQLMatchCriteria:
     time_ms: Optional[float] = None
@@ -3642,6 +3698,9 @@ class MainWindow(QMainWindow):
         self._low_rate_waveform_cache: Dict[
             Tuple[str, str], Tuple[np.ndarray, np.ndarray]
         ] = {}
+        self._stats_selector_active = False
+        self._stats_selectors: List[SpanSelector] = []
+        self._stats_axes: List[Any] = []
         self._show_fit: Dict[str, bool] = {name: False for name in FIT_ELIGIBLE_CHANNELS}
         # ``refresh_fit_controls`` is invoked as soon as data are loaded, so make
         # sure ``fit_buttons`` always exists even before the control panel is
@@ -4290,6 +4349,16 @@ class MainWindow(QMainWindow):
             toggle_row.addWidget(btn)
             self.fit_buttons[channel] = btn
 
+        self.stats_selector_button = QPushButton("Statistics Selector", self)
+        self.stats_selector_button.setCheckable(True)
+        self.stats_selector_button.setMinimumHeight(50)
+        self.stats_selector_button.setStyleSheet(toggle_style)
+        self.stats_selector_button.setToolTip(
+            "Select a waveform region to display min/mean/max/std statistics."
+        )
+        self.stats_selector_button.clicked.connect(self._on_stats_selector_toggled)
+        toggle_row.addWidget(self.stats_selector_button)
+
         self.edit_params_button = QPushButton("Edit Fit Parameters", self)
         self.edit_params_button.setMinimumHeight(50)
         self.edit_params_button.setStyleSheet(primary_style)
@@ -4310,7 +4379,12 @@ class MainWindow(QMainWindow):
         if not getattr(self, "_primary_channel_buttons", None):
             return
 
-        reference_widgets = [self.edit_params_button, self.overlay_button, *self.fit_buttons.values()]
+        reference_widgets = [
+            self.edit_params_button,
+            self.overlay_button,
+            getattr(self, "stats_selector_button", None),
+            *self.fit_buttons.values(),
+        ]
         reference_width = 0
         for widget in reference_widgets:
             if widget is None:
@@ -4365,6 +4439,97 @@ class MainWindow(QMainWindow):
             self.canvas.setMinimumHeight(target_pixels)
             self.canvas.resize(self.canvas.width(), target_pixels)
             self.canvas.updateGeometry()
+
+    def _on_stats_selector_toggled(self, checked: bool) -> None:
+        self._stats_selector_active = checked
+        self._set_stats_selector_active(checked)
+        if checked:
+            self.statusBar().showMessage(
+                "Drag across a waveform to compute region statistics.",
+                6000,
+            )
+
+    def _set_stats_selector_active(self, active: bool) -> None:
+        for selector in self._stats_selectors:
+            selector.disconnect_events()
+        self._stats_selectors = []
+
+        if not active:
+            return
+        if not self._stats_axes:
+            return
+
+        for axis in self._stats_axes:
+            selector = SpanSelector(
+                axis,
+                lambda xmin, xmax, ax=axis: self._on_stats_region_selected(ax, xmin, xmax),
+                direction="horizontal",
+                useblit=True,
+                props=dict(alpha=0.25, facecolor="#94d82d"),
+            )
+            self._stats_selectors.append(selector)
+
+    def _on_stats_region_selected(self, ax, xmin: float, xmax: float) -> None:
+        if not self._stats_selector_active:
+            return
+        if not np.isfinite(xmin) or not np.isfinite(xmax):
+            return
+        if abs(xmax - xmin) <= 0:
+            return
+
+        lo, hi = sorted([float(xmin), float(xmax)])
+        stats_rows = self._compute_waveform_statistics(ax, lo, hi)
+        if not stats_rows:
+            QMessageBox.information(
+                self,
+                "Statistics Unavailable",
+                "No waveform data were found in the selected region.",
+            )
+            return
+
+        label = ax.get_xlabel().strip() or "X"
+        region_label = f"{_format_float(lo, precision=4)} to {_format_float(hi, precision=4)} {label}"
+        dialog = WaveformStatisticsDialog(
+            parent=self,
+            region_label=region_label,
+            stats_rows=stats_rows,
+        )
+        dialog.exec()
+
+    def _compute_waveform_statistics(
+        self,
+        ax,
+        xmin: float,
+        xmax: float,
+    ) -> List[Tuple[str, float, float, float, float]]:
+        rows: List[Tuple[str, float, float, float, float]] = []
+        for line in ax.lines:
+            if line.get_gid() != "waveform":
+                continue
+            x_values = np.asarray(line.get_xdata(), dtype=float)
+            y_values = np.asarray(line.get_ydata(), dtype=float)
+            if x_values.size == 0 or y_values.size == 0:
+                continue
+            mask = (x_values >= xmin) & (x_values <= xmax)
+            mask &= np.isfinite(x_values) & np.isfinite(y_values)
+            if not np.any(mask):
+                continue
+            subset = y_values[mask]
+            if subset.size == 0:
+                continue
+            label = line.get_label() or "Waveform"
+            if label.startswith("_"):
+                label = "Waveform"
+            rows.append(
+                (
+                    label,
+                    float(np.min(subset)),
+                    float(np.mean(subset)),
+                    float(np.max(subset)),
+                    float(np.std(subset)),
+                )
+            )
+        return rows
 
     def open_documentation_center(
         self,
@@ -5127,6 +5292,8 @@ class MainWindow(QMainWindow):
             self.canvas.draw_idle()
             self.refresh_fit_controls()
             self.update_status_text()
+            self._stats_axes = []
+            self._set_stats_selector_active(self._stats_selector_active)
             return
 
         self._current_event = event_name
@@ -5158,6 +5325,8 @@ class MainWindow(QMainWindow):
             self._update_canvas_geometry(1)
             self.canvas.draw_idle()
             self.update_status_text()
+            self._stats_axes = []
+            self._set_stats_selector_active(self._stats_selector_active)
             return
 
         overlay_mode = self.overlay_button.isChecked()
@@ -5239,6 +5408,8 @@ class MainWindow(QMainWindow):
             axis_count = max(len(axes), 1)
 
         self._update_canvas_geometry(axis_count)
+        self._stats_axes = axes
+        self._set_stats_selector_active(self._stats_selector_active)
         self.canvas.draw_idle()
         self.update_status_text(missing)
 
@@ -5360,9 +5531,9 @@ class MainWindow(QMainWindow):
                         color="#111111",
                         linewidth=1.1,
                         alpha=0.85,
-                        label=None,
+                        label=channel,
                         zorder=2,
-                    )
+                    )[0].set_gid("waveform")
                     base_plotted = True
                     use_filtered = True
 
@@ -5400,9 +5571,9 @@ class MainWindow(QMainWindow):
                         color="#111111",
                         linewidth=1.1,
                         alpha=0.85,
-                        label=None,
+                        label=channel,
                         zorder=2,
-                    )
+                    )[0].set_gid("waveform")
                     if context is not None:
                         ax._custom_xlabel = MASS_AXIS_LABEL
                         ax._mass_axis_context = context
@@ -5440,7 +5611,7 @@ class MainWindow(QMainWindow):
             linewidth=1.4,
             alpha=0.8,
             zorder=1,
-        )
+        ).set_gid("trigger")
 
     def _estimate_baseline(self, event_name: str, channel: str, reference_time: Optional[np.ndarray]) -> float:
         key = (event_name, channel)
@@ -5594,9 +5765,9 @@ class MainWindow(QMainWindow):
                 values,
                 color="#c1121f",
                 linewidth=2.4,
-                label=None,
+                label=label,
                 zorder=3,
-            )
+            )[0].set_gid("fit")
 
             if channel in RISE_METRIC_CHANNELS:
                 metrics = self._ensure_rise_metrics(event_name, channel, times, values)
