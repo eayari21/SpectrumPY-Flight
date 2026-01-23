@@ -98,9 +98,6 @@ def _shape_to_text(shape: Sequence[int]) -> str:
 
 class HDFViewWindow(QMainWindow):
     """Simple HDF5 browser window."""
-
-    MAX_PREVIEW_ROWS = 200
-    MAX_PREVIEW_COLS = 50
     TIME_DATASET_CANDIDATES = (
         "/Metadata/unpacked/SCI0Time32",
         "/Metadata/unpacked/SCI0TIME32",
@@ -428,55 +425,32 @@ class HDFViewWindow(QMainWindow):
             self._clear_table(self._data_table)
 
     def _populate_vector_preview(self, data: np.ndarray) -> None:
-        rows = min(data.shape[0], self.MAX_PREVIEW_ROWS)
-        truncated = data.shape[0] > rows
+        rows = data.shape[0]
         self._data_table.setColumnCount(2)
         self._data_table.setHorizontalHeaderLabels(["Index", "Value"])
-        self._data_table.setRowCount(rows + (1 if truncated else 0))
+        self._data_table.setRowCount(rows)
         vertical_labels = []
         for row in range(rows):
             vertical_labels.append(str(row))
             self._data_table.setItem(row, 0, QTableWidgetItem(str(row)))
             self._data_table.setItem(row, 1, QTableWidgetItem(_format_scalar(data[row])))
-        if truncated:
-            ellipsis_row = rows
-            vertical_labels.append("…")
-            self._data_table.setItem(ellipsis_row, 0, QTableWidgetItem("…"))
-            self._data_table.setItem(ellipsis_row, 1, QTableWidgetItem("…"))
         self._data_table.setVerticalHeaderLabels(vertical_labels)
 
     def _populate_matrix_preview(self, data: np.ndarray) -> None:
-        rows = min(data.shape[0], self.MAX_PREVIEW_ROWS)
-        cols = min(data.shape[1], self.MAX_PREVIEW_COLS)
-        truncated_rows = data.shape[0] > rows
-        truncated_cols = data.shape[1] > cols
-
-        display_rows = rows + (1 if truncated_rows else 0)
-        display_cols = cols + (1 if truncated_cols else 0)
-
-        self._data_table.setRowCount(display_rows)
-        self._data_table.setColumnCount(display_cols)
+        rows = data.shape[0]
+        cols = data.shape[1]
+        self._data_table.setRowCount(rows)
+        self._data_table.setColumnCount(cols)
 
         horizontal_labels = [str(col) for col in range(cols)]
-        if truncated_cols:
-            horizontal_labels.append("…")
         self._data_table.setHorizontalHeaderLabels(horizontal_labels)
 
         vertical_labels = [str(row) for row in range(rows)]
-        if truncated_rows:
-            vertical_labels.append("…")
         self._data_table.setVerticalHeaderLabels(vertical_labels)
 
         for r in range(rows):
             for c in range(cols):
                 self._data_table.setItem(r, c, QTableWidgetItem(_format_scalar(data[r, c])))
-
-        if truncated_cols:
-            for r in range(rows):
-                self._data_table.setItem(r, cols, QTableWidgetItem("…"))
-        if truncated_rows:
-            for c in range(display_cols):
-                self._data_table.setItem(rows, c, QTableWidgetItem("…"))
 
     def _populate_attrs(self, attrs: Iterable[Tuple[str, object]]) -> None:
         attrs = list(attrs)
