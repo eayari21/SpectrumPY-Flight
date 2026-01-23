@@ -235,20 +235,21 @@ def build_url(spec: SeriesSpec, start_iso: str, stop_iso: str) -> str:
     Construct a URL matching the format you supplied, with
     time>=start_iso and time<=stop_iso, and the formatted time column.
     """
-    params = {
-        spec.query_param: _query_value(spec),
-        "time>=": start_iso,
-        "time<=": stop_iso,
-    }
+    def _encode_param(name: str, value: str, safe: str = "") -> str:
+        return f"{quote(name, safe='')}={quote(value, safe=safe)}"
 
-    req = requests.PreparedRequest()
-    req.prepare_url(BASE_URL, params)
+    query_parts = [
+        _encode_param(spec.query_param, _query_value(spec)),
+        _encode_param("time>", start_iso, safe=":-T.Z"),
+        _encode_param("time<", stop_iso, safe=":-T.Z"),
+    ]
+    query = "&".join(query_parts)
 
     format_param = quote(
         "format_time(yyyy-DDD'T'HH:mm:ss.SSS)",
-        safe="(),",
+        safe="(),:",
     )
-    return f"{req.url}&{format_param}"
+    return f"{BASE_URL}?{query}&{format_param}"
 
 
 def fetch_series(
