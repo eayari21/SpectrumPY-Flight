@@ -750,8 +750,8 @@ class MainWindow(QMainWindow):
             return
 
         default_dir = os.path.dirname(fn) if fn else os.getcwd()
-        suggested_name = selection.split("/")[-1].replace(" ", "_")
-        default_path = os.path.join(default_dir, f"{event_key}_{suggested_name}.csv")
+        base_name = os.path.splitext(os.path.basename(fn))[0] if fn else "export"
+        default_path = os.path.join(default_dir, f"{base_name}_event_{event_key}.csv")
 
         output_path, _ = QFileDialog.getSaveFileName(
             self,
