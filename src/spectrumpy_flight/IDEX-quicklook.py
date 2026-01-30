@@ -4985,26 +4985,28 @@ class MainWindow(QMainWindow):
             return
 
         columns = [
-            "Time (high sampling)",
-            "TOF L",
-            "TOF M",
-            "TOF H",
-            "Time (low sampling)",
-            "Ion Grid",
-            "Target L",
-            "Target H",
+            ("Time (high sampling)", "Time (high sampling)"),
+            ("TOF L", "TOF L"),
+            ("TOF M", "TOF M"),
+            ("TOF H", "TOF H"),
+            ("TOF Combined", "Analysis/DustComposition/CombinedSignal"),
+            ("Mass", "Mass"),
+            ("Time (low sampling)", "Time (low sampling)"),
+            ("Ion Grid", "Ion Grid"),
+            ("Target L", "Target L"),
+            ("Target H", "Target H"),
         ]
 
         data: Dict[str, pd.Series] = {}
         missing: List[str] = []
-        for name in columns:
-            values = self._data_source.get_dataset(self._current_event, name)
+        for label, dataset in columns:
+            values = self._data_source.get_dataset(self._current_event, dataset)
             if values is None:
-                missing.append(name)
-                data[name] = pd.Series([], dtype=float)
+                missing.append(label)
+                data[label] = pd.Series([], dtype=float)
                 continue
             arr = np.asarray(values).ravel()
-            data[name] = pd.Series(arr)
+            data[label] = pd.Series(arr)
 
         if all(series.empty for series in data.values()):
             QMessageBox.warning(
