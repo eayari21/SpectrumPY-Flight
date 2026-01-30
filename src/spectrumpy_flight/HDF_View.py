@@ -99,12 +99,9 @@ def _shape_to_text(shape: Sequence[int]) -> str:
 class HDFViewWindow(QMainWindow):
     """Simple HDF5 browser window."""
     TIME_DATASET_CANDIDATES = (
-        "/Metadata/unpacked/SCI0Time32",
-        "/Metadata/unpacked/SCI0TIME32",
-        "/Metadata/raw/IDX__SCI0TIME32",
-        "/Metadata/SCI0Time32",
-        "/Metadata/SCI0TIME32",
-        "/Metadata/IDX__SCI0TIME32",
+        "/Metadata/unpacked/utc_timestamp",
+        "/Metadata/raw/utc_timestamp",
+        "/Metadata/utc_timestamp",
     )
 
     def __init__(self, filename: str, parent: Optional[QWidget] = None):
@@ -141,7 +138,7 @@ class HDFViewWindow(QMainWindow):
         toolbar = QToolBar("HDF Tools", self)
         toolbar.setMovable(False)
         export_action = QAction("Export Selected to CSV", self)
-        export_action.setToolTip("Export selected datasets with SCI0TIME32 to CSV")
+        export_action.setToolTip("Export selected datasets with utc_timestamp to CSV")
         export_action.triggered.connect(self._export_selected_to_csv)
         toolbar.addAction(export_action)
         self.addToolBar(toolbar)
@@ -291,12 +288,12 @@ class HDFViewWindow(QMainWindow):
         def visitor(name: str, obj: h5py.Dataset) -> None:
             if isinstance(obj, h5py.Dataset):
                 dataset_name = obj.name.split("/")[-1].lower()
-                if dataset_name == "sci0time32":
+                if dataset_name == "utc_timestamp":
                     matches.append(obj.name)
 
         self._h5.visititems(visitor)
         if not matches:
-            raise ValueError("SCI0TIME32 dataset not found in the HDF5 file.")
+            raise ValueError("utc_timestamp dataset not found in the HDF5 file.")
         path = matches[0]
         return np.asarray(self._h5[path][()]), path
 
@@ -326,7 +323,7 @@ class HDFViewWindow(QMainWindow):
             time_data, time_path = self._find_time_dataset()
             time_vector = self._coerce_vector(np.asarray(time_data), time_path)
         except Exception as exc:
-            QMessageBox.critical(self, "Export Error", f"Unable to locate SCI0TIME32.\n{exc}")
+            QMessageBox.critical(self, "Export Error", f"Unable to locate utc_timestamp.\n{exc}")
             return
 
         if len(datasets) == 1:
@@ -378,13 +375,13 @@ class HDFViewWindow(QMainWindow):
         values = self._coerce_vector(data, dataset_path)
         if values.shape[0] != time_vector.shape[0]:
             raise ValueError(
-                "Dataset length does not match SCI0TIME32 length "
+                "Dataset length does not match utc_timestamp length "
                 f"({values.shape[0]} vs {time_vector.shape[0]})."
             )
         header_name = os.path.basename(dataset_path.strip("/")) or dataset_path
         with open(filename, "w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
-            writer.writerow(["SCI0TIME32", header_name])
+            writer.writerow(["utc_timestamp", header_name])
             for time_value, data_value in zip(time_vector, values):
                 writer.writerow([_format_scalar(time_value), _format_scalar(data_value)])
 
