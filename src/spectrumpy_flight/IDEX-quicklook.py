@@ -5016,7 +5016,7 @@ class MainWindow(QMainWindow):
 
         output_dir = self._resolve_csv_dir(source_name)
         base_name = Path(source_name).stem or Path(source_name).name
-        csv_path = output_dir / f"{base_name}_{self._current_event}.csv"
+        csv_path = output_dir / f"{base_name}_event_{self._current_event}.csv"
 
         df = pd.DataFrame(data)
         df.to_csv(csv_path, index=False)
