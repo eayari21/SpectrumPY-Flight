@@ -64,7 +64,7 @@ file, and exposes shortcuts to the HDF Plotter and full Quicklook GUI.
 
 * The event selector lives on the right side of the toolbar. Scroll or use the
   arrow keys to move through events; the status bar updates with the event number
-  and timestamp metadata when available.【F:IDEX-quicklook.py†L1216-L1294】
+  and timestamp metadata when available.【F:IDEX-quicklook.py†L1216-L1294】【F:IDEX-quicklook.py†L4189-L4234】
 * Use **Open Data Browser** to launch the contextual CDF/HDF structure viewers in
   parallel windows when you need to inspect attributes or raw tables.
 
@@ -78,6 +78,11 @@ file, and exposes shortcuts to the HDF Plotter and full Quicklook GUI.
   display calculated EMG/ion-grid fits alongside raw traces.
 * `Edit Fit Parameters` opens an interactive dialog where you can tweak fit
   coefficients, apply overrides, and revert to the on-disk solution.【F:IDEX-quicklook.py†L1370-L1587】
+* **Statistics Selector** lets you drag across a plotted waveform and see
+  min/mean/max/σ summaries for the selected region. Toggle the button on, then
+  click-and-drag horizontally on any waveform. A dialog lists the stats for each
+  waveform plotted on that axis, with the selected region shown in the header for
+  quick reference.【F:IDEX-quicklook.py†L2485-L2529】【F:IDEX-quicklook.py†L4352-L4519】
 
 ## 5. Plotting canvas
 
@@ -121,8 +126,39 @@ status text until a populated waveform is selected.【F:noise_analysis.py†L304
 Use the **Dust Composition** button (`Ctrl+D`) to launch the composition
 workspace, which combines high-/medium-/low-gain TOF traces, handles baseline
 subtraction, and lets you fit analytic mass lines before exporting abundance
-tables.【F:IDEX-quicklook.py†L2068-L2142】【F:dust_composition.py†L3008-L3123】 Each
-mass line can be refit or inspected in detail via the **Inspect Mass Line**
+tables.【F:IDEX-quicklook.py†L2068-L2142】【F:dust_composition.py†L3008-L3123】 The
+right-hand control stack is intentionally linear; following it from top to bottom
+keeps the analysis consistent:
+
+1. **Waveform Modes.** Pick a combination mode (automatic or explicit gain
+   selection) and click **Combine TOF** to build a single stitched waveform using
+   the instrument gain ratios. Use **Reset View** to return to individual gain
+   plots, and **Save Analysis** to persist the current composition state back into
+   the HDF5 event group.【F:dust_composition.py†L4554-L4598】【F:dust_composition.py†L4599-L4639】
+2. **Baseline.** Choose **Select Baseline** for a single horizontal baseline, or
+   **Spline Baseline** to drop multiple anchors and let the cubic spline follow
+   the noise floor. The **Move existing spline points** toggle lets you nudge
+   anchors without adding new ones, and **Clear Baseline Points** resets to a flat
+   baseline if you want to start over.【F:dust_composition.py†L4641-L4687】
+3. **Mass Axis.** Adjust the stretch/shift scaling, or use **Anchor selected
+   line** to lock a known species to a physical mass. **Auto-calc axis** will
+   estimate stretch/shift from the fitted lines when you have enough references
+   already marked.【F:dust_composition.py†L4689-L4745】
+4. **Mass Line Tools.** Enable **Add Mass Line** to select a TOF region and fit an
+   EMG line. **Relative Sensitivity Factors…** opens the RSF dialog so you can
+   renormalise abundances to lab-calibrated values before exporting
+   compositions.【F:dust_composition.py†L4747-L4768】【F:dust_composition.py†L4759-L4805】
+5. **Mass Line Fits table.** The table lists every line fit and its derived mass,
+   EMG parameters, and abundance fractions. Use **Inspect Selected** to open the
+   inspector and fine-tune parameters, **Add Manual Line** to insert a line by
+   typing EMG values directly, and **Remove Selected** to drop a misfit line from
+   the analysis.【F:dust_composition.py†L4824-L4883】
+6. **Composition Summary.** The summary table collects the final relative
+   abundances and optionally highlights when RSF scaling is applied. The sample
+   guess combobox can be used to tag the event with a known material or free-form
+   description for downstream reports.【F:dust_composition.py†L4885-L4923】
+
+Each mass line can be refit or inspected in detail via the **Inspect Mass Line**
 dialog. The inspector offers a shape selector backed by the shared
 `line_shapes.py` library, so you can swap between EMG, Gaussian, Lorentzian,
 Voigt, double EMG, HyperEMG, and generalised-normal profiles without leaving
@@ -151,7 +187,30 @@ fitted parameters, analytic areas, RSF selections, and abundance fractions
 alongside any manually assigned species labels for downstream mass
 budgeting.【F:dust_composition.py†L3438-L3484】【F:dust_composition.py†L3828-L4023】
 
-## 8. Built-in help & documentation search
+## 8. Accelerator match window
+
+Select **Accelerator Match** (toolbar or `Ctrl+Shift+M`) to open the SQL matcher.
+The header confirms the current event, trigger time, and velocity estimate, so
+you can quickly validate the match context before running queries.【F:IDEX-quicklook.py†L3891-L3900】【F:IDEX-quicklook.py†L4105-L4131】【F:IDEX-quicklook.py†L3569-L3629】
+
+* **Search criteria.** Enter a timestamp override, adjust the ± time window, and
+  optionally provide a velocity estimate with a tolerance window. Use **Restrict
+  by time** and **Restrict by velocity** to toggle hard filters, and set a custom
+  result limit if you need more than the default five candidates. Advanced users
+  can append an extra SQL `WHERE` clause with **Extra filter** for targeted
+  searches.【F:IDEX-quicklook.py†L3069-L3179】【F:IDEX-quicklook.py†L3222-L3308】
+* **Results table.** Matches from the live SQL query and the local accelerator
+  CSV lookup are merged, sorted by time offset, and displayed with quality,
+  timestamp, Δt, velocity, mass, charge, radius, and experiment tag
+  columns.【F:IDEX-quicklook.py†L3039-L3376】
+* **Match details.** Selecting a row populates the right-hand details pane with
+  experiment settings, dust source metadata, PSU limits, and the exact SQL query
+  used for retrieval so you can audit what was applied.【F:IDEX-quicklook.py†L3377-L3567】
+* **Apply match to event.** Clicking **Apply match to event** writes the selected
+  record back into the current HDF5 event and surfaces a confirmation toast in
+  the main Quicklook status bar.【F:IDEX-quicklook.py†L3456-L3493】
+
+## 9. Built-in help & documentation search
 
 * Click the question-mark **Help** button or press `F1` to launch the
   Documentation Center. It lists every bundled guide (README, tutorials,
@@ -162,7 +221,7 @@ budgeting.【F:dust_composition.py†L3438-L3484】【F:dust_composition.py†L3
 * The menu bar also includes a quick search widget under `Help` so you can start
   typing without leaving the main window.【F:IDEX-quicklook.py†L1134-L1192】
 
-## 9. Keyboard shortcuts
+## 10. Keyboard shortcuts
 
 | Shortcut | Action |
 | -------- | ------ |
@@ -170,11 +229,17 @@ budgeting.【F:dust_composition.py†L3438-L3484】【F:dust_composition.py†L3
 | `Ctrl+R` | Reload the current file |
 | `Ctrl+B` | Open the contextual data browser |
 | `Ctrl+E` | Launch the fit parameter editor |
+| `Ctrl+D` | Open the Dust Composition window |
+| `Ctrl+N` | Open the Noise Analysis window |
+| `Ctrl+Shift+M` | Open the Accelerator Match window |
+| `Ctrl+Shift+H` | Open the standalone HDF Explorer |
+| `Ctrl+Shift+D` | Open the impact parameter estimator |
 | `Ctrl+F1` | Focus the documentation search bar |
 | `F1` | Open the documentation center |
+| `←/→` | Step backward/forward through events |
 | `Ctrl+Q` | Quit the application |
 
-## 10. Troubleshooting tips
+## 11. Troubleshooting tips
 
 * If the viewer reports that `cdflib` or `h5py` is missing, install the optional
   dependency in your environment (`pip install cdflib h5py`).
