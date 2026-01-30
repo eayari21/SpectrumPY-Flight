@@ -51,6 +51,7 @@ try:  # pragma: no cover - Qt import guard
         QDialogButtonBox,
         QDoubleSpinBox,
         QFormLayout,
+        QFileDialog,
         QGridLayout,
         QGroupBox,
         QHBoxLayout,
@@ -80,6 +81,7 @@ except Exception:  # pragma: no cover - fallback to PyQt6
         QDialogButtonBox,
         QDoubleSpinBox,
         QFormLayout,
+        QFileDialog,
         QGridLayout,
         QGroupBox,
         QHBoxLayout,
@@ -4785,6 +4787,10 @@ class DustCompositionWindow(QMainWindow):
         self.manual_mass_button.setToolTip("Enter EMG parameters directly without selecting a region on the plot.")
         self.manual_mass_button.clicked.connect(self._prompt_manual_mass_line)
         layout.addWidget(self.manual_mass_button)
+        self.export_mass_button = QPushButton("Export CSV", box)
+        self.export_mass_button.setToolTip("Save the mass line parameters and abundances to a CSV file.")
+        self.export_mass_button.clicked.connect(self._export_mass_line_csv)
+        layout.addWidget(self.export_mass_button)
         self.remove_mass_button = QPushButton("Remove Selected", box)
         self.remove_mass_button.clicked.connect(self._remove_selected_mass_line)
         self.remove_mass_button.setEnabled(False)
@@ -4999,6 +5005,82 @@ class DustCompositionWindow(QMainWindow):
         self._update_tables()
         self._update_summary()
         self._refresh_plot()
+
+    def _export_mass_line_csv(self) -> None:
+        if not self._mass_lines:
+            QMessageBox.information(
+                self,
+                "No Data",
+                "Fit at least one mass line before exporting the table.",
+            )
+            return
+        base_name = "mass_lines"
+        if self._event:
+            base_name = f"{self._event}_{base_name}"
+        suggested_dir = Path.cwd()
+        if self._h5 is not None:
+            filename = getattr(self._h5, "filename", None)
+            if filename:
+                suggested_dir = Path(filename).resolve().parent
+                stem = Path(filename).stem
+                base_name = f"{stem}_{base_name}"
+        suggested_path = suggested_dir / f"{base_name}.csv"
+        options = QFileDialog.Option.DontUseNativeDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Mass Lines CSV",
+            str(suggested_path),
+            "CSV files (*.csv);;All files (*)",
+            options=options,
+        )
+        if not path:
+            return
+        export_path = Path(path)
+        if export_path.suffix.lower() != ".csv":
+            export_path = export_path.with_suffix(".csv")
+        header = [
+            "Label",
+            "Mass (amu)",
+            "Mu (us)",
+            "Sigma (us)",
+            "Lambda (1/us)",
+            "Amplitude (DN*us)",
+            "Abundance (%)",
+            "Terrestrial (%)",
+        ]
+        try:
+            with export_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(header)
+                for line in self._mass_lines:
+                    terrestrial_fraction = None
+                    if line.assigned_species:
+                        terrestrial_fraction = _lookup_terrestrial_abundance(line.assigned_species)
+                    if terrestrial_fraction is None:
+                        terrestrial_fraction = _lookup_terrestrial_abundance(line.label)
+                    terrestrial_text = ""
+                    if terrestrial_fraction is not None:
+                        terrestrial_text = _format_isotope_fraction(terrestrial_fraction)
+                    writer.writerow(
+                        [
+                            line.label,
+                            f"{line.mass_guess:.3f}",
+                            f"{line.mu:.6f}",
+                            f"{line.sigma:.6f}",
+                            f"{line.lam:.6f}",
+                            f"{line.amplitude:.6f}",
+                            f"{line.abundance * 100.0:.2f}",
+                            terrestrial_text,
+                        ]
+                    )
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Export Failed",
+                f"Could not export the mass-line table:\n{exc}",
+            )
+            return
+        QMessageBox.information(self, "Export Complete", f"Saved mass lines to:\n{export_path}")
 
     def _inspect_selected_mass_line(self) -> None:
         line = self._current_mass_line()
