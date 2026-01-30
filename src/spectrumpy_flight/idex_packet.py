@@ -65,12 +65,7 @@ if __package__ is None or __package__ == "":
     from rice_decode import idex_rice_Decode
     from time2mass import time2mass, get_last_mass_line_assignments
     from lookup.dust_estimator import estimate_particle, load_default_tables
-    from spacecraft_clock import (
-        SPACECRAFT_EPOCH,
-        combine_coarse_fine_seconds,
-        spacecraft_seconds_to_datetime,
-        spacecraft_seconds_to_unix_seconds,
-    )
+    from spacecraft_clock import SPACECRAFT_EPOCH, combine_coarse_fine_seconds
 else:
     from . import package_path
     from .plot_style import apply_plot_style
@@ -78,12 +73,7 @@ else:
     from .rice_decode import idex_rice_Decode
     from .time2mass import time2mass, get_last_mass_line_assignments
     from .lookup.dust_estimator import estimate_particle, load_default_tables
-    from .spacecraft_clock import (
-        SPACECRAFT_EPOCH,
-        combine_coarse_fine_seconds,
-        spacecraft_seconds_to_datetime,
-        spacecraft_seconds_to_unix_seconds,
-    )
+    from .spacecraft_clock import SPACECRAFT_EPOCH, combine_coarse_fine_seconds
 
 try:
     if __package__ is None or __package__ == "":
@@ -271,25 +261,6 @@ def _parse_filename_epoch(filename: str) -> Tuple[Optional[datetime], bool]:
         return (datetime(year, month, day, tzinfo=timezone.utc), False)
     except ValueError:
         return (None, False)
-
-
-def _spacecraft_seconds_time_fields(spacecraft_seconds: float) -> Dict[str, object]:
-    timestamp_seconds = int(math.floor(spacecraft_seconds))
-    timestamp_subseconds = int(round((spacecraft_seconds - timestamp_seconds) * 50000.0))
-    if timestamp_subseconds >= 50000:
-        timestamp_seconds += timestamp_subseconds // 50000
-        timestamp_subseconds = timestamp_subseconds % 50000
-    epoch_ms = float(timestamp_seconds) * 1000.0 + float(timestamp_subseconds) * 0.02
-    utc_time = spacecraft_seconds_to_datetime(spacecraft_seconds)
-    utc_iso = utc_time.isoformat().replace("+00:00", "Z")
-    return {
-        "TimestampSeconds": timestamp_seconds,
-        "TimestampSubseconds": timestamp_subseconds,
-        "Epoch": epoch_ms,
-        "Timestamp": spacecraft_seconds_to_unix_seconds(spacecraft_seconds),
-        "TimestampUTC": utc_iso,
-        "SpacecraftSeconds": spacecraft_seconds,
-    }
 
 
 def _txhdr_time_fields(
