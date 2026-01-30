@@ -84,6 +84,18 @@ def _erfc(values: Union[np.ndarray, float, int]) -> np.ndarray:
 
     return _compat_erfc(values)
 
+
+def _swap_export_root(path: Path, replacement: str) -> Path:
+    parts = list(path.parts)
+    for idx, part in enumerate(parts):
+        if part.lower() in {"data", "hdf5", "json", "csv"}:
+            parts[idx] = replacement
+            base = Path(parts[0]) if parts else Path(replacement)
+            for segment in parts[1:]:
+                base /= segment
+            return base
+    return path
+
 from spectrumpy_flight.HDF_View import launch_hdf_viewer
 from spectrumpy_flight.dust_composition import launch_dust_composition_window
 from spectrumpy_flight.dust_estimator_gui import launch_dust_estimator_window
@@ -4020,7 +4032,7 @@ class MainWindow(QMainWindow):
         export_menu.addAction(self.save_pdf_action)
         export_menu.addAction(self.save_svg_action)
         export_button.setMenu(export_menu)
-        export_button.setStyleSheet(
+        export_button_style = (
             """
             QToolButton {
                 font-size: 15px;
@@ -4035,7 +4047,14 @@ class MainWindow(QMainWindow):
             }
             """
         )
+        export_button.setStyleSheet(export_button_style)
         tb.addWidget(export_button)
+
+        csv_button = QToolButton(self)
+        csv_button.setText("Export CSV")
+        csv_button.clicked.connect(self.save_event_csv)
+        csv_button.setStyleSheet(export_button_style)
+        tb.addWidget(csv_button)
 
         tb.addSeparator()
 
@@ -4937,6 +4956,76 @@ class MainWindow(QMainWindow):
             return
 
         self.statusBar().showMessage(f"Saved plot to {export_path}", 6000)
+
+    def _resolve_csv_dir(self, filename: str) -> Path:
+        input_path = Path(filename).expanduser()
+        parent = input_path.parent
+        target_parent = _swap_export_root(parent, "CSV")
+        if target_parent == parent and not target_parent.is_absolute():
+            target_parent = Path(__file__).resolve().parent / "CSV"
+        target_parent.mkdir(parents=True, exist_ok=True)
+        return target_parent
+
+    def save_event_csv(self) -> None:
+        if not self._current_event or not self._data_source:
+            QMessageBox.information(
+                self,
+                "No Event Loaded",
+                "Load a data file and select an event before exporting CSV.",
+            )
+            return
+
+        source_name = self._filename or self._data_source.filename
+        if not source_name:
+            QMessageBox.information(
+                self,
+                "Missing Source",
+                "Unable to resolve the current file path for CSV export.",
+            )
+            return
+
+        columns = [
+            "Time (high sampling)",
+            "TOF L",
+            "TOF M",
+            "TOF H",
+            "Time (low sampling)",
+            "Ion Grid",
+            "Target L",
+            "Target H",
+        ]
+
+        data: Dict[str, pd.Series] = {}
+        missing: List[str] = []
+        for name in columns:
+            values = self._data_source.get_dataset(self._current_event, name)
+            if values is None:
+                missing.append(name)
+                data[name] = pd.Series([], dtype=float)
+                continue
+            arr = np.asarray(values).ravel()
+            data[name] = pd.Series(arr)
+
+        if all(series.empty for series in data.values()):
+            QMessageBox.warning(
+                self,
+                "Export Failed",
+                "No waveform data is available for the current event.",
+            )
+            return
+
+        output_dir = self._resolve_csv_dir(source_name)
+        base_name = Path(source_name).stem or Path(source_name).name
+        csv_path = output_dir / f"{base_name}_{self._current_event}.csv"
+
+        df = pd.DataFrame(data)
+        df.to_csv(csv_path, index=False)
+
+        message = f"Saved CSV to {csv_path}"
+        if missing:
+            missing_list = ", ".join(missing)
+            message = f"{message} (missing: {missing_list})"
+        self.statusBar().showMessage(message, 8000)
 
     # ---- Data helpers -----------------------------------------------------
     def _reset_state(self):
