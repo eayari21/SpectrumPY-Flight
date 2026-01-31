@@ -215,6 +215,19 @@ _FILENAME_EPOCH_YEAR_FIRST_PATTERN = re.compile(
 _FILENAME_DATE_ONLY_PATTERN = re.compile(r"(\d{2})_(\d{2})_(\d{2})")
 _FILENAME_DATE_ONLY_YEAR_FIRST_PATTERN = re.compile(r"(\d{4})[ _-]?(\d{2})[ _-]?(\d{2})")
 
+Y_AXIS_LABELS: Dict[str, str] = {
+    "Target L": r"$Q_{TL}$ [pC]",
+    "Target H": r"$Q_{TH}$ [pC]",
+    "Ion Grid": r"$Q_{IG}$ [pC]",
+    "TOF L": r"$TOF_{L}$ [pC/ $\Delta t$]",
+    "TOF M": r"$TOF_{M}$ [pC/ $\Delta t$]",
+    "TOF H": r"$TOF_{H}$ [pC/ $\Delta t$]",
+}
+
+
+def _y_label_with_units(channel_name: str) -> str:
+    return Y_AXIS_LABELS.get(channel_name, channel_name)
+
 
 def _parse_filename_epoch(filename: str) -> Tuple[Optional[datetime], bool]:
     """Return a timezone-aware datetime parsed from the capture filename.
@@ -2727,6 +2740,41 @@ class IDEXEvent:
         trigger_offset = self._get_header_value(event_id, 'TriggerOffset', getattr(self, 'trig_offset', 0))
         return float(trigger_offset) * (1.0 / 32.5)
 
+    def _trigger_channel_from_mode(self, trigger_mode: Optional[str]) -> Optional[str]:
+        if not trigger_mode:
+            return None
+        token = re.sub(r"[^a-z0-9]", "", str(trigger_mode).strip().lower())
+        if not token:
+            return None
+        match = re.search(r"(?:^|tof)(hg|mg|lg)", token)
+        if match is None:
+            match = re.search(r"(hg|mg|lg)", token)
+        if match is None:
+            return None
+        return {"hg": "TOF H", "mg": "TOF M", "lg": "TOF L"}.get(match.group(1))
+
+    def _resolve_trigger_channel(self, event_id: Optional[Union[int, str]]) -> Optional[str]:
+        if event_id is None:
+            return None
+        trigger_mode = self.header.get((int(event_id), "TriggerMode"))
+        channel = self._trigger_channel_from_mode(trigger_mode)
+        if channel:
+            return channel
+        trigger_origin = self.header.get((int(event_id), "TriggerOrigin"))
+        origin_token = str(trigger_origin or "").strip().upper()
+        return {"HG": "TOF H", "MG": "TOF M", "LG": "TOF L"}.get(origin_token)
+
+    def _resolve_trigger_level(self, event_id: Optional[Union[int, str]]) -> Optional[float]:
+        if event_id is None:
+            return None
+        level = self.header.get((int(event_id), "TriggerLevel"))
+        if level is None:
+            return None
+        try:
+            return float(level)
+        except (TypeError, ValueError):
+            return None
+
     def _high_trigger_time_seconds(self, event_id: Optional[Union[int, str]], channel: Optional[str]) -> float:
         pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
         high_gain_delay = self._get_header_value(event_id, 'TOFDelay_H', getattr(self, 'hgdelay', 0))
@@ -2769,17 +2817,6 @@ class IDEXEvent:
         plot_folder.mkdir(parents=True, exist_ok=True)
 
         event_ids = sorted({key[0] for key in packets.keys()})
-        colors = plt.get_cmap("tab10").colors
-
-        def _format_stats(trace: np.ndarray) -> str:
-            return "\n".join(
-                [
-                    f"Min = {trace.min():.0f} [dN]",
-                    f"Avg = {trace.mean():6.2f} [dN]",
-                    f"Std = {trace.std():6.2f} [dN]",
-                    f"Max = {trace.max():.0f} [dN]",
-                ]
-            )
 
         for event_id in event_ids:
             fig, axes_grid = plt.subplots(
@@ -2811,70 +2848,57 @@ class IDEXEvent:
                 for channel in ("Ion Grid", "Target L", "Target H")
                 if (event_id, channel) in packets
             }
+            trigger_channel = self._resolve_trigger_channel(event_id)
+            trigger_level = self._resolve_trigger_level(event_id)
 
             fig.suptitle(
                 f"{fname} Event {event_id}",
-                font="Times New Roman",
                 fontsize=22,
                 fontweight="bold",
             )
 
             fig.supxlabel(r"Time [$\mu$s]", fontsize=14, fontweight="bold")
 
-            def _draw_axis(ax, time_axis, trace, label, color, trigger_time=None):
-                ax.plot(time_axis, trace, color=color, lw=1.8)
-                if trigger_time is not None and time_axis.size:
-                    ax.axvline(time_axis.min() + trigger_time, color="red", lw=1.2, ls="--", alpha=0.7)
+            def _draw_axis(ax, time_axis, trace, label, color):
+                ax.plot(time_axis, trace, color=color, lw=1.3, alpha=0.9)
+                if trigger_level is not None and np.isfinite(trigger_level) and label == trigger_channel:
+                    ax.axhline(
+                        trigger_level,
+                        color="#0ca678",
+                        linestyle="--",
+                        linewidth=1.4,
+                        alpha=0.8,
+                    )
                 ax.set_title(label, fontsize=14, fontweight="bold")
-                ax.set_ylabel("Counts [dN]", fontsize=12)
-                ax.grid(True, ls="--", lw=0.5, alpha=0.6)
-                ax.text(
-                    0.98,
-                    0.95,
-                    _format_stats(trace),
-                    transform=ax.transAxes,
-                    ha="right",
-                    va="top",
-                    fontsize=10,
-                    bbox={
-                        "boxstyle": "round,pad=0.4",
-                        "facecolor": "white",
-                        "edgecolor": "gray",
-                        "alpha": 0.9,
-                    },
-                )
+                ax.set_ylabel(_y_label_with_units(label), fontsize=12)
 
             _draw_axis(
                 axes[0],
                 hstime_map.get("TOF L", np.array([])),
                 packets[(event_id, "TOF L")],
                 "TOF L",
-                colors[0],
-                trigger_time=self._high_trigger_time_seconds(event_id, "TOF L"),
+                "#111111",
             )
             _draw_axis(
                 axes[1],
                 hstime_map.get("TOF M", np.array([])),
                 packets[(event_id, "TOF M")],
                 "TOF M",
-                colors[1],
-                trigger_time=self._high_trigger_time_seconds(event_id, "TOF M"),
+                "#111111",
             )
             _draw_axis(
                 axes[2],
                 hstime_map.get("TOF H", np.array([])),
                 packets[(event_id, "TOF H")],
                 "TOF H",
-                colors[2],
-                trigger_time=self._high_trigger_time_seconds(event_id, "TOF H"),
+                "#111111",
             )
             _draw_axis(
                 axes[3],
                 lstime_map.get("Ion Grid", np.array([])),
                 packets[(event_id, "Ion Grid")],
                 "Ion Grid",
-                colors[3],
-                trigger_time=self._low_trigger_time_seconds(event_id),
+                "#111111",
             )
 
             if self.header.get((event_id, "epoch"), 0) < 494_733_600:
@@ -2882,34 +2906,30 @@ class IDEXEvent:
                     axes[4],
                     lstime_map.get("Target L", np.array([])),
                     packets[(event_id, "Target L")],
-                    "Target LG",
-                    colors[4],
-                    trigger_time=self._low_trigger_time_seconds(event_id),
+                    "Target L",
+                    "#111111",
                 )
                 _draw_axis(
                     axes[5],
                     lstime_map.get("Target H", np.array([])),
                     packets[(event_id, "Target H")],
-                    "Target HG",
-                    colors[5],
-                    trigger_time=self._low_trigger_time_seconds(event_id),
+                    "Target H",
+                    "#111111",
                 )
             else:
                 _draw_axis(
                     axes[4],
                     lstime_map.get("Target H", np.array([])),
                     packets[(event_id, "Target H")],
-                    "Target HG",
-                    colors[4],
-                    trigger_time=self._low_trigger_time_seconds(event_id),
+                    "Target H",
+                    "#111111",
                 )
                 _draw_axis(
                     axes[5],
                     lstime_map.get("Target L", np.array([])),
                     packets[(event_id, "Target L")],
-                    "Target LG",
-                    colors[5],
-                    trigger_time=self._low_trigger_time_seconds(event_id),
+                    "Target L",
+                    "#111111",
                 )
 
             plt.tight_layout(rect=[0, 0.03, 1, 0.95])
