@@ -2474,7 +2474,8 @@ class IDEXEvent:
                         # Extract the second 11 bits (bits 10-20)
                         maxsamples = (pkt.data['IDX__TXHDRLGTRIGCTRL1'].derived_value >> 11) & mask_11_bit
                         # Extract the last 10 bits (bits 0-9)
-                        self.header[(evtnum, 'TriggerLevel')] = 2.89e-4*((pkt.data['IDX__TXHDRLGTRIGCTRL1'].derived_value >> 22) & mask_10_bit)
+                        trigger_counts = (pkt.data['IDX__TXHDRLGTRIGCTRL1'].derived_value >> 22) & mask_10_bit
+                        self.header[(evtnum, 'TriggerLevel')] = 5.14e-4 * trigger_counts
                         print(f"Trigger level = {self.header[(evtnum, 'TriggerLevel')]}")
 
                         if(pkt.data['IDX__TXHDRLGTRIGMODE'].derived_value==1):
@@ -2496,7 +2497,8 @@ class IDEXEvent:
                         # Extract the second 11 bits (bits 10-20)
                         maxsamples = (pkt.data['IDX__TXHDRMGTRIGCTRL1'].derived_value  >> 11) & mask_11_bit
                         # Extract the last 10 bits (bits 0-9)
-                        self.header[(evtnum, 'TriggerLevel')] = 2.89e-4*((pkt.data['IDX__TXHDRMGTRIGCTRL1'].derived_value >> 22) & mask_10_bit)
+                        trigger_counts = (pkt.data['IDX__TXHDRMGTRIGCTRL1'].derived_value >> 22) & mask_10_bit
+                        self.header[(evtnum, 'TriggerLevel')] = 1.13e-2 * trigger_counts
                         print(f"Trigger level = {self.header[(evtnum, 'TriggerLevel')]}")
                         if(pkt.data['IDX__TXHDRMGTRIGMODE'].derived_value==1):
                             print("Threshold trigger mode enabled for mid gain channel.")
@@ -2517,7 +2519,8 @@ class IDEXEvent:
                         # Extract the second 11 bits (bits 10-20)
                         maxsamples = (pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value  >> 11) & mask_11_bit
                         # Extract the last 10 bits (bits 0-9)
-                        self.header[(evtnum, 'TriggerLevel')] = 2.89e-4*((pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value >> 22) & mask_10_bit)
+                        trigger_counts = (pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value >> 22) & mask_10_bit
+                        self.header[(evtnum, 'TriggerLevel')] = 2.89e-4 * trigger_counts
                         print(f"For {pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value}, HG Trigger level = {self.header[(evtnum, 'TriggerLevel')]}, sample settings = {minsamples}, {maxsamples}")
 
                         if(pkt.data['IDX__TXHDRHGTRIGMODE'].derived_value==1):
@@ -2827,7 +2830,7 @@ class IDEXEvent:
         }
         channel_order = ("TOF L", "TOF M", "TOF H", "Ion Grid", "Target L", "Target H")
 
-        for event_id in event_ids:
+        def _plot_event(event_id: int) -> None:
             channel_traces = {
                 channel: np.asarray(packets.get((event_id, channel), np.array([])), dtype=float)
                 for channel in channel_order
@@ -2891,9 +2894,8 @@ class IDEXEvent:
                         color="#6c757d",
                     )
                 if trigger_level is not None and np.isfinite(trigger_level) and label == trigger_channel:
-                    trigger_scale = conversion_factors.get(channel, 1.0)
                     ax.axhline(
-                        trigger_level * trigger_scale,
+                        trigger_level,
                         color="#0ca678",
                         linestyle="--",
                         linewidth=1.4,
@@ -2962,9 +2964,17 @@ class IDEXEvent:
                     "#111111",
                 )
 
-            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-            plt.savefig(plot_folder / f"{fname}_Event_{event_id}.png", dpi=300)
+            fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+            fig.savefig(plot_folder / f"{fname}_Event_{event_id}.png", dpi=300)
             plt.close(fig)
+
+        max_workers = min(len(event_ids) or 1, os.cpu_count() or 1)
+        if max_workers <= 1:
+            for event_id in event_ids:
+                _plot_event(event_id)
+        else:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                list(executor.map(_plot_event, event_ids))
 
     # ||
     # ||

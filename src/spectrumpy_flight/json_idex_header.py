@@ -2465,7 +2465,8 @@ class IDEXEvent:
                         # Extract the second 11 bits (bits 10-20)
                         maxsamples = (pkt.data['IDX__TXHDRLGTRIGCTRL1'].derived_value >> 11) & mask_11_bit
                         # Extract the last 10 bits (bits 0-9)
-                        self.header[(evtnum, 'TriggerLevel')] = 2.89e-4*((pkt.data['IDX__TXHDRLGTRIGCTRL1'].derived_value >> 22) & mask_10_bit)
+                        trigger_counts = (pkt.data['IDX__TXHDRLGTRIGCTRL1'].derived_value >> 22) & mask_10_bit
+                        self.header[(evtnum, 'TriggerLevel')] = 5.14e-4 * trigger_counts
                         print(f"Trigger level = {self.header[(evtnum, 'TriggerLevel')]}")
 
                         if(pkt.data['IDX__TXHDRLGTRIGMODE'].derived_value==1):
@@ -2486,7 +2487,8 @@ class IDEXEvent:
                         # Extract the second 11 bits (bits 10-20)
                         maxsamples = (pkt.data['IDX__TXHDRMGTRIGCTRL1'].derived_value  >> 11) & mask_11_bit
                         # Extract the last 10 bits (bits 0-9)
-                        self.header[(evtnum, 'TriggerLevel')] = 2.89e-4*((pkt.data['IDX__TXHDRMGTRIGCTRL1'].derived_value >> 22) & mask_10_bit)
+                        trigger_counts = (pkt.data['IDX__TXHDRMGTRIGCTRL1'].derived_value >> 22) & mask_10_bit
+                        self.header[(evtnum, 'TriggerLevel')] = 1.13e-2 * trigger_counts
                         print(f"Trigger level = {self.header[(evtnum, 'TriggerLevel')]}")
                         if(pkt.data['IDX__TXHDRMGTRIGMODE'].derived_value==1):
                             print("Threshold trigger mode enabled for mid gain channel.")
@@ -2506,7 +2508,8 @@ class IDEXEvent:
                         # Extract the second 11 bits (bits 10-20)
                         maxsamples = (pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value  >> 11) & mask_11_bit
                         # Extract the last 10 bits (bits 0-9)
-                        self.header[(evtnum, 'TriggerLevel')] = 2.89e-4*((pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value >> 22) & mask_10_bit)
+                        trigger_counts = (pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value >> 22) & mask_10_bit
+                        self.header[(evtnum, 'TriggerLevel')] = 2.89e-4 * trigger_counts
                         print(f"For {pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value}, HG Trigger level = {self.header[(evtnum, 'TriggerLevel')]}, sample settings = {minsamples}, {maxsamples}")
 
                         if(pkt.data['IDX__TXHDRHGTRIGMODE'].derived_value==1):
