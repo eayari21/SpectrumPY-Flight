@@ -2968,13 +2968,10 @@ class IDEXEvent:
             fig.savefig(plot_folder / f"{fname}_Event_{event_id}.png", dpi=300)
             plt.close(fig)
 
-        max_workers = min(len(event_ids) or 1, os.cpu_count() or 1)
-        if max_workers <= 1:
-            for event_id in event_ids:
-                _plot_event(event_id)
-        else:
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                list(executor.map(_plot_event, event_ids))
+        # Matplotlib is not thread-safe, so render plots sequentially to avoid
+        # overwriting outputs or losing events when running in parallel.
+        for event_id in event_ids:
+            _plot_event(event_id)
 
     # ||
     # ||
