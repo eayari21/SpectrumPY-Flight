@@ -2763,18 +2763,40 @@ class IDEXEvent:
 
         event_ids = sorted({key[0] for key in packets.keys()})
         colors = plt.get_cmap("tab10").colors
+        conversion_factors = {
+            "TOF H": 2.89e-4,
+            "TOF M": 1.13e-2,
+            "TOF L": 5.14e-4,
+            "Ion Grid": 7.46e-4,
+            "Target H": 1.63e-1,
+            "Target L": 1.58e1,
+        }
+        unit_labels = {
+            "TOF L": "pC/Δt",
+            "TOF M": "pC/Δt",
+            "TOF H": "pC/Δt",
+            "Ion Grid": "pC",
+            "Target L": "pC",
+            "Target H": "pC",
+        }
 
-        def _format_stats(trace: np.ndarray) -> str:
+        def _format_stats(trace: np.ndarray, unit: str) -> str:
+            if trace.size == 0:
+                return "No data"
             return "\n".join(
                 [
-                    f"Min = {trace.min():.0f} [dN]",
-                    f"Avg = {trace.mean():6.2f} [dN]",
-                    f"Std = {trace.std():6.2f} [dN]",
-                    f"Max = {trace.max():.0f} [dN]",
+                    f"Min = {trace.min():.3g} [{unit}]",
+                    f"Avg = {trace.mean():.3g} [{unit}]",
+                    f"Std = {trace.std():.3g} [{unit}]",
+                    f"Max = {trace.max():.3g} [{unit}]",
                 ]
             )
 
         for event_id in event_ids:
+            channel_traces = {
+                channel: np.asarray(packets.get((event_id, channel), np.array([])), dtype=float)
+                for channel in ("TOF L", "TOF M", "TOF H", "Ion Grid", "Target L", "Target H")
+            }
             fig, axes_grid = plt.subplots(
                 nrows=3,
                 ncols=2,
@@ -2787,22 +2809,24 @@ class IDEXEvent:
 
             hstime_map = {
                 channel: self._build_time_array(
-                    len(packets[(event_id, channel)]),
+                    len(channel_traces[channel]),
                     high_rate=True,
                     event_id=event_id,
                     channel=channel,
                 )
+                if channel_traces[channel].size
+                else np.array([], dtype=float)
                 for channel in ("TOF L", "TOF M", "TOF H")
-                if (event_id, channel) in packets
             }
             lstime_map = {
                 channel: self._build_time_array(
-                    len(packets[(event_id, channel)]),
+                    len(channel_traces[channel]),
                     high_rate=False,
                     event_id=event_id,
                 )
+                if channel_traces[channel].size
+                else np.array([], dtype=float)
                 for channel in ("Ion Grid", "Target L", "Target H")
-                if (event_id, channel) in packets
             }
 
             fig.suptitle(
@@ -2814,16 +2838,31 @@ class IDEXEvent:
 
             fig.supxlabel(r"Time [$\mu$s]", fontsize=14, fontweight="bold")
 
-            def _draw_axis(ax, time_axis, trace, label, color):
-                ax.plot(time_axis, trace, color=color, lw=1.8)
+            def _draw_axis(ax, time_axis, trace, label, channel, color):
+                unit = unit_labels.get(channel, "dN")
+                if trace.size:
+                    scaled_trace = trace * conversion_factors.get(channel, 1.0)
+                    ax.plot(time_axis, scaled_trace, color=color, lw=1.8)
+                else:
+                    scaled_trace = trace
+                    ax.text(
+                        0.5,
+                        0.5,
+                        "Missing channel",
+                        transform=ax.transAxes,
+                        ha="center",
+                        va="center",
+                        fontsize=11,
+                        color="#6c757d",
+                    )
                 ax.axvline(0, color="red", lw=1.2, ls="--", alpha=0.7)
                 ax.set_title(label, fontsize=14, fontweight="bold")
-                ax.set_ylabel("Counts [dN]", fontsize=12)
+                ax.set_ylabel(f"{unit}", fontsize=12)
                 ax.grid(True, ls="--", lw=0.5, alpha=0.6)
                 ax.text(
                     0.98,
                     0.95,
-                    _format_stats(trace),
+                    _format_stats(scaled_trace, unit),
                     transform=ax.transAxes,
                     ha="right",
                     va="top",
@@ -2836,24 +2875,72 @@ class IDEXEvent:
                     },
                 )
 
-            _draw_axis(axes[0], hstime_map.get("TOF L", np.array([])), packets[(event_id, "TOF L")], "TOF L", colors[0])
-            _draw_axis(axes[1], hstime_map.get("TOF M", np.array([])), packets[(event_id, "TOF M")], "TOF M", colors[1])
-            _draw_axis(axes[2], hstime_map.get("TOF H", np.array([])), packets[(event_id, "TOF H")], "TOF H", colors[2])
-            _draw_axis(axes[3], lstime_map.get("Ion Grid", np.array([])), packets[(event_id, "Ion Grid")], "Ion Grid", colors[3])
+            _draw_axis(
+                axes[0],
+                hstime_map.get("TOF L", np.array([])),
+                channel_traces["TOF L"],
+                "TOF L",
+                "TOF L",
+                colors[0],
+            )
+            _draw_axis(
+                axes[1],
+                hstime_map.get("TOF M", np.array([])),
+                channel_traces["TOF M"],
+                "TOF M",
+                "TOF M",
+                colors[1],
+            )
+            _draw_axis(
+                axes[2],
+                hstime_map.get("TOF H", np.array([])),
+                channel_traces["TOF H"],
+                "TOF H",
+                "TOF H",
+                colors[2],
+            )
+            _draw_axis(
+                axes[3],
+                lstime_map.get("Ion Grid", np.array([])),
+                channel_traces["Ion Grid"],
+                "Ion Grid",
+                "Ion Grid",
+                colors[3],
+            )
 
             if self.header.get((event_id, "epoch"), 0) < 494_733_600:
                 _draw_axis(
-                    axes[4], lstime_map.get("Target L", np.array([])), packets[(event_id, "Target L")], "Target LG", colors[4]
+                    axes[4],
+                    lstime_map.get("Target L", np.array([])),
+                    channel_traces["Target L"],
+                    "Target LG",
+                    "Target L",
+                    colors[4],
                 )
                 _draw_axis(
-                    axes[5], lstime_map.get("Target H", np.array([])), packets[(event_id, "Target H")], "Target HG", colors[5]
+                    axes[5],
+                    lstime_map.get("Target H", np.array([])),
+                    channel_traces["Target H"],
+                    "Target HG",
+                    "Target H",
+                    colors[5],
                 )
             else:
                 _draw_axis(
-                    axes[4], lstime_map.get("Target H", np.array([])), packets[(event_id, "Target H")], "Target HG", colors[4]
+                    axes[4],
+                    lstime_map.get("Target H", np.array([])),
+                    channel_traces["Target H"],
+                    "Target HG",
+                    "Target H",
+                    colors[4],
                 )
                 _draw_axis(
-                    axes[5], lstime_map.get("Target L", np.array([])), packets[(event_id, "Target L")], "Target LG", colors[5]
+                    axes[5],
+                    lstime_map.get("Target L", np.array([])),
+                    channel_traces["Target L"],
+                    "Target LG",
+                    "Target L",
+                    colors[5],
                 )
 
             plt.tight_layout(rect=[0, 0.03, 1, 0.95])

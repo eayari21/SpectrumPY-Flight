@@ -263,12 +263,29 @@ class IDEXEvent:
         os.makedirs(PlotFolder)
 
         # print("Number of packet items = ", len(packets.items()))
-        def _build_stats_text(values):
+        conversion_factors = {
+            "TOF H": 2.89e-4,
+            "TOF M": 1.13e-2,
+            "TOF L": 5.14e-4,
+            "Ion Grid": 7.46e-4,
+            "Target H": 1.63e-1,
+            "Target L": 1.58e1,
+        }
+        unit_labels = {
+            "TOF L": "pC/Δt",
+            "TOF M": "pC/Δt",
+            "TOF H": "pC/Δt",
+            "Ion Grid": "pC",
+            "Target L": "pC",
+            "Target H": "pC",
+        }
+
+        def _build_stats_text(values, unit):
             return (
-                f"Min = {np.min(values)} [dN]\n"
-                f"Avg = {np.mean(values):4.2f} [dN]\n"
-                f"Std = {np.std(values):4.2f} [dN]\n"
-                f"Max = {np.max(values)} [dN]"
+                f"Min = {np.min(values):.3g} [{unit}]\n"
+                f"Avg = {np.mean(values):.3g} [{unit}]\n"
+                f"Std = {np.std(values):.3g} [{unit}]\n"
+                f"Max = {np.max(values):.3g} [{unit}]"
             )
 
         fig, ax = plt.subplots(nrows=6)  # Make this general
@@ -310,9 +327,10 @@ class IDEXEvent:
             # plt.tight_layout()
 
             if i==5:  #  End of the event, lets free up some memory
-                ax[0].plot(self.hstime, packets[(k[0], "TOF L")])
-                ax[0].set_ylabel("TOF L", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = _build_stats_text(packets[(k[0], "TOF L")])
+                tof_l = np.asarray(packets[(k[0], "TOF L")], dtype=float) * conversion_factors["TOF L"]
+                ax[0].plot(self.hstime, tof_l)
+                ax[0].set_ylabel("TOF L [pC/Δt]", font="Times New Roman", fontsize=15, fontweight='bold')
+                text = _build_stats_text(tof_l, unit_labels["TOF L"])
                 ax[0].text(
                     1.02,
                     0.98,
@@ -325,9 +343,10 @@ class IDEXEvent:
                 )
                 # ax[0].set_xlim([0, 31.5])
                 
-                ax[1].plot(self.hstime, packets[(k[0], "TOF M")])
-                ax[1].set_ylabel("TOF M", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = _build_stats_text(packets[(k[0], "TOF M")])
+                tof_m = np.asarray(packets[(k[0], "TOF M")], dtype=float) * conversion_factors["TOF M"]
+                ax[1].plot(self.hstime, tof_m)
+                ax[1].set_ylabel("TOF M [pC/Δt]", font="Times New Roman", fontsize=15, fontweight='bold')
+                text = _build_stats_text(tof_m, unit_labels["TOF M"])
                 ax[1].text(
                     1.02,
                     0.98,
@@ -340,9 +359,10 @@ class IDEXEvent:
                 )
                 # ax[1].set_xlim([0, 31.5])
                 
-                ax[2].plot(self.hstime, packets[(k[0], "TOF H")])
-                ax[2].set_ylabel("TOF H", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = _build_stats_text(packets[(k[0], "TOF H")])
+                tof_h = np.asarray(packets[(k[0], "TOF H")], dtype=float) * conversion_factors["TOF H"]
+                ax[2].plot(self.hstime, tof_h)
+                ax[2].set_ylabel("TOF H [pC/Δt]", font="Times New Roman", fontsize=15, fontweight='bold')
+                text = _build_stats_text(tof_h, unit_labels["TOF H"])
                 ax[2].text(
                     1.02,
                     0.98,
@@ -355,9 +375,10 @@ class IDEXEvent:
                 )
                 # ax[2].set_xlim([0, 31.5])
 
-                ax[3].plot(self.lstime, packets[(k[0], "Ion Grid")])
-                ax[3].set_ylabel("Ion Grid", font="Times New Roman", fontsize=15, fontweight='bold')
-                text = _build_stats_text(packets[(k[0], "Ion Grid")])
+                ion_grid = np.asarray(packets[(k[0], "Ion Grid")], dtype=float) * conversion_factors["Ion Grid"]
+                ax[3].plot(self.lstime, ion_grid)
+                ax[3].set_ylabel("Ion Grid [pC]", font="Times New Roman", fontsize=15, fontweight='bold')
+                text = _build_stats_text(ion_grid, unit_labels["Ion Grid"])
                 ax[3].text(
                     1.02,
                     0.98,
@@ -372,9 +393,10 @@ class IDEXEvent:
 
                 if(self.header[(k[0], 'Timestamp')] < 494_733_600):  # If we are before September 27th, 2023 then we use the old definitions
                 
-                    ax[4].plot(self.lstime, packets[(k[0], "Target L")])
-                    ax[4].set_ylabel("Target LG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = _build_stats_text(packets[(k[0], "Target L")])
+                    target_l = np.asarray(packets[(k[0], "Target L")], dtype=float) * conversion_factors["Target L"]
+                    ax[4].plot(self.lstime, target_l)
+                    ax[4].set_ylabel("Target LG [pC]", font="Times New Roman", fontsize=15, fontweight='bold')
+                    text = _build_stats_text(target_l, unit_labels["Target L"])
                     ax[4].text(
                         1.02,
                         0.98,
@@ -387,9 +409,10 @@ class IDEXEvent:
                     )
                     # ax[4].set_xlim([0, 126.5])
                     
-                    ax[5].plot(self.lstime, packets[(k[0], "Target H")])
-                    ax[5].set_ylabel("Target HG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = _build_stats_text(packets[(k[0], "Target H")])
+                    target_h = np.asarray(packets[(k[0], "Target H")], dtype=float) * conversion_factors["Target H"]
+                    ax[5].plot(self.lstime, target_h)
+                    ax[5].set_ylabel("Target HG [pC]", font="Times New Roman", fontsize=15, fontweight='bold')
+                    text = _build_stats_text(target_h, unit_labels["Target H"])
                     ax[5].text(
                         1.02,
                         0.98,
@@ -403,9 +426,10 @@ class IDEXEvent:
                     # ax[5].set_xlim([0, 126.5])
 
                 else:
-                    ax[4].plot(self.lstime, packets[(k[0], "Target H")])
-                    ax[4].set_ylabel("Target HG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = _build_stats_text(packets[(k[0], "Target H")])
+                    target_h = np.asarray(packets[(k[0], "Target H")], dtype=float) * conversion_factors["Target H"]
+                    ax[4].plot(self.lstime, target_h)
+                    ax[4].set_ylabel("Target HG [pC]", font="Times New Roman", fontsize=15, fontweight='bold')
+                    text = _build_stats_text(target_h, unit_labels["Target H"])
                     ax[4].text(
                         1.02,
                         0.98,
@@ -418,9 +442,10 @@ class IDEXEvent:
                     )
                     # ax[4].set_xlim([0, 126.5])
                     
-                    ax[5].plot(self.lstime, packets[(k[0], "Target L")])
-                    ax[5].set_ylabel("Target LG", font="Times New Roman", fontsize=15, fontweight='bold')
-                    text = _build_stats_text(packets[(k[0], "Target L")])
+                    target_l = np.asarray(packets[(k[0], "Target L")], dtype=float) * conversion_factors["Target L"]
+                    ax[5].plot(self.lstime, target_l)
+                    ax[5].set_ylabel("Target LG [pC]", font="Times New Roman", fontsize=15, fontweight='bold')
+                    text = _build_stats_text(target_l, unit_labels["Target L"])
                     ax[5].text(
                         1.02,
                         0.98,
