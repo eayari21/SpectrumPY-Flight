@@ -3857,6 +3857,11 @@ if not _HAS_LASP_PACKETS:  # pragma: no cover - exercised in integration tests
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Decode raw IDEX packets into analysis products.")
     parser.add_argument("--file", "-f", type=str, required=True, help="Path to the packet capture to decode.")
+    parser.add_argument(
+        "--plots",
+        action="store_true",
+        help="Plot all events (exports PNGs) when requested.",
+    )
     return parser
 
 
@@ -3888,10 +3893,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     packets = IDEXEvent(args.file)
-    try:
-        packets.plot_all_data(packets.data, args.file)
-    except Exception as exc:  # pragma: no cover - plotting is optional in tests
-        print(exc)
+    if args.plots:
+        try:
+            packets.plot_all_data(packets.data, args.file)
+        except Exception as exc:  # pragma: no cover - plotting is optional in tests
+            print(exc)
     packets.write_to_hdf5(packets.data, args.file)
     _write_trigger_summary(packets, args.file)
     return 0
