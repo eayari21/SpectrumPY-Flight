@@ -517,6 +517,25 @@ def _estimate_baseline(time_array: np.ndarray, signal: np.ndarray) -> float:
     return float(np.nanmedian(values[:sample_count]))
 
 
+def _decode_trigger_origins(evt: int) -> List[str]:
+    """Decode IDX__TXHDREVTNUM trigger origin bits into human-readable labels."""
+    labels: List[str] = []
+    u10 = evt & 0x3FF
+    if (u10 >> 0) & 1:
+        labels.append("HS ADC0I trigger")
+    if (u10 >> 1) & 1:
+        labels.append("HS ADC0Q trigger")
+    if (u10 >> 2) & 1:
+        labels.append("HS ADC1Q trigger")
+    if (u10 >> 3) & 1:
+        labels.append("LS ADC1 trigger")
+    if (u10 >> 4) & 1:
+        labels.append("SW trigger")
+    if (u10 >> 5) & 1:
+        labels.append("external trigger")
+    return labels
+
+
 def _serialise_mass_lines(group: h5py.Group, mass_lines: List[Dict[str, object]]) -> None:
     str_dtype = h5py.string_dtype(encoding='utf-8', length=120)
     extras_dtype = h5py.string_dtype(encoding='utf-8', length=2048)
@@ -2450,10 +2469,20 @@ class IDEXEvent:
                         self.fifo_delay = fifo_delay.derived_value
                         self.header[(evtnum, 'FIFODelay')] = int(self.fifo_delay)
 
+                    evt_item = pkt.data.get('IDX__TXHDREVTNUM')
+                    if evt_item is not None:
+                        evt_value = int(evt_item.derived_value)
+                        trigger_origins = _decode_trigger_origins(evt_value)
+                        self.header[(evtnum, 'TriggerOrigin')] = ", ".join(trigger_origins)
+
+                    self.header[(evtnum, 'HGTriggerLevel')] = None
+                    self.header[(evtnum, 'MGTriggerLevel')] = None
+                    self.header[(evtnum, 'LGTriggerLevel')] = None
+                    self.header[(evtnum, 'LSTriggerLevel')] = None
+
                     if(pkt.data['IDX__TXHDRLSTRIGMODE'].derived_value!='DIS'):  # If this was a LS (Target Low Gain) trigger (DIS=disabled)
                         print(f"Low sampling trigger mode = {pkt.data['IDX__TXHDRLSTRIGMODE'].derived_value}")
                         self.Triggerorigin = 'LS' 
-                        self.header[(evtnum, 'TriggerOrigin')] = self.Triggerorigin
                         print("Low sampling trigger mode enabled.")
                         # Check the first 25th-bit integer for a coincidence trigger
                         # coincidence = (trigmode >> 24) &  0b1
@@ -2468,15 +2497,16 @@ class IDEXEvent:
                     if(pkt.data['IDX__TXHDRLGTRIGMODE'].derived_value!=0):
                         print("Low gain TOF trigger mode enabled.")
                         self.Triggerorigin = 'LG'
-                        self.header[(evtnum, 'TriggerOrigin')] = self.Triggerorigin
                         # Extract the first 11 bits (bits 21-31)
                         minsamples = pkt.data['IDX__TXHDRLGTRIGCTRL1'].derived_value & mask_11_bit
                         # Extract the second 11 bits (bits 10-20)
                         maxsamples = (pkt.data['IDX__TXHDRLGTRIGCTRL1'].derived_value >> 11) & mask_11_bit
                         # Extract the last 10 bits (bits 0-9)
                         trigger_counts = (pkt.data['IDX__TXHDRLGTRIGCTRL1'].derived_value >> 22) & mask_10_bit
-                        self.header[(evtnum, 'TriggerLevel')] = 5.14e-4 * trigger_counts
-                        print(f"Trigger level = {self.header[(evtnum, 'TriggerLevel')]}")
+                        lg_trigger_level = 5.14e-4 * trigger_counts
+                        self.header[(evtnum, 'LGTriggerLevel')] = lg_trigger_level
+                        self.header[(evtnum, 'TriggerLevel')] = lg_trigger_level
+                        print(f"Trigger level = {lg_trigger_level}")
 
                         if(pkt.data['IDX__TXHDRLGTRIGMODE'].derived_value==1):
                             print("Threshold trigger mode enabled for low gain channel.")
@@ -2491,15 +2521,16 @@ class IDEXEvent:
                     if(pkt.data['IDX__TXHDRMGTRIGMODE'].derived_value!=0):
                         print("Mid gain TOF trigger mode enabled.")
                         self.Triggerorigin = 'MG'
-                        self.header[(evtnum, 'TriggerOrigin')] = self.Triggerorigin
                         # Extract the first 11 bits (bits 21-31)
                         minsamples = pkt.data['IDX__TXHDRMGTRIGCTRL1'].derived_value & mask_11_bit
                         # Extract the second 11 bits (bits 10-20)
                         maxsamples = (pkt.data['IDX__TXHDRMGTRIGCTRL1'].derived_value  >> 11) & mask_11_bit
                         # Extract the last 10 bits (bits 0-9)
                         trigger_counts = (pkt.data['IDX__TXHDRMGTRIGCTRL1'].derived_value >> 22) & mask_10_bit
-                        self.header[(evtnum, 'TriggerLevel')] = 1.13e-2 * trigger_counts
-                        print(f"Trigger level = {self.header[(evtnum, 'TriggerLevel')]}")
+                        mg_trigger_level = 1.13e-2 * trigger_counts
+                        self.header[(evtnum, 'MGTriggerLevel')] = mg_trigger_level
+                        self.header[(evtnum, 'TriggerLevel')] = mg_trigger_level
+                        print(f"Trigger level = {mg_trigger_level}")
                         if(pkt.data['IDX__TXHDRMGTRIGMODE'].derived_value==1):
                             print("Threshold trigger mode enabled for mid gain channel.")
                             self.header[(evtnum, 'TriggerMode')] = "MGThreshold"
@@ -2513,15 +2544,20 @@ class IDEXEvent:
                     if(pkt.data['IDX__TXHDRHGTRIGMODE'].derived_value!=0):
                         print("High gain trigger mode enabled.")
                         self.Triggerorigin = 'HG'
-                        self.header[(evtnum, 'TriggerOrigin')] = self.Triggerorigin
                         # Extract the first 11 bits (bits 21-31)
                         minsamples = pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value & mask_11_bit
                         # Extract the second 11 bits (bits 10-20)
                         maxsamples = (pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value  >> 11) & mask_11_bit
                         # Extract the last 10 bits (bits 0-9)
                         trigger_counts = (pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value >> 22) & mask_10_bit
-                        self.header[(evtnum, 'TriggerLevel')] = 2.89e-4 * trigger_counts
-                        print(f"For {pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value}, HG Trigger level = {self.header[(evtnum, 'TriggerLevel')]}, sample settings = {minsamples}, {maxsamples}")
+                        hg_trigger_level = 2.89e-4 * trigger_counts
+                        self.header[(evtnum, 'HGTriggerLevel')] = hg_trigger_level
+                        self.header[(evtnum, 'TriggerLevel')] = hg_trigger_level
+                        print(
+                            f"For {pkt.data['IDX__TXHDRHGTRIGCTRL1'].derived_value}, "
+                            f"HG Trigger level = {hg_trigger_level}, "
+                            f"sample settings = {minsamples}, {maxsamples}"
+                        )
 
                         if(pkt.data['IDX__TXHDRHGTRIGMODE'].derived_value==1):
                             print("Threshold trigger mode enabled for high gain channel.")
@@ -2763,14 +2799,53 @@ class IDEXEvent:
         channel = self._trigger_channel_from_mode(trigger_mode)
         if channel:
             return channel
-        trigger_origin = self.header.get((int(event_id), "TriggerOrigin"))
-        origin_token = str(trigger_origin or "").strip().upper()
-        return {"HG": "TOF H", "MG": "TOF M", "LG": "TOF L"}.get(origin_token)
+        return None
 
-    def _resolve_trigger_level(self, event_id: Optional[Union[int, str]]) -> Optional[float]:
+    def _resolve_trigger_origins(self, event_id: Optional[Union[int, str]]) -> List[str]:
         if event_id is None:
+            return []
+        origin_value = self.header.get((int(event_id), "TriggerOrigin"), "")
+        if isinstance(origin_value, (list, tuple, np.ndarray)):
+            return [str(item) for item in origin_value if str(item).strip()]
+        origin_text = str(origin_value or "").strip()
+        if not origin_text:
+            return []
+        return [item.strip() for item in origin_text.split(",") if item.strip()]
+
+    def _resolve_trigger_channels(self, event_id: Optional[Union[int, str]]) -> List[str]:
+        origin_labels = self._resolve_trigger_origins(event_id)
+        if not origin_labels:
+            channel = self._resolve_trigger_channel(event_id)
+            return [channel] if channel else []
+        origin_map = {
+            "HS ADC0I trigger": ["TOF H"],
+            "HS ADC0Q trigger": ["TOF L"],
+            "HS ADC1Q trigger": ["TOF M"],
+            "LS ADC1 trigger": ["Ion Grid", "Target L", "Target H"],
+        }
+        channels: List[str] = []
+        for label in origin_labels:
+            channels.extend(origin_map.get(label, []))
+        return channels
+
+    def _resolve_trigger_level(self, event_id: Optional[Union[int, str]], channel: Optional[str]) -> Optional[float]:
+        if event_id is None or channel is None:
             return None
-        level = self.header.get((int(event_id), "TriggerLevel"))
+        channel_key = channel.strip()
+        level_key = {
+            "TOF H": "HGTriggerLevel",
+            "TOF M": "MGTriggerLevel",
+            "TOF L": "LGTriggerLevel",
+            "Ion Grid": "LSTriggerLevel",
+            "Target L": "LSTriggerLevel",
+            "Target H": "LSTriggerLevel",
+        }.get(channel_key)
+        if level_key:
+            level = self.header.get((int(event_id), level_key))
+        else:
+            level = None
+        if level is None:
+            level = self.header.get((int(event_id), "TriggerLevel"))
         if level is None:
             return None
         try:
@@ -2866,8 +2941,7 @@ class IDEXEvent:
                 else np.array([], dtype=float)
                 for channel in ("Ion Grid", "Target L", "Target H")
             }
-            trigger_channel = self._resolve_trigger_channel(event_id)
-            trigger_level = self._resolve_trigger_level(event_id)
+            trigger_channels = set(self._resolve_trigger_channels(event_id))
 
             fig.suptitle(
                 f"{fname} Event {event_id}",
@@ -2893,7 +2967,12 @@ class IDEXEvent:
                         fontsize=11,
                         color="#6c757d",
                     )
-                if trigger_level is not None and np.isfinite(trigger_level) and label == trigger_channel:
+                trigger_level = self._resolve_trigger_level(event_id, label)
+                if (
+                    trigger_level is not None
+                    and np.isfinite(trigger_level)
+                    and label in trigger_channels
+                ):
                     ax.axhline(
                         trigger_level,
                         color="#0ca678",
