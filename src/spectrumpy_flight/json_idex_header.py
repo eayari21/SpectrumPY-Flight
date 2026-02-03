@@ -2421,9 +2421,9 @@ class IDEXEvent:
                     # Mask to extract 10-bit values
                     mask = 0b1111111111
 
-                    self.lgdelay = (self.TOFdelay) & mask # First 10 bits (0-9)
+                    self.hgdelay = (self.TOFdelay) & mask # First 10 bits (0-9)
                     self.mgdelay = (self.TOFdelay >> 10) & mask # Next 10 bits (10-19)
-                    self.hgdelay = (self.TOFdelay >> 20) & mask # Next 10 bits (20-29)
+                    self.lgdelay = (self.TOFdelay >> 20) & mask # Next 10 bits (20-29)
                     print(f"High gain delay = {self.hgdelay} samples.")
                     print(f"Mid gain delay = {self.mgdelay} samples.")
                     print(f"Low gain delay = {self.lgdelay} samples.")
