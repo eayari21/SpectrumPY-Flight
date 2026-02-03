@@ -85,6 +85,23 @@ def _format_scalar(value: object) -> str:
     return str(value)
 
 
+def _unwrap_scalar(value: object) -> object:
+    """Return a python scalar from numpy-ish values without assuming .item exists."""
+
+    if isinstance(value, np.ndarray):
+        if value.ndim == 0:
+            return _unwrap_scalar(value.item())
+        return value
+    if isinstance(value, np.generic):
+        return value.item()
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            return value
+    return value
+
+
 def _format_attribute(value: object) -> str:
     """Format attribute values for display in a table."""
 
@@ -368,17 +385,17 @@ class HDFViewWindow(QMainWindow):
                 values.append(np.nan)
                 continue
             if data.ndim == 0:
-                values.append(data.item())
+                values.append(_unwrap_scalar(data))
                 continue
             if data.size == 1:
-                values.append(np.ravel(data)[0].item())
+                values.append(_unwrap_scalar(np.ravel(data)[0]))
                 continue
             return None
         return np.asarray(values, dtype=object)
 
     def _coerce_vector(self, data: np.ndarray, label: str) -> np.ndarray:
         if data.ndim == 0:
-            return np.array([data.item()])
+            return np.array([_unwrap_scalar(data)])
         if data.ndim != 1:
             raise ValueError(f"{label} must be a 1D dataset to export.")
         return data
