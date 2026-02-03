@@ -31,6 +31,7 @@ try:  # pragma: no cover - import guard
         QApplication,
         QFileDialog,
         QHeaderView,
+        QLineEdit,
         QMainWindow,
         QMessageBox,
         QPlainTextEdit,
@@ -52,6 +53,7 @@ except Exception:  # pragma: no cover - import guard
         QApplication,
         QFileDialog,
         QHeaderView,
+        QLineEdit,
         QMainWindow,
         QMessageBox,
         QPlainTextEdit,
@@ -137,6 +139,10 @@ class HDFViewWindow(QMainWindow):
 
         toolbar = QToolBar("HDF Tools", self)
         toolbar.setMovable(False)
+        self._search_edit = QLineEdit(self)
+        self._search_edit.setPlaceholderText("Search datasets and groups…")
+        self._search_edit.textChanged.connect(self._apply_filter)
+        toolbar.addWidget(self._search_edit)
         export_action = QAction("Export Selected to CSV", self)
         export_action.setToolTip("Export selected datasets with utc_timestamp to CSV")
         export_action.triggered.connect(self._export_selected_to_csv)
@@ -191,6 +197,35 @@ class HDFViewWindow(QMainWindow):
         self._add_children(root, self._h5)
         self._tree.expandItem(root)
         self._tree.setCurrentItem(root)
+
+    def _apply_filter(self, text: str) -> None:
+        query = text.strip().lower()
+        root = self._tree.topLevelItem(0)
+        if root is None:
+            return
+        if not query:
+            self._reset_filter(root)
+            return
+        self._filter_item(root, query)
+
+    def _reset_filter(self, item: QTreeWidgetItem) -> None:
+        item.setHidden(False)
+        for index in range(item.childCount()):
+            self._reset_filter(item.child(index))
+
+    def _filter_item(self, item: QTreeWidgetItem, query: str) -> bool:
+        name = item.text(0).lower()
+        path = str(item.data(0, Qt.ItemDataRole.UserRole) or "").lower()
+        match = query in name or (path and query in path)
+        child_match = False
+        for index in range(item.childCount()):
+            child = item.child(index)
+            child_match = self._filter_item(child, query) or child_match
+        visible = match or child_match
+        item.setHidden(not visible)
+        if child_match:
+            item.setExpanded(True)
+        return visible
 
     def _add_children(self, parent_item: QTreeWidgetItem, group: h5py.Group) -> None:
         keys = sorted(group.keys())
