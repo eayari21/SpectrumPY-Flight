@@ -401,13 +401,14 @@ class HDFViewWindow(QMainWindow):
         try:
             time_data, time_path = self._find_time_dataset()
             time_vector = self._coerce_vector(np.asarray(time_data), time_path)
+            time_vector = self._select_time_vector(time_path, time_vector, datasets)
         except Exception as exc:
             QMessageBox.critical(self, "Export Error", f"Unable to locate timestamp_utc.\n{exc}")
             return
 
+        default_name = self._default_export_name(datasets)
         if len(datasets) == 1:
             dataset_path = datasets[0]
-            default_name = os.path.basename(dataset_path.strip("/")) or "export"
             filename, _ = QFileDialog.getSaveFileName(
                 self,
                 "Export CSV",
@@ -425,9 +426,6 @@ class HDFViewWindow(QMainWindow):
             QMessageBox.information(self, "Export Complete", f"Saved {filename}")
             return
 
-        default_name = "idex_multi_export"
-        if datasets:
-            default_name = os.path.basename(datasets[0].strip("/")) or default_name
         filename, _ = QFileDialog.getSaveFileName(
             self,
             "Export CSV",
@@ -443,6 +441,47 @@ class HDFViewWindow(QMainWindow):
             QMessageBox.critical(self, "Export Error", str(exc))
             return
         QMessageBox.information(self, "Export Complete", f"Saved {filename}")
+
+    def _default_export_name(self, dataset_paths: List[str]) -> str:
+        base_name = os.path.splitext(os.path.basename(self._filename))[0] or "export"
+        seen: Dict[str, int] = {}
+        parts: List[str] = []
+        for dataset_path in dataset_paths:
+            quantity = os.path.basename(dataset_path.strip("/")) or "quantity"
+            count = seen.get(quantity, 0)
+            seen[quantity] = count + 1
+            if count:
+                quantity = f"{quantity}_{count + 1}"
+            parts.append(quantity)
+        if not parts:
+            return base_name
+        return f"{base_name}_{'_'.join(parts)}"
+
+    def _select_time_vector(
+        self,
+        time_path: str,
+        time_vector: np.ndarray,
+        dataset_paths: List[str],
+    ) -> np.ndarray:
+        event_series = self._collect_event_series(time_path)
+        if event_series is None:
+            return time_vector
+        event_keys = self._list_event_groups()
+        if not event_keys:
+            return time_vector
+        if event_series.shape[0] != len(event_keys):
+            return time_vector
+        if time_vector.shape[0] != len(event_keys):
+            return event_series
+        event_set = set(event_keys)
+        for dataset_path in dataset_paths:
+            trimmed = dataset_path.strip("/")
+            if not trimmed:
+                continue
+            event_key = trimmed.split("/", 1)[0]
+            if event_key in event_set:
+                return event_series
+        return time_vector
 
     def _export_dataset_to_csv(self, dataset_path: str, time_vector: np.ndarray, filename: str) -> None:
         values = self._dataset_series_for_export(dataset_path, time_vector)
