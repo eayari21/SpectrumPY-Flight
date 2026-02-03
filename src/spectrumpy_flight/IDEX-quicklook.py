@@ -2345,6 +2345,39 @@ _TRIGGER_LEVEL_DATASETS: Tuple[str, ...] = (
     "Analysis/Trigger Level",
 )
 
+_TRIGGER_LEVEL_DATASETS_BY_CHANNEL: Dict[str, Tuple[str, ...]] = {
+    "TOF H": (
+        "Metadata/HGTriggerLevel",
+        "Metadata/unpacked/HGTriggerLevel",
+        "Analysis/HGTriggerLevel",
+    ),
+    "TOF M": (
+        "Metadata/MGTriggerLevel",
+        "Metadata/unpacked/MGTriggerLevel",
+        "Analysis/MGTriggerLevel",
+    ),
+    "TOF L": (
+        "Metadata/LGTriggerLevel",
+        "Metadata/unpacked/LGTriggerLevel",
+        "Analysis/LGTriggerLevel",
+    ),
+    "Ion Grid": (
+        "Metadata/LSTriggerLevel",
+        "Metadata/unpacked/LSTriggerLevel",
+        "Analysis/LSTriggerLevel",
+    ),
+    "Target L": (
+        "Metadata/LSTriggerLevel",
+        "Metadata/unpacked/LSTriggerLevel",
+        "Analysis/LSTriggerLevel",
+    ),
+    "Target H": (
+        "Metadata/LSTriggerLevel",
+        "Metadata/unpacked/LSTriggerLevel",
+        "Analysis/LSTriggerLevel",
+    ),
+}
+
 _TRIGGER_MODE_DATASETS: Tuple[str, ...] = (
     "Metadata/TriggerMode",
     "Metadata/TriggerType",
@@ -2421,6 +2454,50 @@ def _guess_trigger_level(data_source: BaseDataSource, event: str) -> Optional[fl
         if value is not None:
             return float(value)
     return None
+
+
+def _guess_trigger_level_for_channel(
+    data_source: BaseDataSource,
+    event: str,
+    channel: str,
+) -> Optional[float]:
+    datasets = _TRIGGER_LEVEL_DATASETS_BY_CHANNEL.get(channel)
+    if datasets:
+        for dataset in datasets:
+            value = _get_dataset_scalar(data_source, event, dataset)
+            if value is not None:
+                return float(value)
+    return _guess_trigger_level(data_source, event)
+
+
+def _guess_trigger_origins(data_source: BaseDataSource, event: str) -> List[str]:
+    for dataset in ("Metadata/TriggerOrigin", "Metadata/unpacked/TriggerOrigin", "Analysis/TriggerOrigin"):
+        try:
+            data = data_source.get_dataset(event, dataset)
+        except Exception:
+            continue
+        if data is None:
+            continue
+        if isinstance(data, (list, tuple, np.ndarray)):
+            return [str(item).strip() for item in np.asarray(data).ravel() if str(item).strip()]
+        if isinstance(data, (str, bytes, bytearray, np.generic)):
+            text = _coerce_optional_str(data)
+            if text:
+                return [item.strip() for item in text.split(",") if item.strip()]
+    return []
+
+
+def _trigger_channels_from_origins(origins: List[str]) -> List[str]:
+    origin_map = {
+        "HS ADC0I trigger": ["TOF H"],
+        "HS ADC0Q trigger": ["TOF L"],
+        "HS ADC1Q trigger": ["TOF M"],
+        "LS ADC1 trigger": ["Ion Grid", "Target L", "Target H"],
+    }
+    channels: List[str] = []
+    for origin in origins:
+        channels.extend(origin_map.get(origin, []))
+    return channels
 
 
 def _guess_trigger_mode(data_source: BaseDataSource, event: str) -> Optional[str]:
@@ -5688,12 +5765,16 @@ class MainWindow(QMainWindow):
     def _plot_trigger_level(self, ax, event_name: str, channel: str) -> None:
         if not self._data_source:
             return
-        trigger_level = _guess_trigger_level(self._data_source, event_name)
-        if trigger_level is None or not np.isfinite(trigger_level):
+        trigger_origins = _guess_trigger_origins(self._data_source, event_name)
+        trigger_channels = _trigger_channels_from_origins(trigger_origins)
+        if not trigger_channels:
+            trigger_mode = _guess_trigger_mode(self._data_source, event_name)
+            trigger_channel = _trigger_channel_from_mode(trigger_mode)
+            trigger_channels = [trigger_channel] if trigger_channel else []
+        if channel not in trigger_channels:
             return
-        trigger_mode = _guess_trigger_mode(self._data_source, event_name)
-        trigger_channel = _trigger_channel_from_mode(trigger_mode)
-        if trigger_channel != channel:
+        trigger_level = _guess_trigger_level_for_channel(self._data_source, event_name, channel)
+        if trigger_level is None or not np.isfinite(trigger_level):
             return
         ax.axhline(
             trigger_level,
