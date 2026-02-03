@@ -332,6 +332,50 @@ class HDFViewWindow(QMainWindow):
         path = matches[0]
         return np.asarray(self._h5[path][()]), path
 
+    def _list_event_groups(self) -> List[str]:
+        events: List[str] = []
+        for key, value in self._h5.items():
+            if isinstance(value, h5py.Group):
+                events.append(str(key))
+        try:
+            return sorted(events, key=lambda token: int(str(token)))
+        except Exception:
+            return sorted(events)
+
+    def _collect_event_series(self, dataset_path: str) -> Optional[np.ndarray]:
+        trimmed = dataset_path.strip("/")
+        if not trimmed:
+            return None
+        parts = trimmed.split("/", 1)
+        if len(parts) != 2:
+            return None
+        event_key, relative = parts
+        if event_key not in self._h5:
+            return None
+        values: List[object] = []
+        for event in self._list_event_groups():
+            path = f"/{event}/{relative}"
+            if path not in self._h5:
+                values.append(np.nan)
+                continue
+            obj = self._h5[path]
+            if not isinstance(obj, h5py.Dataset):
+                values.append(np.nan)
+                continue
+            try:
+                data = np.asarray(obj[()])
+            except Exception:
+                values.append(np.nan)
+                continue
+            if data.ndim == 0:
+                values.append(data.item())
+                continue
+            if data.size == 1:
+                values.append(np.ravel(data)[0].item())
+                continue
+            return None
+        return np.asarray(values, dtype=object)
+
     def _coerce_vector(self, data: np.ndarray, label: str) -> np.ndarray:
         if data.ndim == 0:
             return np.array([data.item()])
@@ -409,10 +453,13 @@ class HDFViewWindow(QMainWindow):
         data = np.asarray(self._h5[dataset_path][()])
         values = self._coerce_vector(data, dataset_path)
         if values.shape[0] != time_vector.shape[0]:
-            raise ValueError(
-                "Dataset length does not match timestamp_utc length "
-                f"({values.shape[0]} vs {time_vector.shape[0]})."
-            )
+            event_series = self._collect_event_series(dataset_path)
+            if event_series is None or event_series.shape[0] != time_vector.shape[0]:
+                raise ValueError(
+                    "Dataset length does not match timestamp_utc length "
+                    f"({values.shape[0]} vs {time_vector.shape[0]})."
+                )
+            values = event_series
         header_name = os.path.basename(dataset_path.strip("/")) or dataset_path
         with open(filename, "w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
