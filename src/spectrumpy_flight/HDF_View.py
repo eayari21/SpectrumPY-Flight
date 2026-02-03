@@ -15,7 +15,7 @@ import argparse
 import csv
 import os
 import sys
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import h5py
 import numpy as np
@@ -425,29 +425,35 @@ class HDFViewWindow(QMainWindow):
             QMessageBox.information(self, "Export Complete", f"Saved {filename}")
             return
 
-        directory = QFileDialog.getExistingDirectory(
+        default_name = "idex_multi_export"
+        if datasets:
+            default_name = os.path.basename(datasets[0].strip("/")) or default_name
+        filename, _ = QFileDialog.getSaveFileName(
             self,
-            "Select Export Folder",
-            os.getcwd(),
+            "Export CSV",
+            f"{default_name}.csv",
+            "CSV Files (*.csv);;All files (*)",
             options=QFileDialog.Option.DontUseNativeDialog,
         )
-        if not directory:
+        if not filename:
             return
-        exported: List[str] = []
-        errors: List[str] = []
-        for dataset_path in datasets:
-            filename = os.path.join(directory, f"{os.path.basename(dataset_path.strip('/'))}.csv")
-            try:
-                self._export_dataset_to_csv(dataset_path, time_vector, filename)
-                exported.append(filename)
-            except Exception as exc:
-                errors.append(f"{dataset_path}: {exc}")
-        message = f"Exported {len(exported)} file(s)."
-        if errors:
-            message += "\n\nErrors:\n" + "\n".join(errors)
-        QMessageBox.information(self, "Export Complete", message)
+        try:
+            self._export_multiple_datasets_to_csv(datasets, time_vector, filename)
+        except Exception as exc:
+            QMessageBox.critical(self, "Export Error", str(exc))
+            return
+        QMessageBox.information(self, "Export Complete", f"Saved {filename}")
 
     def _export_dataset_to_csv(self, dataset_path: str, time_vector: np.ndarray, filename: str) -> None:
+        values = self._dataset_series_for_export(dataset_path, time_vector)
+        header_name = os.path.basename(dataset_path.strip("/")) or dataset_path
+        with open(filename, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["timestamp_utc", header_name])
+            for time_value, data_value in zip(time_vector, values):
+                writer.writerow([_format_scalar(time_value), _format_scalar(data_value)])
+
+    def _dataset_series_for_export(self, dataset_path: str, time_vector: np.ndarray) -> np.ndarray:
         if dataset_path not in self._h5:
             raise ValueError(f"Dataset not found: {dataset_path}")
         data = np.asarray(self._h5[dataset_path][()])
@@ -460,12 +466,36 @@ class HDFViewWindow(QMainWindow):
                     f"({values.shape[0]} vs {time_vector.shape[0]})."
                 )
             values = event_series
-        header_name = os.path.basename(dataset_path.strip("/")) or dataset_path
+        return values
+
+    def _export_multiple_datasets_to_csv(
+        self,
+        dataset_paths: List[str],
+        time_vector: np.ndarray,
+        filename: str,
+    ) -> None:
+        headers: List[str] = []
+        series_values: List[np.ndarray] = []
+        seen: Dict[str, int] = {}
+        for dataset_path in dataset_paths:
+            base_name = os.path.basename(dataset_path.strip("/")) or dataset_path
+            count = seen.get(base_name, 0)
+            seen[base_name] = count + 1
+            if count:
+                header_name = f"{base_name} ({count + 1})"
+            else:
+                header_name = base_name
+            values = self._dataset_series_for_export(dataset_path, time_vector)
+            headers.append(header_name)
+            series_values.append(values)
         with open(filename, "w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
-            writer.writerow(["timestamp_utc", header_name])
-            for time_value, data_value in zip(time_vector, values):
-                writer.writerow([_format_scalar(time_value), _format_scalar(data_value)])
+            writer.writerow(["timestamp_utc", *headers])
+            for idx, time_value in enumerate(time_vector):
+                row = [_format_scalar(time_value)]
+                for values in series_values:
+                    row.append(_format_scalar(values[idx]))
+                writer.writerow(row)
 
     def _populate_data_preview(self, data: np.ndarray) -> None:
         if data.ndim == 0:
