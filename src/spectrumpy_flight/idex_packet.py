@@ -2152,9 +2152,12 @@ class IDEXEvent:
                         packet_order.append(key)
                         header_order.append(key)
                         try:
-                            self.raw_header[(evtnum, key)] = item.raw_value
+                            raw_value = item.raw_value
                         except Exception:
-                            self.raw_header[(evtnum, key)] = item.derived_value
+                            raw_value = item.derived_value
+                        if key == "IDX__TXHDREVTNUM":
+                            raw_value = item.derived_value
+                        self.raw_header[(evtnum, key)] = raw_value
                         self.header[(evtnum, key)] = item.derived_value
                         print(f"{key} = {self.header[(evtnum, key)]}")
                     self._packet_field_order[evtnum] = packet_order
