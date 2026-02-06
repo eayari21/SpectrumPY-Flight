@@ -533,6 +533,23 @@ def _decode_trigger_origins(evt: int) -> List[str]:
     return labels
 
 
+def _packed_raw_value(item: object) -> object:
+    raw_value = None
+    try:
+        raw_value = item.raw_value
+    except Exception:
+        raw_value = None
+    if isinstance(raw_value, (np.integer, int, bool, np.bool_)):
+        return int(raw_value)
+    if raw_value is None or isinstance(raw_value, str):
+        derived_value = getattr(item, "derived_value", None)
+        if isinstance(derived_value, (np.integer, int, bool, np.bool_)):
+            return int(derived_value)
+        if raw_value is None:
+            return derived_value
+    return raw_value
+
+
 def _serialise_mass_lines(group: h5py.Group, mass_lines: List[Dict[str, object]]) -> None:
     str_dtype = h5py.string_dtype(encoding='utf-8', length=120)
     extras_dtype = h5py.string_dtype(encoding='utf-8', length=2048)
@@ -2154,12 +2171,7 @@ class IDEXEvent:
                     for key, item in pkt.data.items():
                         packet_order.append(key)
                         header_order.append(key)
-                        try:
-                            raw_value = item.raw_value
-                        except Exception:
-                            raw_value = item.derived_value
-                        if key == "IDX__TXHDREVTNUM":
-                            raw_value = item.derived_value
+                        raw_value = _packed_raw_value(item)
                         self.raw_header[(evtnum, key)] = raw_value
                         self.header[(evtnum, key)] = item.derived_value
                         print(f"{key} = {self.header[(evtnum, key)]}")
