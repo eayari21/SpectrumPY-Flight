@@ -3298,6 +3298,9 @@ class IDEXEvent:
                         if evtnum == event_id
                     ],
                 )
+                if 'IDX__TXHDRTRIGID' not in packet_order:
+                    if (event_id, 'IDX__TXHDRTRIGID') in self.raw_header:
+                        packet_order.append('IDX__TXHDRTRIGID')
                 for key in packet_order:
                     value = self.raw_header.get((event_id, key))
                     _write_metadata_value(
