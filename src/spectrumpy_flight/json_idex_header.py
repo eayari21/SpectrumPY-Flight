@@ -541,6 +541,13 @@ def _packed_raw_value(item: object) -> object:
         raw_value = None
     if isinstance(raw_value, (np.integer, int, bool, np.bool_)):
         return int(raw_value)
+    if raw_value is not None:
+        uint_value = getattr(raw_value, "uint", None)
+        if isinstance(uint_value, (np.integer, int, bool, np.bool_)):
+            return int(uint_value)
+        int_value = getattr(raw_value, "int", None)
+        if isinstance(int_value, (np.integer, int, bool, np.bool_)):
+            return int(int_value)
     if raw_value is None or isinstance(raw_value, str):
         derived_value = getattr(item, "derived_value", None)
         if isinstance(derived_value, (np.integer, int, bool, np.bool_)):
