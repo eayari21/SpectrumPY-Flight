@@ -163,7 +163,7 @@
       </xtce:IntegerParameterType>
       <xtce:IntegerParameterType name="IDX__TXHDREVTNUM_Type">
         <xtce:UnitSet/>
-        <xtce:IntegerDataEncoding encoding="unsigned" sizeInBits="16"/>
+        <xtce:IntegerDataEncoding encoding="unsigned" sizeInBits="32"/>
       </xtce:IntegerParameterType>
       <xtce:IntegerParameterType name="IDX__TXHDRBLOCKS_Type">
         <xtce:UnitSet/>
