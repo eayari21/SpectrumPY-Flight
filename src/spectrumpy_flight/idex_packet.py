@@ -3228,7 +3228,14 @@ class IDEXEvent:
         with h5py.File(output_path, 'w', track_order=True) as h:
             event_ids = sorted({evtnum for (evtnum, _) in self.header.keys()})
 
-            def _write_metadata_value(group: h5py.Group, name: str, value: object, *, alias_paths=()):
+            def _write_metadata_value(
+                group: h5py.Group,
+                name: str,
+                value: object,
+                *,
+                alias_paths=(),
+                include_numeric_attrs: bool = False,
+            ):
                 if value is None:
                     return None
 
@@ -3251,6 +3258,19 @@ class IDEXEvent:
                 if dataset_path in h:
                     del h[dataset_path]
                 dataset = create_dataset_if_not_exists(h, dataset_path, data=data, dtype=dtype)
+                if include_numeric_attrs:
+                    scalar_value = value
+                    if isinstance(value, np.ndarray):
+                        if value.size == 1:
+                            scalar_value = value.item()
+                        else:
+                            scalar_value = None
+                    if isinstance(scalar_value, (np.integer, int, bool, np.bool_)):
+                        int_value = int(scalar_value)
+                        dataset.attrs['integer'] = int_value
+                        dataset.attrs['decimal'] = str(int_value)
+                        dataset.attrs['hex'] = hex(int_value)
+                        dataset.attrs['binary'] = bin(int_value)
                 for alias_path in alias_paths:
                     if alias_path in h:
                         del h[alias_path]
@@ -3273,7 +3293,12 @@ class IDEXEvent:
                 )
                 for key in packet_order:
                     value = self.raw_header.get((event_id, key))
-                    _write_metadata_value(packed_group, key, value)
+                    _write_metadata_value(
+                        packed_group,
+                        key,
+                        value,
+                        include_numeric_attrs=True,
+                    )
 
                 header_entries = {
                     key: value for (evtnum, key), value in self.header.items() if evtnum == event_id
