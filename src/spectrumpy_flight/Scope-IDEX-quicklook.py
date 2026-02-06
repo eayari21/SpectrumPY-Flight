@@ -111,6 +111,48 @@ except ImportError:
 # %%GLOBAL EVENTNUM/AID VARIABLE
 eventnum = str(1) # || Set it to event one as a start.
 
+def _normalize_scalar(value):
+    if isinstance(value, np.ndarray):
+        if value.shape == ():
+            value = value.item()
+        elif value.size:
+            value = value.flat[0]
+    elif hasattr(value, "shape") and value.shape == ():
+        value = value.item()
+    if isinstance(value, bytes):
+        value = value.decode()
+    return value
+
+
+def _get_event_aid(dataset, eventnum):
+    if dataset is None or eventnum is None:
+        return None
+    event_key = str(eventnum)
+    paths = [
+        f"{event_key}/Metadata/unpacked/IDX__SCI0AID",
+        f"{event_key}/Metadata/unpacked/SCI0AID",
+        f"{event_key}/Metadata/raw/IDX__SCI0AID",
+        f"{event_key}/Metadata/raw/SCI0AID",
+        f"{event_key}/IDX__SCI0AID",
+        f"{event_key}/SCI0AID",
+    ]
+    for path in paths:
+        if path in dataset:
+            return _normalize_scalar(dataset[path][()])
+    if event_key in dataset:
+        group = dataset[event_key]
+        for attr in ("IDX__SCI0AID", "SCI0AID"):
+            if attr in group.attrs:
+                return _normalize_scalar(group.attrs[attr])
+    return None
+
+
+def _format_event_title(filename, eventnum, aid):
+    title = f"Filename = {os.path.basename(filename)}, Event {eventnum}"
+    if aid is None:
+        return f"{title} - Unknown"
+    return f"{title} - {aid}"
+
 # %%CUSTOM TICK FORMATTING (https://stackoverflow.com/questions/25750170/show-decimal-places-and-scientific-notation-on-the-axis)
 class MathTextSciFormatter(mticker.Formatter):
     def __init__(self, fmt="%1.2e"):
@@ -134,7 +176,7 @@ class MathTextSciFormatter(mticker.Formatter):
 # %%SET UP INTERACTIVE PLOT
 class MplCanvas(FigureCanvasQTAgg):
 
-    def __init__(self, parent=None, width=18.5, height=10.5, dpi=100):
+    def __init__(self, parent=None, width=18.5, height=10.5, dpi=100, dataset=None, eventnum=None):
         """A class to set up the interactive matplotlib plot. Uses the global
         traceNumber and channelNames variables to decide which data to display.
 
@@ -155,12 +197,17 @@ class MplCanvas(FigureCanvasQTAgg):
            None
            """
 
-        global fn, eventnum
-        AID = eventnum
+        global fn
+        aid = _get_event_aid(dataset, eventnum)
         nrows = 6  # Make this general
         self.fig, self.ax = plt.subplots(nrows=nrows, sharex=False)
         self.fig.set_size_inches(width, height)
-        self.fig.suptitle(f"Filename = {os.path.basename(fn)}, Event {eventnum}", font="Times New Roman", fontsize=30, fontweight='bold')
+        self.fig.suptitle(
+            _format_event_title(fn, eventnum, aid),
+            font="Times New Roman",
+            fontsize=30,
+            fontweight='bold',
+        )
 
 
         # self.fig.tight_layout()
@@ -237,7 +284,14 @@ class MainWindow(QMainWindow):
         self._createMenuBar()
         self._createActions()
 
-        self.sc = MplCanvas(self, width=18.5, height=10.5, dpi=100)  # || Add in the figure object
+        self.sc = MplCanvas(
+            self,
+            width=18.5,
+            height=10.5,
+            dpi=100,
+            dataset=self.dataset,
+            eventnum=eventnum,
+        )  # || Add in the figure object
         self.toolbar = NavigationToolbar(self.sc, self)  # || Nav toolbar
         self.setCentralWidget(self.sc)  # || Make the figure the main object of the window.
 
@@ -379,7 +433,13 @@ class MainWindow(QMainWindow):
         print(f"Changing to event {index+1}")
         global eventnum
         eventnum = str(index+1)
-        self.sc.fig.suptitle(f"Filename = {os.path.basename(fn)}, Event {eventnum}", font="Times New Roman", fontsize=30, fontweight='bold')
+        aid = _get_event_aid(self.dataset, eventnum)
+        self.sc.fig.suptitle(
+            _format_event_title(fn, eventnum, aid),
+            font="Times New Roman",
+            fontsize=30,
+            fontweight='bold',
+        )
 
         for ax in self.sc.ax:  # || Get rid of existing plots
             ax.clear()
