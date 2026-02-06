@@ -522,11 +522,11 @@ def _decode_trigger_origins(evt: int) -> List[str]:
     labels: List[str] = []
     u10 = evt & 0x3FF
     if (u10 >> 0) & 1:
-        labels.append("HS ADC0I trigger")
+        labels.append("HS ADC0I trigger (TOF HG)")
     if (u10 >> 1) & 1:
-        labels.append("HS ADC0Q trigger")
+        labels.append("HS ADC0Q trigger (TOF LG)")
     if (u10 >> 2) & 1:
-        labels.append("HS ADC1Q trigger")
+        labels.append("HS ADC1Q trigger (TOF MG)")
     if (u10 >> 3) & 1:
         labels.append("LS ADC1 trigger")
     if (u10 >> 4) & 1:
