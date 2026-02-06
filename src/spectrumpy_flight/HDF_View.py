@@ -222,11 +222,13 @@ class HDFViewWindow(QMainWindow):
             return
         if not query:
             self._reset_filter(root)
+            self._tree.expandItem(root)
             return
         self._filter_item(root, query)
 
     def _reset_filter(self, item: QTreeWidgetItem) -> None:
         item.setHidden(False)
+        item.setExpanded(False)
         for index in range(item.childCount()):
             self._reset_filter(item.child(index))
 
