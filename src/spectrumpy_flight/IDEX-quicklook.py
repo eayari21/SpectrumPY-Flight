@@ -1437,8 +1437,8 @@ def _get_event_aid(data_source: "BaseDataSource | None", event: Optional[str]) -
 def _format_event_title(filename: str, event: str, aid: Any) -> str:
     title = f"{os.path.basename(filename)} — Event {event}"
     if aid is None:
-        return f"{title} — Unknown"
-    return f"{title} — {aid}"
+        return f"{title} — AID Unknown"
+    return f"{title} — AID {aid}"
 
 
 def _coerce_float_attr(value: Any) -> Optional[float]:
