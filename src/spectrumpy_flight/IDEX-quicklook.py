@@ -1385,6 +1385,62 @@ def _normalise_attr_value(value: Any) -> Any:
     return value
 
 
+def _normalise_scalar(value: Any) -> Any:
+    value = _normalise_attr_value(value)
+    if isinstance(value, np.ndarray):
+        if value.shape == ():
+            return value.item()
+        if value.size:
+            return value.flat[0]
+        return None
+    if hasattr(value, "shape") and value.shape == ():
+        try:
+            return value.item()
+        except Exception:
+            return value
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8")
+        except Exception:
+            return value.decode("latin-1", "ignore")
+    return value
+
+
+_AID_DATASETS = (
+    "Metadata/unpacked/IDX__SCI0AID",
+    "Metadata/unpacked/SCI0AID",
+    "Metadata/raw/IDX__SCI0AID",
+    "Metadata/raw/SCI0AID",
+    "IDX__SCI0AID",
+    "SCI0AID",
+)
+
+
+def _get_event_aid(data_source: "BaseDataSource | None", event: Optional[str]) -> Any:
+    if data_source is None or not event:
+        return None
+    for dataset_name in _AID_DATASETS:
+        dataset = data_source.get_dataset(event, dataset_name)
+        if dataset is not None:
+            aid = _normalise_scalar(dataset)
+            if aid is not None:
+                return aid
+    attrs = data_source.get_event_attributes(event)
+    for key in ("IDX__SCI0AID", "SCI0AID"):
+        if key in attrs:
+            aid = _normalise_scalar(attrs[key])
+            if aid is not None:
+                return aid
+    return None
+
+
+def _format_event_title(filename: str, event: str, aid: Any) -> str:
+    title = f"{os.path.basename(filename)} — Event {event}"
+    if aid is None:
+        return f"{title} — Unknown"
+    return f"{title} — {aid}"
+
+
 def _coerce_float_attr(value: Any) -> Optional[float]:
     if value is None:
         return None
@@ -1780,6 +1836,11 @@ class BaseDataSource(ABC):
 
         return {}
 
+    def get_event_attributes(self, event: str) -> Dict[str, Any]:
+        """Return attribute mapping for the event group (default: empty)."""
+
+        return {}
+
     def describe(self) -> str:
         return os.path.basename(self.filename)
 
@@ -1837,6 +1898,15 @@ class HDF5DataSource(BaseDataSource):
             obj = self._file[path]
         except Exception:
             return {}
+        if not isinstance(obj, h5py.Group):
+            return {}
+        result: Dict[str, Any] = {}
+        for key, value in obj.attrs.items():
+            result[key] = _normalise_attr_value(value)
+        return result
+
+    def get_event_attributes(self, event: str) -> Dict[str, Any]:
+        obj = self._file.get(str(event))
         if not isinstance(obj, h5py.Group):
             return {}
         result: Dict[str, Any] = {}
@@ -5472,8 +5542,9 @@ class MainWindow(QMainWindow):
         selected = [name for name in CHANNEL_ORDER if self.channel_buttons.get(name) and self.channel_buttons[name].isChecked()]
         missing: List[str] = []
 
+        aid = _get_event_aid(self._data_source, event_name)
         self.figure.suptitle(
-            f"{os.path.basename(self._filename or '')} — Event {event_name}",
+            _format_event_title(self._filename or "", event_name, aid),
             fontsize=20,
             fontweight="bold",
         )
