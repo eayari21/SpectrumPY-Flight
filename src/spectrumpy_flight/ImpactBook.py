@@ -17,6 +17,12 @@ import time
 import h5py
 import argparse
 
+if __package__ is None or __package__ == "":
+    import sys
+
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    __package__ = "spectrumpy_flight"
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
