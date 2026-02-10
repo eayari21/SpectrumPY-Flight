@@ -65,6 +65,7 @@ if __package__ is None or __package__ == "":
     from rice_decode import idex_rice_Decode
     from time2mass import time2mass, get_last_mass_line_assignments
     from lookup.dust_estimator import estimate_particle, load_default_tables
+    from lookup.txhdr_descriptions import TXHDR_AUTHORITY_REFERENCE, describe_field
     from spacecraft_clock import SPACECRAFT_EPOCH, combine_coarse_fine_seconds
 else:
     from . import package_path
@@ -73,6 +74,7 @@ else:
     from .rice_decode import idex_rice_Decode
     from .time2mass import time2mass, get_last_mass_line_assignments
     from .lookup.dust_estimator import estimate_particle, load_default_tables
+    from .lookup.txhdr_descriptions import TXHDR_AUTHORITY_REFERENCE, describe_field
     from .spacecraft_clock import SPACECRAFT_EPOCH, combine_coarse_fine_seconds
 
 try:
@@ -3244,6 +3246,8 @@ class IDEXEvent:
                 *,
                 alias_paths=(),
                 include_numeric_attrs: bool = False,
+                description: Optional[str] = None,
+                authority: Optional[str] = None,
             ):
                 if value is None:
                     return None
@@ -3280,6 +3284,10 @@ class IDEXEvent:
                         dataset.attrs['decimal'] = str(int_value)
                         dataset.attrs['hex'] = hex(int_value)
                         dataset.attrs['binary'] = bin(int_value)
+                if description:
+                    dataset.attrs['description'] = str(description)
+                if authority:
+                    dataset.attrs['authority'] = str(authority)
                 for alias_path in alias_paths:
                     if alias_path in h:
                         del h[alias_path]
@@ -3307,6 +3315,8 @@ class IDEXEvent:
                         key,
                         value,
                         include_numeric_attrs=True,
+                        description=describe_field(key, packed=True),
+                        authority=TXHDR_AUTHORITY_REFERENCE if key.startswith('IDX__TXHDR') else None,
                     )
 
                 header_entries = {
@@ -3349,7 +3359,13 @@ class IDEXEvent:
                 for key in header_order:
                     if key not in unpacked_entries:
                         continue
-                    _write_metadata_value(unpacked_group, key, unpacked_entries[key])
+                    _write_metadata_value(
+                        unpacked_group,
+                        key,
+                        unpacked_entries[key],
+                        description=describe_field(key, packed=False),
+                        authority=TXHDR_AUTHORITY_REFERENCE if (key.startswith('IDX__TXHDR') or describe_field(key, packed=False)) else None,
+                    )
 
             for analysis in analyses:
                 event_key, channel = analysis['key']
