@@ -2900,7 +2900,9 @@ class IDEXEvent:
             pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
             low_trigger_offset = 8.0 * (1.0 / 4.0625) * (pre_blocks + 1)
             high_gain_delay = self._get_header_value(event_id, "TOFDelay_H", getattr(self, "hgdelay", 0))
-            time_values = time_values - low_trigger_offset + ((high_gain_delay + 1) * spacing)
+            # time_values = time_values - low_trigger_offset + ((high_gain_delay + 1) * spacing)
+            time_values = time_values - low_trigger_offset + (high_gain_delay+1)*spacing # + ((high_gain_delay + 1) * spacing)
+
         else:
             spacing = 1.0 / 4.0625
             time_values = np.linspace(0, sample_count, sample_count, dtype=float) * spacing
@@ -3298,9 +3300,6 @@ class IDEXEvent:
                         if evtnum == event_id
                     ],
                 )
-                if 'IDX__TXHDRTRIGID' not in packet_order:
-                    if (event_id, 'IDX__TXHDRTRIGID') in self.raw_header:
-                        packet_order.append('IDX__TXHDRTRIGID')
                 for key in packet_order:
                     value = self.raw_header.get((event_id, key))
                     _write_metadata_value(
