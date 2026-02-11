@@ -68,6 +68,8 @@ INSTRUMENT_IMAGE_CANDIDATES = (
 )
 
 SUPPORTED_DATA_EXTENSIONS = (".h5", ".hdf5", ".cdf", ".trc")
+WEBPODA_ENDPOINT = "https://lasp.colorado.edu/ops/imap/poda/dap2/packets/SID1/IDX_SCI.bin"
+WEBPODA_VPN_REMINDER = "If you are off-site, connect to the LASP VPN and try again."
 
 
 def _find_image(candidates: tuple[str, ...]) -> Optional[Path]:
@@ -445,17 +447,31 @@ class LaunchWindow(QMainWindow):
                 QMessageBox.critical(self, "Unknown source", "Please choose a data source to continue.")
                 return
         except requests.HTTPError as exc:
+            if source == "webpoda":
+                detail = (
+                    "The WebPODA server returned an error. "
+                    f"{WEBPODA_VPN_REMINDER}\n\n{exc}"
+                )
+            else:
+                detail = f"The remote server returned an error: {exc}"
             QMessageBox.critical(
                 self,
                 "Download failed",
-                f"The remote server returned an error: {exc}",
+                detail,
             )
             return
         except requests.RequestException as exc:
+            if source == "webpoda":
+                detail = (
+                    "Unable to reach the WebPODA API. "
+                    f"{WEBPODA_VPN_REMINDER}\n\n{exc}"
+                )
+            else:
+                detail = f"Unable to fetch data from the selected API: {exc}"
             QMessageBox.critical(
                 self,
                 "Download failed",
-                f"Unable to fetch data from the selected API: {exc}",
+                detail,
             )
             return
         except OSError as exc:
@@ -511,15 +527,15 @@ class LaunchWindow(QMainWindow):
     ) -> Optional[Path]:
         DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
         query_params = [
-            ("time>", _format_webpoda_time(start)),
+            ("time>=", _format_webpoda_time(start)),
             ("time<", _format_webpoda_time(stop)),
-            ("project(time,packet)", ""),
+            ("project(packet)", ""),
             ('formatTime("yyyy-MM-dd\'T\'HH:mm:ss")', ""),
         ]
-        url = "https://lasp.colorado.edu/ops/imap/poda/dap2/packets/SID1/IDX_SCI.asc"
+        url = WEBPODA_ENDPOINT
 
         total_written = 0
-        filename = f"IDX_SCI_{start.strftime('%Y%m%dT%H%M%S')}_{stop.strftime('%Y%m%dT%H%M%S')}.asc"
+        filename = f"IDX_SCI_{start.strftime('%Y%m%dT%H%M%S')}_{stop.strftime('%Y%m%dT%H%M%S')}.bin"
         target = DOWNLOADS_DIR / filename
 
         with requests.get(url, params=query_params, auth=(username, password), timeout=120, stream=True) as response:
