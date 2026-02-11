@@ -2194,6 +2194,13 @@ class IDEXEvent:
                     
                     # nBlocks = bin(pkt.data['IDX__TXHDRBLOCKS'].derived_value).replace('b', '')
 
+                    print("EVTNUM:", evtnum)
+                    print("SCI0TYPE:", pkt.data['IDX__SCI0TYPE'].derived_value)
+                    print("TXHDRBLOCKS RAW:", pkt.data['IDX__TXHDRBLOCKS'].raw_value)
+                    print("TXHDRBLOCKS DERIVED:", pkt.data['IDX__TXHDRBLOCKS'].derived_value)
+                    print("-----")
+
+
                     # Extract the 17-22-bit integer (usually 8)
                     self.lspretrigblocks = (pkt.data['IDX__TXHDRBLOCKS'].derived_value >> 16) &  0b1111
 
@@ -2890,17 +2897,35 @@ class IDEXEvent:
         event_id: Optional[Union[int, str]] = None,
         channel: Optional[str] = None,
     ) -> np.ndarray:
-        # ``event_id``/``channel`` are retained for API compatibility with
-        # existing callers, but sampling-time arrays are purely sample-index
-        # driven to keep HDF5 time vectors non-negative.
-        _ = event_id, channel
+
         if sample_count <= 0:
             return np.array([], dtype=float)
 
-        spacing = (1.0 / 260.0) if high_rate else (1.0 / 4.0625)
-        time_values = np.linspace(0, sample_count, sample_count, dtype=float)
-        time_values *= spacing
+        # Sample spacing
+        if high_rate:
+            spacing = 1.0 / 260.0
+        else:
+            spacing = 1.0 / 4.0625
+
+        # Use integer indexing (NOT linspace)
+        time_values = np.arange(sample_count, dtype=float) * spacing
+
+        if high_rate:
+            # High-sampling trigger alignment (matches bac_L0_idex_packet.py)
+            trigger_time = (
+                8 * (1.0 / 4.0625) * (self.lspretrigblocks + 1)
+                - (1.0 / 260.0) * (self.lgdelay-1)
+            )
+        else:
+            # Low-sampling trigger alignment
+            trigger_time = (
+                512 * (1.0 / 260.0) * (self.hspretrigblocks + 1)
+            )
+
+        time_values -= trigger_time
+
         return time_values
+
 
     def plot_all_data(self, packets, fname: str):
         plot_folder = _resolve_plot_dir(fname)
