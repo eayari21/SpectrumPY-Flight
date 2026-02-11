@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Dict, Iterable, Optional, Sequence
+import csv
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -27,10 +28,12 @@ except Exception as exc:  # pragma: no cover - import guard
 _QT_API = None
 try:  # pragma: no cover - import guard
     from PySide6.QtCore import Qt
+    from PySide6.QtGui import QAction
     from PySide6.QtWidgets import (
         QApplication,
         QFileDialog,
         QHeaderView,
+        QLineEdit,
         QMainWindow,
         QMessageBox,
         QPlainTextEdit,
@@ -38,6 +41,7 @@ try:  # pragma: no cover - import guard
         QTableWidget,
         QTableWidgetItem,
         QTabWidget,
+        QToolBar,
         QTreeWidget,
         QTreeWidgetItem,
         QVBoxLayout,
@@ -46,10 +50,12 @@ try:  # pragma: no cover - import guard
     _QT_API = "PySide6"
 except Exception:  # pragma: no cover - import guard
     from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QAction
     from PyQt6.QtWidgets import (
         QApplication,
         QFileDialog,
         QHeaderView,
+        QLineEdit,
         QMainWindow,
         QMessageBox,
         QPlainTextEdit,
@@ -57,6 +63,7 @@ except Exception:  # pragma: no cover - import guard
         QTableWidget,
         QTableWidgetItem,
         QTabWidget,
+        QToolBar,
         QTreeWidget,
         QTreeWidgetItem,
         QVBoxLayout,
@@ -89,6 +96,7 @@ class CDFViewWindow(QMainWindow):
 
     MAX_PREVIEW_ROWS = 200
     MAX_PREVIEW_COLS = 60
+    EPOCH_VARIABLE_CANDIDATES = ("epoch", "Epoch", "EPOCH")
 
     def __init__(self, filename: str, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -120,6 +128,18 @@ class CDFViewWindow(QMainWindow):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
+        toolbar = QToolBar("CDF Tools", self)
+        toolbar.setMovable(False)
+        self._search_edit = QLineEdit(self)
+        self._search_edit.setPlaceholderText("Search variables and groups…")
+        self._search_edit.textChanged.connect(self._apply_filter)
+        toolbar.addWidget(self._search_edit)
+        export_action = QAction("Export Selected to CSV", self)
+        export_action.setToolTip("Export selected variables with epoch to CSV")
+        export_action.triggered.connect(self._export_selected_to_csv)
+        toolbar.addAction(export_action)
+        self.addToolBar(toolbar)
+
         splitter = QSplitter(Qt.Orientation.Horizontal, central)
         splitter.setChildrenCollapsible(False)
         if hasattr(splitter, "setCollapsible"):
@@ -130,6 +150,7 @@ class CDFViewWindow(QMainWindow):
         self._tree = QTreeWidget(splitter)
         self._tree.setHeaderLabels(["Name", "Type", "Shape"])
         self._tree.setAlternatingRowColors(True)
+        self._tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
         self._tree.header().setStretchLastSection(False)
         self._tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -183,6 +204,36 @@ class CDFViewWindow(QMainWindow):
 
         self._tree.expandItem(root)
         self._tree.setCurrentItem(root)
+
+    def _apply_filter(self, text: str) -> None:
+        query = text.strip().lower()
+        root = self._tree.topLevelItem(0)
+        if root is None:
+            return
+        if not query:
+            self._reset_filter(root)
+            self._tree.expandItem(root)
+            return
+        self._filter_item(root, query)
+
+    def _reset_filter(self, item: QTreeWidgetItem) -> None:
+        item.setHidden(False)
+        item.setExpanded(False)
+        for index in range(item.childCount()):
+            self._reset_filter(item.child(index))
+
+    def _filter_item(self, item: QTreeWidgetItem, query: str) -> bool:
+        name = item.text(0).lower()
+        match = query in name
+        child_match = False
+        for index in range(item.childCount()):
+            child = item.child(index)
+            child_match = self._filter_item(child, query) or child_match
+        visible = match or child_match
+        item.setHidden(not visible)
+        if child_match:
+            item.setExpanded(True)
+        return visible
 
     def _variable_summary(self, name: str) -> Dict[str, object]:
         summary: Dict[str, object] = {"name": name, "shape": (), "type": "Variable"}
@@ -290,6 +341,115 @@ class CDFViewWindow(QMainWindow):
             val_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             self._attr_table.setItem(idx, 0, key_item)
             self._attr_table.setItem(idx, 1, val_item)
+
+    def _find_epoch_variable(self) -> Tuple[np.ndarray, str]:
+        info = self._cdf.cdf_info()
+        var_names = list(info.get("zVariables", []) or []) + list(info.get("rVariables", []) or [])
+        for name in self.EPOCH_VARIABLE_CANDIDATES:
+            if name in var_names:
+                return np.asarray(self._cdf.varget(name)), name
+        for name in var_names:
+            if str(name).lower() == "epoch":
+                return np.asarray(self._cdf.varget(name)), str(name)
+        raise ValueError("epoch variable not found in the CDF file.")
+
+    def _coerce_vector(self, data: np.ndarray, label: str) -> np.ndarray:
+        if data.ndim == 0:
+            return np.array([data.item()])
+        if data.ndim != 1:
+            raise ValueError(f"{label} must be a 1D variable to export.")
+        return data
+
+    def _selected_variable_names(self) -> List[str]:
+        variables: List[str] = []
+        for item in self._tree.selectedItems():
+            node_type, payload = item.data(0, Qt.ItemDataRole.UserRole) or (None, None)
+            if node_type == "variable" and payload:
+                variables.append(str(payload))
+        return variables
+
+    def _default_export_name(self, variable_names: List[str]) -> str:
+        base_name = os.path.splitext(os.path.basename(self._filename))[0] or "export"
+        if not variable_names:
+            return base_name
+        return f"{base_name}_{'_'.join(variable_names)}"
+
+    def _dataset_series_for_export(self, variable_name: str, epoch_vector: np.ndarray) -> np.ndarray:
+        data = np.asarray(self._cdf.varget(variable_name))
+        values = self._coerce_vector(data, variable_name)
+        if values.shape[0] != epoch_vector.shape[0]:
+            raise ValueError(
+                "Variable length does not match epoch length "
+                f"({values.shape[0]} vs {epoch_vector.shape[0]})."
+            )
+        return values
+
+    def _export_dataset_to_csv(self, variable_name: str, epoch_vector: np.ndarray, filename: str) -> None:
+        values = self._dataset_series_for_export(variable_name, epoch_vector)
+        with open(filename, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["epoch", variable_name])
+            for epoch_value, data_value in zip(epoch_vector, values):
+                writer.writerow([_format_scalar(epoch_value), _format_scalar(data_value)])
+
+    def _export_multiple_datasets_to_csv(
+        self,
+        variable_names: List[str],
+        epoch_vector: np.ndarray,
+        filename: str,
+    ) -> None:
+        headers: List[str] = []
+        series_values: List[np.ndarray] = []
+        seen: Dict[str, int] = {}
+        for variable_name in variable_names:
+            count = seen.get(variable_name, 0)
+            seen[variable_name] = count + 1
+            header_name = f"{variable_name} ({count + 1})" if count else variable_name
+            values = self._dataset_series_for_export(variable_name, epoch_vector)
+            headers.append(header_name)
+            series_values.append(values)
+        with open(filename, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["epoch", *headers])
+            for idx, epoch_value in enumerate(epoch_vector):
+                row = [_format_scalar(epoch_value)]
+                for values in series_values:
+                    row.append(_format_scalar(values[idx]))
+                writer.writerow(row)
+
+    def _export_selected_to_csv(self) -> None:
+        variables = self._selected_variable_names()
+        if not variables:
+            QMessageBox.information(self, "Export to CSV", "Select one or more variables to export.")
+            return
+
+        try:
+            epoch_data, epoch_name = self._find_epoch_variable()
+            epoch_vector = self._coerce_vector(np.asarray(epoch_data), epoch_name)
+        except Exception as exc:
+            QMessageBox.critical(self, "Export Error", f"Unable to locate epoch.\n{exc}")
+            return
+
+        default_name = self._default_export_name(variables)
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export CSV",
+            f"{default_name}.csv",
+            "CSV Files (*.csv);;All files (*)",
+            options=QFileDialog.Option.DontUseNativeDialog,
+        )
+        if not filename:
+            return
+
+        try:
+            if len(variables) == 1:
+                self._export_dataset_to_csv(variables[0], epoch_vector, filename)
+            else:
+                self._export_multiple_datasets_to_csv(variables, epoch_vector, filename)
+        except Exception as exc:
+            QMessageBox.critical(self, "Export Error", str(exc))
+            return
+        QMessageBox.information(self, "Export Complete", f"Saved {filename}")
 
     # ------------------------------------------------------------------
     # Cleanup
