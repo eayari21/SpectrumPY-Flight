@@ -69,6 +69,7 @@ INSTRUMENT_IMAGE_CANDIDATES = (
 
 SUPPORTED_DATA_EXTENSIONS = (".h5", ".hdf5", ".cdf", ".trc")
 WEBPODA_ENDPOINT = "https://lasp.colorado.edu/ops/imap/poda/dap2/packets/SID1/IDX_SCI.bin"
+WEBPODA_CUTOFF_UTC = datetime(2025, 9, 24, tzinfo=timezone.utc)
 WEBPODA_VPN_REMINDER = "If you are off-site, connect to the LASP VPN and try again."
 
 
@@ -139,6 +140,11 @@ def _format_webpoda_time(dt: datetime) -> str:
 
 def _format_iso_seconds(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _resolve_webpoda_endpoint(start: datetime, stop: datetime) -> str:
+    sid = "SID1" if stop <= WEBPODA_CUTOFF_UTC else "SID2"
+    return WEBPODA_ENDPOINT.replace("SID1", sid)
 
 
 class FetchDataDialog(QDialog):
@@ -532,7 +538,7 @@ class LaunchWindow(QMainWindow):
             ("project(packet)", ""),
             ('formatTime("yyyy-MM-dd\'T\'HH:mm:ss")', ""),
         ]
-        url = WEBPODA_ENDPOINT
+        url = _resolve_webpoda_endpoint(start, stop)
 
         total_written = 0
         filename = f"IDX_SCI_{start.strftime('%Y%m%dT%H%M%S')}_{stop.strftime('%Y%m%dT%H%M%S')}.bin"
