@@ -2770,12 +2770,17 @@ class IDEXEvent:
         return self.header.get((header_key, key), default)
 
     def _high_trigger_offset(self, event_id: Optional[Union[int, str]]) -> float:
+        # Legacy low-sampling trigger time expression:
+        # self.hstriggertime = 512*(1/260)*(self.hspretrigblocks+1)
         pre_blocks = self._get_header_value(event_id, "HSPretriggerBlocks", getattr(self, "hspretrigblocks", 0))
-        return 512 * (1.0 / 260.0) * pre_blocks
+        return 512.0 * (1.0 / 260.0) * (pre_blocks + 1)
 
     def _low_trigger_offset(self, event_id: Optional[Union[int, str]]) -> float:
+        # Legacy high-sampling trigger time expression:
+        # self.lstriggertime = 8*(1/4.0625)*(self.lspretrigblocks+1) - (1/260)*self.hgdelay
         pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
-        return 8 * (1.0 / 4.0625) * pre_blocks
+        hgdelay = self._get_header_value(event_id, 'TOFDelay_H', getattr(self, 'hgdelay', 0))
+        return 8.0 * (1.0 / 4.0625) * (pre_blocks + 1) - (1.0 / 260.0) * hgdelay
 
     def _low_sampling_delay_seconds(self, event_id: Optional[Union[int, str]]) -> float:
         delay_value = None
@@ -2877,15 +2882,6 @@ class IDEXEvent:
         except (TypeError, ValueError):
             return None
 
-    def _high_trigger_time_seconds(self, event_id: Optional[Union[int, str]], channel: Optional[str]) -> float:
-        pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
-        high_gain_delay = self._get_header_value(event_id, 'TOFDelay_H', getattr(self, 'hgdelay', 0))
-        return 8.0 * (1.0 / 4.0625) * (pre_blocks + 1) - (high_gain_delay * (1.0 / 260.0))
-
-    def _low_trigger_time_seconds(self, event_id: Optional[Union[int, str]]) -> float:
-        pre_blocks = self._get_header_value(event_id, "HSPretriggerBlocks", getattr(self, "hspretrigblocks", 0))
-        return 512.0 * (1.0 / 260.0) * (pre_blocks + 1)
-
     def _build_time_array(
         self,
         sample_count: int,
@@ -2894,19 +2890,43 @@ class IDEXEvent:
         event_id: Optional[Union[int, str]] = None,
         channel: Optional[str] = None,
     ) -> np.ndarray:
+        # ``channel`` is intentionally kept in the signature because callers
+        # pass it today; the trigger-time math itself does not depend on it.
+        _ = channel
         if sample_count <= 0:
             return np.array([], dtype=float)
         if high_rate:
-            spacing = 1.0 / 260.0
-            time_values = np.linspace(0, sample_count, sample_count, dtype=float) * spacing
-            low_trigger_offset = self._high_trigger_time_seconds(event_id, channel)
-            time_values = time_values - low_trigger_offset
+            time_values = np.linspace(0, sample_count, sample_count, dtype=float)
+            time_values *= 1.0 / 260.0
+
+            # Copy the legacy trigger alignment exactly:
+            # self.lstriggertime = 8*(1/4.0625)*(self.lspretrigblocks+1) - (1/260)*self.hgdelay
+            lspretrigblocks = self._get_header_value(
+                event_id,
+                "LSPretriggerBlocks",
+                getattr(self, "lspretrigblocks", 0),
+            )
+            hgdelay = self._get_header_value(
+                event_id,
+                "TOFDelay_H",
+                getattr(self, "hgdelay", 0),
+            )
+            lstriggertime = 8.0 * (1.0 / 4.0625) * (lspretrigblocks + 1) - (1.0 / 260.0) * hgdelay
+            time_values = time_values - lstriggertime
 
         else:
-            spacing = 1.0 / 4.0625
-            time_values = np.linspace(0, sample_count, sample_count, dtype=float) * spacing
-            high_trigger_offset = self._low_trigger_time_seconds(event_id)
-            time_values = time_values - high_trigger_offset
+            time_values = np.linspace(0, sample_count, sample_count, dtype=float)
+            time_values *= 1.0 / 4.0625
+
+            # Copy the legacy trigger alignment exactly:
+            # self.hstriggertime = 512*(1/260)*(self.hspretrigblocks+1)
+            hspretrigblocks = self._get_header_value(
+                event_id,
+                "HSPretriggerBlocks",
+                getattr(self, "hspretrigblocks", 0),
+            )
+            hstriggertime = 512.0 * (1.0 / 260.0) * (hspretrigblocks + 1)
+            time_values = time_values - hstriggertime
         return time_values
 
     def plot_all_data(self, packets, fname: str):
