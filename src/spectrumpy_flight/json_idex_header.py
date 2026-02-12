@@ -817,6 +817,17 @@ def _resolve_plot_dir(filename: str) -> Path:
     return target_parent / stem
 
 
+def _resolve_json_dir(filename: str) -> Path:
+    input_path = Path(filename).expanduser()
+    if not input_path.is_absolute():
+        input_path = Path.cwd() / input_path
+    target_parent = _swap_data_root(input_path.parent, "JSON")
+    if target_parent == input_path.parent and not target_parent.is_absolute():
+        target_parent = Path(__file__).resolve().parent / "JSON"
+    target_parent.mkdir(parents=True, exist_ok=True)
+    return target_parent
+
+
 _SQL_DB_URI = os.environ.get("IDEX_SQL_URI")
 _SQL_ENGINE = None
 
@@ -2120,6 +2131,7 @@ class IDEXEvent:
         self.raw_header = {}
         self._packet_field_order: Dict[int, List[str]] = {}
         self._header_field_order: Dict[int, List[str]] = {}
+        self._json_base = Path(filename).stem if Path(filename).suffix else Path(filename).name
         self.lspretrigblocks = 0
         self.lsposttrigblocks = 0
         self.hspretrigblocks = 0
@@ -3121,6 +3133,8 @@ class IDEXEvent:
         event_saturation_flags: Dict[str, bool] = {}
         flags_by_event: Dict[str, Dict[str, List[str]]] = {}
         event_results: Dict[str, Dict[str, object]] = {}
+        packed_records: List[Dict[str, object]] = []
+        unpacked_records: List[Dict[str, object]] = []
 
         def _prepare_waveform(item):
             (event_id, channel), data = item
@@ -3314,6 +3328,9 @@ class IDEXEvent:
                         description=describe_field(key, packed=True),
                         authority=TXHDR_AUTHORITY_REFERENCE if key.startswith('IDX__TXHDR') else None,
                     )
+                packed_records.append(
+                    {key: self.raw_header.get((event_id, key)) for key in packet_order}
+                )
 
                 header_entries = {
                     key: value for (evtnum, key), value in self.header.items() if evtnum == event_id
@@ -3362,6 +3379,9 @@ class IDEXEvent:
                         description=describe_field(key, packed=False),
                         authority=TXHDR_AUTHORITY_REFERENCE if (key.startswith('IDX__TXHDR') or describe_field(key, packed=False)) else None,
                     )
+                unpacked_records.append(
+                    {key: unpacked_entries[key] for key in header_order if key in unpacked_entries}
+                )
 
             for analysis in analyses:
                 event_key, channel = analysis['key']
@@ -3854,6 +3874,12 @@ class IDEXEvent:
                     channels,
                     precomputed_matches,
                 )
+
+        json_dir = _resolve_json_dir(filename)
+        packed_path = json_dir / f"{self._json_base}_packed.json"
+        unpacked_path = json_dir / f"{self._json_base}_unpacked.json"
+        packed_path.write_text(json.dumps(packed_records, ensure_ascii=False), encoding='utf-8')
+        unpacked_path.write_text(json.dumps(unpacked_records, ensure_ascii=False), encoding='utf-8')
 
 # ||
 # ||
