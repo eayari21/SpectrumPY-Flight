@@ -66,12 +66,7 @@ if __package__ is None or __package__ == "":
     from time2mass import time2mass, get_last_mass_line_assignments
     from lookup.dust_estimator import estimate_particle, load_default_tables
     from lookup.txhdr_descriptions import TXHDR_AUTHORITY_REFERENCE, describe_field
-    from spacecraft_clock import (
-        SPACECRAFT_EPOCH,
-        combine_coarse_fine_seconds,
-        spacecraft_seconds_to_datetime,
-        spacecraft_seconds_to_unix_seconds,
-    )
+    from spacecraft_clock import SPACECRAFT_EPOCH, combine_coarse_fine_seconds
 else:
     from . import package_path
     from .plot_style import apply_plot_style
@@ -80,12 +75,7 @@ else:
     from .time2mass import time2mass, get_last_mass_line_assignments
     from .lookup.dust_estimator import estimate_particle, load_default_tables
     from .lookup.txhdr_descriptions import TXHDR_AUTHORITY_REFERENCE, describe_field
-    from .spacecraft_clock import (
-        SPACECRAFT_EPOCH,
-        combine_coarse_fine_seconds,
-        spacecraft_seconds_to_datetime,
-        spacecraft_seconds_to_unix_seconds,
-    )
+    from .spacecraft_clock import SPACECRAFT_EPOCH, combine_coarse_fine_seconds
 
 try:
     if __package__ is None or __package__ == "":
@@ -227,6 +217,19 @@ _FILENAME_EPOCH_YEAR_FIRST_PATTERN = re.compile(
 _FILENAME_DATE_ONLY_PATTERN = re.compile(r"(\d{2})_(\d{2})_(\d{2})")
 _FILENAME_DATE_ONLY_YEAR_FIRST_PATTERN = re.compile(r"(\d{4})[ _-]?(\d{2})[ _-]?(\d{2})")
 
+Y_AXIS_LABELS: Dict[str, str] = {
+    "Target L": r"$Q_{TL}$ [pC]",
+    "Target H": r"$Q_{TH}$ [pC]",
+    "Ion Grid": r"$Q_{IG}$ [pC]",
+    "TOF L": r"$TOF_{L}$ [pC/ $\Delta t$]",
+    "TOF M": r"$TOF_{M}$ [pC/ $\Delta t$]",
+    "TOF H": r"$TOF_{H}$ [pC/ $\Delta t$]",
+}
+
+
+def _y_label_with_units(channel_name: str) -> str:
+    return Y_AXIS_LABELS.get(channel_name, channel_name)
+
 
 def _parse_filename_epoch(filename: str) -> Tuple[Optional[datetime], bool]:
     """Return a timezone-aware datetime parsed from the capture filename.
@@ -258,7 +261,7 @@ def _parse_filename_epoch(filename: str) -> Tuple[Optional[datetime], bool]:
                 True,
             )
         except ValueError:
-            return (None, False)
+            pass
 
     date_only_match = _FILENAME_DATE_ONLY_PATTERN.search(name)
     if not date_only_match:
@@ -283,7 +286,7 @@ def _txhdr_time_fields(
     """Return epoch seconds and UTC timestamp based on TXHDR time fields."""
 
     if seconds_high is None or seconds_low is None or subseconds is None:
-        return {"epoch": None, "timestamp_utc": None, "utc_timestamp": None}
+        return {"epoch": None, "timestamp_utc": None}
     try:
         epoch_seconds = (
             (float(1 << 16) * float(seconds_high))
@@ -291,11 +294,11 @@ def _txhdr_time_fields(
             + 20e-6 * float(subseconds)
         )
     except (TypeError, ValueError):
-        return {"epoch": None, "timestamp_utc": None, "utc_timestamp": None}
+        return {"epoch": None, "timestamp_utc": None}
 
     utc_time = (SPACECRAFT_EPOCH + timedelta(seconds=epoch_seconds)).replace(tzinfo=timezone.utc)
     utc_iso = utc_time.isoformat().replace("+00:00", "Z")
-    return {"epoch": epoch_seconds, "timestamp_utc": utc_iso, "utc_timestamp": utc_iso}
+    return {"epoch": epoch_seconds, "timestamp_utc": utc_iso}
 
 
 def _collection_efficiency_ratio(
@@ -790,6 +793,8 @@ def _replace_plot_dir(path: Path) -> Path:
 
 def _resolve_output_path(filename: str) -> Path:
     input_path = Path(filename).expanduser()
+    if not input_path.is_absolute():
+        input_path = Path.cwd() / input_path
     stem = input_path.stem if input_path.suffix else input_path.name
     parent = input_path.parent
     target_parent = _replace_data_dir(parent)
@@ -801,6 +806,8 @@ def _resolve_output_path(filename: str) -> Path:
 
 def _resolve_plot_dir(filename: str) -> Path:
     input_path = Path(filename).expanduser()
+    if not input_path.is_absolute():
+        input_path = Path.cwd() / input_path
     stem = input_path.stem if input_path.suffix else input_path.name
     parent = input_path.parent
     target_parent = _replace_plot_dir(parent)
@@ -808,15 +815,6 @@ def _resolve_plot_dir(filename: str) -> Path:
         target_parent = Path(__file__).resolve().parent / "Plots"
     target_parent.mkdir(parents=True, exist_ok=True)
     return target_parent / stem
-
-
-def _resolve_json_dir(filename: str) -> Path:
-    input_path = Path(filename).expanduser()
-    target_parent = _swap_data_root(input_path.parent, "JSON")
-    if target_parent == input_path.parent and not target_parent.is_absolute():
-        target_parent = Path(__file__).resolve().parent / "JSON"
-    target_parent.mkdir(parents=True, exist_ok=True)
-    return target_parent
 
 
 _SQL_DB_URI = os.environ.get("IDEX_SQL_URI")
@@ -1938,7 +1936,13 @@ def FitTargetSignal(time, targetAmp,
         (m_est, b_est), _ = curve_fit(LinearFit, baselinedomain, baselineraw,
                                       p0=[slopeguess, float(np.median(baselineraw))],
                                       maxfev=100_000)
-        signal = signal - LinearFit(time, m_est, b_est)
+        span = float(np.nanmax(time) - np.nanmin(time)) if time.size else 0.0
+        baseline_sigma = _robust_sigma(baselineraw) if baselineraw.size else 0.0
+        drift = abs(m_est) * span if np.isfinite(span) else 0.0
+        if baseline_sigma > 0.0 and np.isfinite(drift) and drift < baseline_sigma * 0.5:
+            signal = signal - float(b_est)
+        else:
+            signal = signal - LinearFit(time, m_est, b_est)
     except Exception:
         # fallback: simple scipy detrend
         try:
@@ -2095,12 +2099,6 @@ class IDEXEvent:
         idex_definition = xtcedef.XtcePacketDefinition(xtce_document=str(idex_xtce))
         # assert isinstance(idex_definition, xtcedef.XtcePacketDefinition)
 
-        # Filename only (removes /Data/Flight/)
-        base = os.path.basename(filename)
-
-        # Remove .pkts extension if present
-        if base.endswith(".pkts"):
-            base = base[:-5]  # strip 5 chars: len(".pkts")
 
         idex_packet_file = filename
         print(f"Reading in data file {idex_packet_file}")
@@ -2122,7 +2120,6 @@ class IDEXEvent:
         self.raw_header = {}
         self._packet_field_order: Dict[int, List[str]] = {}
         self._header_field_order: Dict[int, List[str]] = {}
-        self._json_base = base
         self.lspretrigblocks = 0
         self.lsposttrigblocks = 0
         self.hspretrigblocks = 0
@@ -2130,8 +2127,8 @@ class IDEXEvent:
         self.hgdelay = 0
         self.mgdelay = 0
         self.lgdelay = 0
-        self.fifo_delay = 0
         self.trig_offset = 0
+        self.fifo_delay = 0
         self.hstime = np.array([], dtype=float)
         self.lstime = np.array([], dtype=float)
         self._coarse_period = float(1 << 16)
@@ -2231,42 +2228,52 @@ class IDEXEvent:
 
                     # Extract raw DN value for Voltage reading of Detector on HVPS Board (ADC CHnel 0)
                     self.header[(evtnum, 'detector_voltage')] = (pkt.data['IDX__TXHDRHVPSHKCH01'].derived_value) & 0b111111111111
+                    _append_header_key('detector_voltage')
                     print("Detector voltage = ", self.header[(evtnum, 'detector_voltage')])
 
                     # Extract raw DN value for Voltage reading of Sensor on HVPS Board (ADC CHnel 1)
                     self.header[(evtnum, 'sensor_voltage')] = (pkt.data['IDX__TXHDRHVPSHKCH01'].derived_value >> 16) & 0b111111111111
+                    _append_header_key('sensor_voltage')
                     print("Sensor voltage = ", self.header[(evtnum, 'sensor_voltage')])
 
                     # HVPS Board signal "Target Voltage" (ADC CHnel 23)
                     self.header[(evtnum, 'target_voltage')] = (pkt.data['IDX__TXHDRHVPSHKCH23'].derived_value) & 0b111111111111
+                    _append_header_key('target_voltage')
                     print("Target voltage = ", self.header[(evtnum, 'target_voltage')])
 
                     # HVPS Board signal "Reflectron Voltage" (ADC CHnel 23)
                     self.header[(evtnum, 'reflectron_voltage')] = (pkt.data['IDX__TXHDRHVPSHKCH23'].derived_value >> 16) & 0b111111111111
+                    _append_header_key('reflectron_voltage')
                     print("Reflectron voltage = ", self.header[(evtnum, 'reflectron_voltage')])
 
                     # HVPS Board signal "Rejection Voltage" (ADC CHnel 45)
                     self.header[(evtnum, 'rejection_voltage')] = (pkt.data['IDX__TXHDRHVPSHKCH45'].derived_value) & 0b111111111111
+                    _append_header_key('rejection_voltage')
                     print("Rejection voltage = ", self.header[(evtnum, 'rejection_voltage')])
 
                     # HVPS Board signal "Current for the HVPS sensor" (ADC CHnel 45)
                     self.header[(evtnum, 'current_hvps_sensor')] = (pkt.data['IDX__TXHDRHVPSHKCH45'].derived_value >> 16) & 0b111111111111
+                    _append_header_key('current_hvps_sensor')
                     print("Current for HVPS sensor = ", self.header[(evtnum, 'current_hvps_sensor')])
 
                     # HVPS Board signal "Positive current for the HVPS sensor" (ADC CHnel 67)
                     self.header[(evtnum, 'positive_current_hvps')] = (pkt.data['IDX__TXHDRHVPSHKCH67'].derived_value) & 0b111111111111
+                    _append_header_key('positive_current_hvps')
                     print("Positive current for HVPS sensor = ", self.header[(evtnum, 'positive_current_hvps')])
 
                     # HVPS Board signal "Negative current for the HVPS sensor" (ADC CHnel 67)
                     self.header[(evtnum, 'negative_current_hvps')] = (pkt.data['IDX__TXHDRHVPSHKCH67'].derived_value >> 16) & 0b111111111111
+                    _append_header_key('negative_current_hvps')
                     print("Negative current for HVPS sensor = ", self.header[(evtnum, 'negative_current_hvps')])
 
                     # LVPS Board signal "Voltage of +3.3V reference" (ADC CHnel 01)
                     self.header[(evtnum, 'voltage_3V3_ref')] = (pkt.data['IDX__TXHDRLVHK0CH01'].derived_value) & 0b111111111111
+                    _append_header_key('voltage_3V3_ref')
                     print("Voltage +3.3V reference = ", self.header[(evtnum, 'voltage_3V3_ref')])
 
                     # LVPS Board signal "Voltage of +3.3V operational reference" (ADC CHnel 01)
                     self.header[(evtnum, 'voltage_3V3_op_ref')] = (pkt.data['IDX__TXHDRLVHK0CH01'].derived_value >> 16) & 0b111111111111
+                    _append_header_key('voltage_3V3_op_ref')
                     print("Voltage +3.3V operational reference = ", self.header[(evtnum, 'voltage_3V3_op_ref')])
 
                     # LVPS Board signal "Voltage on -6V bus" (ADC CHnel 23)
@@ -2587,6 +2594,9 @@ class IDEXEvent:
                             self.header[(evtnum, 'TriggerMode')] = "HGDoublePulse"
 
                     print(f"AID = {pkt.data['IDX__SCI0AID'].derived_value}")  # Instrument event number
+                    self.header[(evtnum, 'IDX__SCI0AID')] = int(
+                        pkt.data['IDX__SCI0AID'].derived_value
+                    )
                     print(f"Event number = {pkt.data['IDX__SCI0EVTNUM'].raw_value}")  # Event number out of how many events constitute the file
                     # print(f"Time = {pkt.data['IDX__SCI0TIME32'].derived_value}")  # Time in seconds since spacecraft epoch
 
@@ -2622,9 +2632,6 @@ class IDEXEvent:
                     if time_fields["timestamp_utc"] is not None:
                         self.header[(evtnum, 'timestamp_utc')] = time_fields["timestamp_utc"]
                         _append_header_key('timestamp_utc')
-                    if time_fields["utc_timestamp"] is not None:
-                        self.header[(evtnum, 'utc_timestamp')] = time_fields["utc_timestamp"]
-                        _append_header_key('utc_timestamp')
 
 
                 if pkt.data['IDX__SCI0TYPE'].raw_value in [2, 4, 8, 16, 32, 64]:
@@ -2783,7 +2790,7 @@ class IDEXEvent:
 
     def _high_sampling_delay_seconds(self, event_id: Optional[Union[int, str]], channel: Optional[str]) -> float:
         if channel is None:
-            return 0.0
+            channel = 'TOF H'
         delays = {
             'TOF H': self._get_header_value(event_id, 'TOFDelay_H', getattr(self, 'hgdelay', 0)),
             'TOF M': self._get_header_value(event_id, 'TOFDelay_M', getattr(self, 'mgdelay', 0)),
@@ -2795,6 +2802,89 @@ class IDEXEvent:
     def _trigger_offset_seconds(self, event_id: Optional[Union[int, str]]) -> float:
         trigger_offset = self._get_header_value(event_id, 'TriggerOffset', getattr(self, 'trig_offset', 0))
         return float(trigger_offset) * (1.0 / 32.5)
+
+    def _trigger_channel_from_mode(self, trigger_mode: Optional[str]) -> Optional[str]:
+        if not trigger_mode:
+            return None
+        token = re.sub(r"[^a-z0-9]", "", str(trigger_mode).strip().lower())
+        if not token:
+            return None
+        match = re.search(r"(?:^|tof)(hg|mg|lg)", token)
+        if match is None:
+            match = re.search(r"(hg|mg|lg)", token)
+        if match is None:
+            return None
+        return {"hg": "TOF H", "mg": "TOF M", "lg": "TOF L"}.get(match.group(1))
+
+    def _resolve_trigger_channel(self, event_id: Optional[Union[int, str]]) -> Optional[str]:
+        if event_id is None:
+            return None
+        trigger_mode = self.header.get((int(event_id), "TriggerMode"))
+        channel = self._trigger_channel_from_mode(trigger_mode)
+        if channel:
+            return channel
+        return None
+
+    def _resolve_trigger_origins(self, event_id: Optional[Union[int, str]]) -> List[str]:
+        if event_id is None:
+            return []
+        origin_value = self.header.get((int(event_id), "TriggerOrigin"), "")
+        if isinstance(origin_value, (list, tuple, np.ndarray)):
+            return [str(item) for item in origin_value if str(item).strip()]
+        origin_text = str(origin_value or "").strip()
+        if not origin_text:
+            return []
+        return [item.strip() for item in origin_text.split(",") if item.strip()]
+
+    def _resolve_trigger_channels(self, event_id: Optional[Union[int, str]]) -> List[str]:
+        origin_labels = self._resolve_trigger_origins(event_id)
+        if not origin_labels:
+            channel = self._resolve_trigger_channel(event_id)
+            return [channel] if channel else []
+        origin_map = {
+            "HS ADC0I trigger": ["TOF H"],
+            "HS ADC0Q trigger": ["TOF L"],
+            "HS ADC1Q trigger": ["TOF M"],
+            "LS ADC1 trigger": ["Ion Grid", "Target L", "Target H"],
+        }
+        channels: List[str] = []
+        for label in origin_labels:
+            channels.extend(origin_map.get(label, []))
+        return channels
+
+    def _resolve_trigger_level(self, event_id: Optional[Union[int, str]], channel: Optional[str]) -> Optional[float]:
+        if event_id is None or channel is None:
+            return None
+        channel_key = channel.strip()
+        level_key = {
+            "TOF H": "HGTriggerLevel",
+            "TOF M": "MGTriggerLevel",
+            "TOF L": "LGTriggerLevel",
+            "Ion Grid": "LSTriggerLevel",
+            "Target L": "LSTriggerLevel",
+            "Target H": "LSTriggerLevel",
+        }.get(channel_key)
+        if level_key:
+            level = self.header.get((int(event_id), level_key))
+        else:
+            level = None
+        if level is None:
+            level = self.header.get((int(event_id), "TriggerLevel"))
+        if level is None:
+            return None
+        try:
+            return float(level)
+        except (TypeError, ValueError):
+            return None
+
+    def _high_trigger_time_seconds(self, event_id: Optional[Union[int, str]], channel: Optional[str]) -> float:
+        pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
+        high_gain_delay = self._get_header_value(event_id, 'TOFDelay_H', getattr(self, 'hgdelay', 0))
+        return 8.0 * (1.0 / 4.0625) * (pre_blocks + 1) - (high_gain_delay * (1.0 / 260.0))
+
+    def _low_trigger_time_seconds(self, event_id: Optional[Union[int, str]]) -> float:
+        pre_blocks = self._get_header_value(event_id, "HSPretriggerBlocks", getattr(self, "hspretrigblocks", 0))
+        return 512.0 * (1.0 / 260.0) * (pre_blocks + 1)
 
     def _build_time_array(
         self,
@@ -2809,15 +2899,13 @@ class IDEXEvent:
         if high_rate:
             spacing = 1.0 / 260.0
             time_values = np.linspace(0, sample_count, sample_count, dtype=float) * spacing
-            pre_blocks = self._get_header_value(event_id, "LSPretriggerBlocks", getattr(self, "lspretrigblocks", 0))
-            low_trigger_offset = 8.0 * (1.0 / 4.0625) * (pre_blocks + 1)
-            low_gain_delay = self._get_header_value(event_id, "TOFDelay_L", getattr(self, "lgdelay", 0))
-            time_values = time_values - low_trigger_offset + ((low_gain_delay + 1) * spacing)
+            low_trigger_offset = self._high_trigger_time_seconds(event_id, channel)
+            time_values = time_values - low_trigger_offset
+
         else:
             spacing = 1.0 / 4.0625
             time_values = np.linspace(0, sample_count, sample_count, dtype=float) * spacing
-            pre_blocks = self._get_header_value(event_id, "HSPretriggerBlocks", getattr(self, "hspretrigblocks", 0))
-            high_trigger_offset = 512.0 * (1.0 / 260.0) * (pre_blocks + 1)
+            high_trigger_offset = self._low_trigger_time_seconds(event_id)
             time_values = time_values - high_trigger_offset
         return time_values
 
@@ -2829,7 +2917,6 @@ class IDEXEvent:
         plot_folder.mkdir(parents=True, exist_ok=True)
 
         event_ids = sorted({key[0] for key in packets.keys()})
-        colors = plt.get_cmap("tab10").colors
         conversion_factors = {
             "TOF H": 2.89e-4,
             "TOF M": 1.13e-2,
@@ -2838,31 +2925,12 @@ class IDEXEvent:
             "Target H": 1.63e-1,
             "Target L": 1.58e1,
         }
-        unit_labels = {
-            "TOF L": "pC/Δt",
-            "TOF M": "pC/Δt",
-            "TOF H": "pC/Δt",
-            "Ion Grid": "pC",
-            "Target L": "pC",
-            "Target H": "pC",
-        }
+        channel_order = ("TOF L", "TOF M", "TOF H", "Ion Grid", "Target L", "Target H")
 
-        def _format_stats(trace: np.ndarray, unit: str) -> str:
-            if trace.size == 0:
-                return "No data"
-            return "\n".join(
-                [
-                    f"Min = {trace.min():.3g} [{unit}]",
-                    f"Avg = {trace.mean():.3g} [{unit}]",
-                    f"Std = {trace.std():.3g} [{unit}]",
-                    f"Max = {trace.max():.3g} [{unit}]",
-                ]
-            )
-
-        for event_id in event_ids:
+        def _plot_event(event_id: int) -> None:
             channel_traces = {
                 channel: np.asarray(packets.get((event_id, channel), np.array([])), dtype=float)
-                for channel in ("TOF L", "TOF M", "TOF H", "Ion Grid", "Target L", "Target H")
+                for channel in channel_order
             }
             fig, axes_grid = plt.subplots(
                 nrows=3,
@@ -2895,23 +2963,22 @@ class IDEXEvent:
                 else np.array([], dtype=float)
                 for channel in ("Ion Grid", "Target L", "Target H")
             }
+            trigger_channels = set(self._resolve_trigger_channels(event_id))
 
             fig.suptitle(
                 f"{fname} Event {event_id}",
-                font="Times New Roman",
                 fontsize=22,
                 fontweight="bold",
             )
 
             fig.supxlabel(r"Time [$\mu$s]", fontsize=14, fontweight="bold")
 
-            def _draw_axis(ax, time_axis, trace, label, channel, color):
-                unit = unit_labels.get(channel, "dN")
+            def _draw_axis(ax, time_axis, channel, label, color):
+                trace = channel_traces[channel]
                 if trace.size:
                     scaled_trace = trace * conversion_factors.get(channel, 1.0)
-                    ax.plot(time_axis, scaled_trace, color=color, lw=1.8)
+                    ax.plot(time_axis, scaled_trace, color=color, lw=1.3, alpha=0.9)
                 else:
-                    scaled_trace = trace
                     ax.text(
                         0.5,
                         0.5,
@@ -2922,97 +2989,90 @@ class IDEXEvent:
                         fontsize=11,
                         color="#6c757d",
                     )
-                ax.axvline(0, color="red", lw=1.2, ls="--", alpha=0.7)
+                trigger_level = self._resolve_trigger_level(event_id, label)
+                if (
+                    trigger_level is not None
+                    and np.isfinite(trigger_level)
+                    and label in trigger_channels
+                ):
+                    ax.axhline(
+                        trigger_level,
+                        color="#0ca678",
+                        linestyle="--",
+                        linewidth=1.4,
+                        alpha=0.8,
+                    )
                 ax.set_title(label, fontsize=14, fontweight="bold")
-                ax.set_ylabel(f"{unit}", fontsize=12)
-                ax.grid(True, ls="--", lw=0.5, alpha=0.6)
-                ax.text(
-                    0.98,
-                    0.95,
-                    _format_stats(scaled_trace, unit),
-                    transform=ax.transAxes,
-                    ha="right",
-                    va="top",
-                    fontsize=10,
-                    bbox={
-                        "boxstyle": "round,pad=0.4",
-                        "facecolor": "white",
-                        "edgecolor": "gray",
-                        "alpha": 0.9,
-                    },
-                )
+                ax.set_ylabel(_y_label_with_units(label), fontsize=12)
 
             _draw_axis(
                 axes[0],
                 hstime_map.get("TOF L", np.array([])),
-                channel_traces["TOF L"],
                 "TOF L",
                 "TOF L",
-                colors[0],
+                "#111111",
             )
             _draw_axis(
                 axes[1],
                 hstime_map.get("TOF M", np.array([])),
-                channel_traces["TOF M"],
                 "TOF M",
                 "TOF M",
-                colors[1],
+                "#111111",
             )
             _draw_axis(
                 axes[2],
                 hstime_map.get("TOF H", np.array([])),
-                channel_traces["TOF H"],
                 "TOF H",
                 "TOF H",
-                colors[2],
+                "#111111",
             )
             _draw_axis(
                 axes[3],
                 lstime_map.get("Ion Grid", np.array([])),
-                channel_traces["Ion Grid"],
                 "Ion Grid",
                 "Ion Grid",
-                colors[3],
+                "#111111",
             )
 
             if self.header.get((event_id, "epoch"), 0) < 494_733_600:
                 _draw_axis(
                     axes[4],
                     lstime_map.get("Target L", np.array([])),
-                    channel_traces["Target L"],
-                    "Target LG",
                     "Target L",
-                    colors[4],
+                    "Target L",
+                    "#111111",
                 )
                 _draw_axis(
                     axes[5],
                     lstime_map.get("Target H", np.array([])),
-                    channel_traces["Target H"],
-                    "Target HG",
                     "Target H",
-                    colors[5],
+                    "Target H",
+                    "#111111",
                 )
             else:
                 _draw_axis(
                     axes[4],
                     lstime_map.get("Target H", np.array([])),
-                    channel_traces["Target H"],
-                    "Target HG",
                     "Target H",
-                    colors[4],
+                    "Target H",
+                    "#111111",
                 )
                 _draw_axis(
                     axes[5],
                     lstime_map.get("Target L", np.array([])),
-                    channel_traces["Target L"],
-                    "Target LG",
                     "Target L",
-                    colors[5],
+                    "Target L",
+                    "#111111",
                 )
 
-            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-            plt.savefig(plot_folder / f"{fname}_Event_{event_id}.png", dpi=300)
+            fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+            fig.savefig(plot_folder / f"{fname}_Event_{event_id}.png", dpi=300)
             plt.close(fig)
+
+        # Matplotlib is not thread-safe, so render plots sequentially to avoid
+        # overwriting outputs or losing events when running in parallel.
+        for event_id in event_ids:
+            _plot_event(event_id)
 
     # ||
     # ||
@@ -3061,8 +3121,6 @@ class IDEXEvent:
         event_saturation_flags: Dict[str, bool] = {}
         flags_by_event: Dict[str, Dict[str, List[str]]] = {}
         event_results: Dict[str, Dict[str, object]] = {}
-        packed_records: List[Dict[str, object]] = []
-        unpacked_records: List[Dict[str, object]] = []
 
         def _prepare_waveform(item):
             (event_id, channel), data = item
@@ -3189,27 +3247,22 @@ class IDEXEvent:
             ):
                 if value is None:
                     return None
+
                 if isinstance(value, (bytes, bytearray)):
                     value = value.decode('utf-8', errors='backslashreplace')
-                dtype = h5py.string_dtype(encoding='utf-8') if isinstance(value, str) else None
+
                 data = value if isinstance(value, np.ndarray) else np.atleast_1d(value)
-                if data.dtype.kind in {'U', 'S'}:
+
+                if data.dtype.kind in {'U', 'S', 'O'}:
+                    # Normalise all string-like inputs to Python ``str`` objects to ensure
+                    # h5py creates a variable-length UTF-8 string dataset instead of
+                    # attempting to coerce ``<U`` NumPy dtypes that lack a conversion
+                    # path.  Using ``dtype=object`` allows heterogeneous string lengths
+                    # without truncation while still playing nicely with vlen HDF5 types.
+                    data = np.array(["" if v is None else str(v) for v in data.ravel()], dtype=object)
                     dtype = h5py.string_dtype(encoding='utf-8')
-                    data = data.astype(object)
-                elif data.dtype == object:
-                    if any(isinstance(item, (str, bytes, bytearray, np.str_)) for item in np.ravel(data)):
-                        dtype = h5py.string_dtype(encoding='utf-8')
-                        data = np.array(
-                            [
-                                item.decode('utf-8', errors='backslashreplace')
-                                if isinstance(item, (bytes, bytearray))
-                                else str(item)
-                                for item in np.ravel(data)
-                            ],
-                            dtype=object,
-                        ).reshape(data.shape)
-                    else:
-                        data = np.atleast_1d(value)
+                else:
+                    dtype = None
                 dataset_path = f"{group.name}/{name}"
                 if dataset_path in h:
                     del h[dataset_path]
@@ -3261,9 +3314,6 @@ class IDEXEvent:
                         description=describe_field(key, packed=True),
                         authority=TXHDR_AUTHORITY_REFERENCE if key.startswith('IDX__TXHDR') else None,
                     )
-                packed_records.append(
-                    {key: self.raw_header.get((event_id, key)) for key in packet_order}
-                )
 
                 header_entries = {
                     key: value for (evtnum, key), value in self.header.items() if evtnum == event_id
@@ -3312,9 +3362,6 @@ class IDEXEvent:
                         description=describe_field(key, packed=False),
                         authority=TXHDR_AUTHORITY_REFERENCE if (key.startswith('IDX__TXHDR') or describe_field(key, packed=False)) else None,
                     )
-                unpacked_records.append(
-                    {key: unpacked_entries[key] for key in header_order if key in unpacked_entries}
-                )
 
             for analysis in analyses:
                 event_key, channel = analysis['key']
@@ -3390,7 +3437,7 @@ class IDEXEvent:
                     if channel == 'TOF L':
                         time_data = analysis.get(
                             'time_array',
-                            self._build_time_array(len(data), high_rate=True, event_id=event_key, channel=channel),
+                            self._build_time_array(len(data), high_rate=True, event_id=event_key),
                         )
                         h.create_dataset(f"/{event_key}/Time (high sampling)", data=time_data)
                     if channel == 'Ion Grid':
@@ -3808,12 +3855,6 @@ class IDEXEvent:
                     precomputed_matches,
                 )
 
-        json_dir = _resolve_json_dir(filename)
-        packed_path = json_dir / f"{self._json_base}_packed.json"
-        unpacked_path = json_dir / f"{self._json_base}_unpacked.json"
-        packed_path.write_text(json.dumps(packed_records, ensure_ascii=False))
-        unpacked_path.write_text(json.dumps(unpacked_records, ensure_ascii=False))
-
 # ||
 # ||
 # || Parse the high sampling rate data, this
@@ -3945,6 +3986,9 @@ def write_to_cdf(packets):
     cdf_master.close()
     cdf_file.close()
 
+# Preserve the full decoder class even if we swap in the synthetic fallback.
+BaseIDEXEvent = IDEXEvent
+
 # When the lasp_packets dependency is unavailable (as is common in CI test
 # environments) fall back to the synthetic writer so downstream tooling still
 # receives fully-populated HDF5 products.
@@ -3960,7 +4004,35 @@ if not _HAS_LASP_PACKETS:  # pragma: no cover - exercised in integration tests
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Decode raw IDEX packets into analysis products.")
     parser.add_argument("--file", "-f", type=str, required=True, help="Path to the packet capture to decode.")
+    parser.add_argument(
+        "--plots",
+        action="store_true",
+        help="Plot all events (exports PNGs) when requested.",
+    )
     return parser
+
+
+def _write_trigger_summary(packets: Any, source_file: str) -> Optional[Path]:
+    """Persist a trigger summary if the packet reader exposes one."""
+
+    trigger_summary = getattr(packets, "trigger_summary", None)
+    if not callable(trigger_summary):
+        return None
+
+    rows = trigger_summary()
+    if not rows:
+        return None
+
+    project_root = Path(__file__).resolve().parents[2]
+    csv_dir = project_root / "CSV"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    out_path = csv_dir / "first_transmit_trigger_params.csv"
+
+    df = pd.DataFrame(rows)
+    df.insert(0, "Source file", Path(source_file).name)
+    df.to_csv(out_path, index=False)
+    print(f"Trigger summary written to {out_path}")
+    return out_path
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -3968,11 +4040,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     packets = IDEXEvent(args.file)
-    try:
-        packets.plot_all_data(packets.data, args.file)
-    except Exception as exc:  # pragma: no cover - plotting is optional in tests
-        print(exc)
+    if args.plots:
+        try:
+            packets.plot_all_data(packets.data, args.file)
+        except Exception as exc:  # pragma: no cover - plotting is optional in tests
+            print(exc)
     packets.write_to_hdf5(packets.data, args.file)
+    _write_trigger_summary(packets, args.file)
     return 0
 
 
