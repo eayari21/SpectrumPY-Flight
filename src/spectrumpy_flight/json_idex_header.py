@@ -3887,7 +3887,9 @@ class IDEXEvent:
 # || should be 10-bit blocks
 def parse_hs_waveform(waveform_raw: str):
     """Parse a binary string representing a high gain waveform"""
-    ints = _bitstring_to_ints(waveform_raw, pad_bits=2, value_bits=10, values_per_block=3, trim_tail=4)
+    # HS packets decode to 8193 values for a nominal 8192-sample TOF channel,
+    # with one trailing filler sample at the end.
+    ints = _bitstring_to_ints(waveform_raw, pad_bits=2, value_bits=10, values_per_block=3, trim_tail=1)
     print(len(ints))
     return ints
 

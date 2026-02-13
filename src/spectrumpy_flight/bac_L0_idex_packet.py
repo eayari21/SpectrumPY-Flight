@@ -400,7 +400,7 @@ def parse_hs_waveform(waveform_raw: str):
         w.read('pad:2')  # skip 2
         ints += w.readlist(['uint:10']*3)
     print(len(ints))
-    return ints[:-4]
+    return ints[:-1]
 
 # ||
 # ||
