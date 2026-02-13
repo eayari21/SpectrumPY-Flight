@@ -94,8 +94,10 @@ def _shape_to_text(shape: Sequence[int]) -> str:
 class CDFViewWindow(QMainWindow):
     """Interactive viewer for browsing CDF variables and attributes."""
 
-    MAX_PREVIEW_ROWS = 200
-    MAX_PREVIEW_COLS = 60
+    # Show full variable contents in the data table so long CDF arrays are
+    # fully inspectable in the browser.
+    MAX_PREVIEW_ROWS = None
+    MAX_PREVIEW_COLS = None
     EPOCH_VARIABLE_CANDIDATES = ("epoch", "Epoch", "EPOCH")
 
     def __init__(self, filename: str, parent: Optional[QWidget] = None):
@@ -310,8 +312,8 @@ class CDFViewWindow(QMainWindow):
         if array.ndim == 1:
             array = array.reshape(array.shape[0], 1)
 
-        rows = min(array.shape[0], self.MAX_PREVIEW_ROWS)
-        cols = min(array.shape[1], self.MAX_PREVIEW_COLS)
+        rows = array.shape[0] if self.MAX_PREVIEW_ROWS is None else min(array.shape[0], self.MAX_PREVIEW_ROWS)
+        cols = array.shape[1] if self.MAX_PREVIEW_COLS is None else min(array.shape[1], self.MAX_PREVIEW_COLS)
 
         self._data_table.setRowCount(rows)
         self._data_table.setColumnCount(cols)
