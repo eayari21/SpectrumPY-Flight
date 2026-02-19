@@ -519,10 +519,10 @@ def _estimate_baseline(time_array: np.ndarray, signal: np.ndarray) -> float:
     return float(np.nanmedian(values[:sample_count]))
 
 
-def _decode_trigger_origins(evt: int) -> List[str]:
-    """Decode IDX__TXHDREVTNUM trigger origin bits into human-readable labels."""
+def _decode_trigger_origins(trigger_id: int) -> List[str]:
+    """Decode IDX__TXHDRTRIGID trigger-origin bits into human-readable labels."""
     labels: List[str] = []
-    u10 = evt & 0x3FF
+    u10 = trigger_id & 0x3FF
     if (u10 >> 0) & 1:
         labels.append("HS ADC0I trigger (TOF HG)")
     if (u10 >> 1) & 1:
@@ -530,7 +530,7 @@ def _decode_trigger_origins(evt: int) -> List[str]:
     if (u10 >> 2) & 1:
         labels.append("HS ADC1Q trigger (TOF MG)")
     if (u10 >> 3) & 1:
-        labels.append("LS ADC1 trigger")
+        labels.append("LS ADC1 trigger (Target HG / low-range)")
     if (u10 >> 4) & 1:
         labels.append("SW trigger")
     if (u10 >> 5) & 1:
@@ -2201,17 +2201,22 @@ class IDEXEvent:
                     print("-----")
 
 
-                    # Extract the 17-22-bit integer (usually 8)
-                    self.lspretrigblocks = (pkt.data['IDX__TXHDRBLOCKS'].derived_value >> 16) &  0b1111
-
-                    # Extract the next 4-bit integer (usually 8)
-                    self.lsposttrigblocks = (pkt.data['IDX__TXHDRBLOCKS'].derived_value >> 12) & 0b1111
-
-                    # Extract the next 6 bits integer (usually 32)
-                    self.hspretrigblocks = (pkt.data['IDX__TXHDRBLOCKS'].derived_value >> 6) & 0b111111
-
-                    # Extract the first 6 bits (usually 32)
-                    self.hsposttrigblocks = (pkt.data['IDX__TXHDRBLOCKS'].derived_value) & 0b111111
+                    blocks_value = int(pkt.data['IDX__TXHDRBLOCKS'].derived_value)
+                    # TXHDRBLOCKS bit layout from lookup/idex_header_fields.csv:
+                    # [31] HS error, [30] LS error, [29:24] dead base, [23:20] dead shift,
+                    # [19:16] HS pre, [15:12] HS post, [11:6] LS pre, [5:0] LS post.
+                    self.lsposttrigblocks = (blocks_value >> 0) & 0b111111
+                    self.lspretrigblocks = (blocks_value >> 6) & 0b111111
+                    self.hsposttrigblocks = (blocks_value >> 12) & 0b1111
+                    self.hspretrigblocks = (blocks_value >> 16) & 0b1111
+                    self.header[(evtnum, 'HSBlocksError')] = (blocks_value >> 31) & 0b1
+                    _append_header_key('HSBlocksError')
+                    self.header[(evtnum, 'LSBlocksError')] = (blocks_value >> 30) & 0b1
+                    _append_header_key('LSBlocksError')
+                    self.header[(evtnum, 'DeadBlocksBase')] = (blocks_value >> 24) & 0b111111
+                    _append_header_key('DeadBlocksBase')
+                    self.header[(evtnum, 'DeadBlocksShift')] = (blocks_value >> 20) & 0b1111
+                    _append_header_key('DeadBlocksShift')
 
 
                     print("HS pre trig sampling blocks: ", self.hspretrigblocks)
@@ -2478,9 +2483,9 @@ class IDEXEvent:
                     # Mask to extract 10-bit values
                     mask = 0b1111111111
 
-                    self.hgdelay = (self.TOFdelay) & mask # First 10 bits (0-9)
-                    self.mgdelay = (self.TOFdelay >> 10) & mask # Next 10 bits (10-19)
-                    self.lgdelay = (self.TOFdelay >> 20) & mask # Next 10 bits (20-29)
+                    self.hgdelay = (self.TOFdelay) & mask # ADC0I / TOF HG bits (0-9)
+                    self.lgdelay = (self.TOFdelay >> 10) & mask # ADC0Q / TOF LG bits (10-19)
+                    self.mgdelay = (self.TOFdelay >> 20) & mask # ADC1Q / TOF MG bits (20-29)
                     print(f"High gain delay = {self.hgdelay} samples.")
                     print(f"Mid gain delay = {self.mgdelay} samples.")
                     print(f"Low gain delay = {self.lgdelay} samples.")
@@ -2497,13 +2502,48 @@ class IDEXEvent:
 
                     fifo_delay = pkt.data.get('IDX__TXHDRFIFODELAY')
                     if fifo_delay is not None:
-                        self.fifo_delay = fifo_delay.derived_value
-                        self.header[(evtnum, 'FIFODelay')] = int(self.fifo_delay)
+                        self.fifo_delay = int(fifo_delay.derived_value)
+                        self.header[(evtnum, 'FIFODelay')] = self.fifo_delay
+                        self.header[(evtnum, 'FIFODelay_H')] = self.fifo_delay & mask
+                        self.header[(evtnum, 'FIFODelay_L')] = (self.fifo_delay >> 10) & mask
+                        self.header[(evtnum, 'FIFODelay_M')] = (self.fifo_delay >> 20) & mask
 
-                    evt_item = pkt.data.get('IDX__TXHDREVTNUM')
-                    if evt_item is not None:
-                        evt_value = int(evt_item.derived_value)
-                        trigger_origins = _decode_trigger_origins(evt_value)
+                    tofmax_item = pkt.data.get('IDX__TXHDRTOFMAX')
+                    if tofmax_item is not None:
+                        tofmax = int(tofmax_item.derived_value)
+                        self.header[(evtnum, 'TOFMax_H')] = tofmax & mask
+                        self.header[(evtnum, 'TOFMax_L')] = (tofmax >> 10) & mask
+                        self.header[(evtnum, 'TOFMax_M')] = (tofmax >> 20) & mask
+
+                    tofmin_item = pkt.data.get('IDX__TXHDRTOFMIN')
+                    if tofmin_item is not None:
+                        tofmin = int(tofmin_item.derived_value)
+                        self.header[(evtnum, 'TOFMin_H')] = tofmin & mask
+                        self.header[(evtnum, 'TOFMin_L')] = (tofmin >> 10) & mask
+                        self.header[(evtnum, 'TOFMin_M')] = (tofmin >> 20) & mask
+
+                    ls0_item = pkt.data.get('IDX__TXHDRLS0MAXMIN')
+                    if ls0_item is not None:
+                        ls0 = int(ls0_item.derived_value)
+                        self.header[(evtnum, 'IonGridMax')] = (ls0 >> 12) & 0xFFF
+                        self.header[(evtnum, 'IonGridMin')] = ls0 & 0xFFF
+
+                    ls1_item = pkt.data.get('IDX__TXHDRLS1MAXMIN')
+                    if ls1_item is not None:
+                        ls1 = int(ls1_item.derived_value)
+                        self.header[(evtnum, 'TargetHMax')] = (ls1 >> 12) & 0xFFF
+                        self.header[(evtnum, 'TargetHMin')] = ls1 & 0xFFF
+
+                    ls2_item = pkt.data.get('IDX__TXHDRLS2MAXMIN')
+                    if ls2_item is not None:
+                        ls2 = int(ls2_item.derived_value)
+                        self.header[(evtnum, 'TargetLMax')] = (ls2 >> 12) & 0xFFF
+                        self.header[(evtnum, 'TargetLMin')] = ls2 & 0xFFF
+
+                    trig_item = pkt.data.get('IDX__TXHDRTRIGID')
+                    if trig_item is not None:
+                        trig_value = int(trig_item.derived_value)
+                        trigger_origins = _decode_trigger_origins(trig_value)
                         self.header[(evtnum, 'TriggerOrigin')] = ", ".join(trigger_origins)
 
                     self.header[(evtnum, 'HGTriggerLevel')] = None
@@ -2854,10 +2894,10 @@ class IDEXEvent:
             channel = self._resolve_trigger_channel(event_id)
             return [channel] if channel else []
         origin_map = {
-            "HS ADC0I trigger": ["TOF H"],
-            "HS ADC0Q trigger": ["TOF L"],
-            "HS ADC1Q trigger": ["TOF M"],
-            "LS ADC1 trigger": ["Ion Grid", "Target L", "Target H"],
+            "HS ADC0I trigger (TOF HG)": ["TOF H"],
+            "HS ADC0Q trigger (TOF LG)": ["TOF L"],
+            "HS ADC1Q trigger (TOF MG)": ["TOF M"],
+            "LS ADC1 trigger (Target HG / low-range)": ["Target H"],
         }
         channels: List[str] = []
         for label in origin_labels:
