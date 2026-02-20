@@ -27,7 +27,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 
@@ -791,6 +791,10 @@ def _replace_plot_dir(path: Path) -> Path:
     return _swap_data_root(path, "Plots")
 
 
+def _replace_cdf_dir(path: Path) -> Path:
+    return _swap_data_root(path, "CDF")
+
+
 def _resolve_output_path(filename: str) -> Path:
     input_path = Path(filename).expanduser()
     if not input_path.is_absolute():
@@ -802,6 +806,130 @@ def _resolve_output_path(filename: str) -> Path:
         target_parent = Path(__file__).resolve().parent / "HDF5"
     target_parent.mkdir(parents=True, exist_ok=True)
     return target_parent / f"{stem}.h5"
+
+
+def _resolve_cdf_output_path(filename: str) -> Path:
+    input_path = Path(filename).expanduser()
+    if not input_path.is_absolute():
+        input_path = Path.cwd() / input_path
+    stem = input_path.stem if input_path.suffix else input_path.name
+    parent = input_path.parent
+    target_parent = _replace_cdf_dir(parent)
+    if target_parent == parent and not target_parent.is_absolute():
+        target_parent = Path(__file__).resolve().parent / "CDF"
+    target_parent.mkdir(parents=True, exist_ok=True)
+    return target_parent / f"{stem}.cdf"
+
+
+def _cdf_var_name_from_hdf5_path(path: str, existing: Set[str]) -> str:
+    clean = path.strip('/').replace(' ', '_').replace('-', '_').replace('.', '_')
+    clean = re.sub(r'[^0-9A-Za-z_]', '_', clean)
+    segments = [segment for segment in clean.split('/') if segment]
+    if segments and segments[0].isdigit():
+        segments[0] = f"evt_{segments[0]}"
+    name = '_'.join(segments) if segments else 'root'
+    if not name[0].isalpha():
+        name = f"var_{name}"
+    candidate = name
+    suffix = 1
+    while candidate in existing:
+        suffix += 1
+        candidate = f"{name}_{suffix}"
+    existing.add(candidate)
+    return candidate
+
+
+def _normalise_hdf5_data_for_cdf(data: Any) -> Tuple[np.ndarray, int, int]:
+    array = np.asarray(data)
+    if array.dtype.kind in {'S', 'U', 'O'}:
+        if array.shape == ():
+            text_value = str(array.item())
+        else:
+            text_value = json.dumps(array.tolist(), default=str)
+        text_array = np.asarray([text_value], dtype=object)
+        return text_array, 51, max(1, len(text_value))
+
+    if array.dtype.kind == 'b':
+        array = array.astype(np.int8)
+
+    if array.dtype.kind in {'i', 'u'}:
+        array = array.astype(np.int64, copy=False)
+        cdf_type = 8
+    else:
+        array = array.astype(np.float64, copy=False)
+        cdf_type = 45
+
+    if array.shape == ():
+        array = np.asarray([array.item()])
+    else:
+        array = np.expand_dims(array, axis=0)
+
+    return array, cdf_type, 1
+
+
+def _write_hdf5_mirror_cdf(hdf5_path: Path, cdf_path: Path) -> None:
+    template_path = (
+        Path(__file__).resolve().parent
+        / "CDF"
+        / "IDEX_Pre_Launch_CDFs"
+        / "imap_idex_l1a_sci-1week_20231219_v999.cdf"
+    )
+
+    global_attrs: Dict[str, Any] = {}
+    if template_path.exists():
+        template = cdfread.CDF(str(template_path))
+        global_attrs = template.globalattsget()
+        if hasattr(template, "close"):
+            template.close()
+
+    if cdf_path.exists():
+        cdf_path.unlink()
+
+    cdf_file = cdfwrite.CDF(str(cdf_path), delete=True)
+    try:
+        if global_attrs:
+            formatted_globals: Dict[str, Dict[int, Any]] = {}
+            for attr_name, attr_value in global_attrs.items():
+                if isinstance(attr_value, dict):
+                    formatted_globals[str(attr_name)] = {
+                        int(idx): value for idx, value in attr_value.items()
+                    }
+                elif isinstance(attr_value, (list, tuple)):
+                    formatted_globals[str(attr_name)] = {
+                        idx: value for idx, value in enumerate(attr_value)
+                    }
+                else:
+                    formatted_globals[str(attr_name)] = {0: attr_value}
+            cdf_file.write_globalattrs(formatted_globals)
+
+        cdf_file.write_globalattrs({
+            "Source_hdf5": {0: str(hdf5_path)},
+            "Generated_by": {0: "idex_packet.py"},
+        })
+
+        existing: Set[str] = set()
+        with h5py.File(hdf5_path, 'r') as hdf_file:
+            def _write_dataset(name: str, obj: Any) -> None:
+                if not isinstance(obj, h5py.Dataset):
+                    return
+                var_name = _cdf_var_name_from_hdf5_path(name, existing)
+                var_data, data_type, elements = _normalise_hdf5_data_for_cdf(obj[()])
+                dim_sizes = list(var_data.shape[1:])
+                var_spec = {
+                    "Variable": var_name,
+                    "Data_Type": data_type,
+                    "Num_Elements": elements,
+                    "Rec_Vary": True,
+                    "Dim_Sizes": dim_sizes,
+                }
+                attrs = {"HDF5_PATH": {0: f"/{name}"}}
+                for attr_key, attr_value in obj.attrs.items():
+                    attrs[str(attr_key)] = {0: str(attr_value)}
+                cdf_file.write_var(var_spec, var_attrs=attrs, var_data=var_data)
+
+            hdf_file.visititems(_write_dataset)
+    finally:
+        cdf_file.close()
 
 
 def _resolve_plot_dir(filename: str) -> Path:
@@ -3909,6 +4037,12 @@ class IDEXEvent:
                     channels,
                     precomputed_matches,
                 )
+
+        cdf_output_path = _resolve_cdf_output_path(filename)
+        try:
+            _write_hdf5_mirror_cdf(output_path, cdf_output_path)
+        except Exception as exc:
+            print(f"Warning: unable to write companion CDF '{cdf_output_path}': {exc}")
 
 # ||
 # ||
