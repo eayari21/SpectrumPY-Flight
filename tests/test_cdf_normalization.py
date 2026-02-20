@@ -23,3 +23,14 @@ def test_normalise_hdf5_data_for_cdf_serializes_structured_array() -> None:
     assert payload[0]["id"] == 1
     assert payload[0]["label"] == "Fe"
     assert payload[1]["assigned_mass"] == 24.305
+
+
+def test_normalise_hdf5_data_for_cdf_serializes_empty_numeric_array() -> None:
+    values = np.asarray([], dtype=np.float64)
+
+    normalized, data_type, elements = _normalise_hdf5_data_for_cdf(values)
+
+    assert data_type == 51
+    assert elements >= 1
+    assert normalized.shape == (1,)
+    assert str(normalized[0]) == "[]"
