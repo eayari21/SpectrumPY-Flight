@@ -2201,22 +2201,17 @@ class IDEXEvent:
                     print("-----")
 
 
-                    blocks_value = int(pkt.data['IDX__TXHDRBLOCKS'].derived_value)
-                    # TXHDRBLOCKS bit layout from lookup/idex_header_fields.csv:
-                    # [31] HS error, [30] LS error, [29:24] dead base, [23:20] dead shift,
-                    # [19:16] HS pre, [15:12] HS post, [11:6] LS pre, [5:0] LS post.
-                    self.lsposttrigblocks = (blocks_value >> 0) & 0b111111
-                    self.lspretrigblocks = (blocks_value >> 6) & 0b111111
-                    self.hsposttrigblocks = (blocks_value >> 12) & 0b1111
-                    self.hspretrigblocks = (blocks_value >> 16) & 0b1111
-                    self.header[(evtnum, 'HSBlocksError')] = (blocks_value >> 31) & 0b1
-                    _append_header_key('HSBlocksError')
-                    self.header[(evtnum, 'LSBlocksError')] = (blocks_value >> 30) & 0b1
-                    _append_header_key('LSBlocksError')
-                    self.header[(evtnum, 'DeadBlocksBase')] = (blocks_value >> 24) & 0b111111
-                    _append_header_key('DeadBlocksBase')
-                    self.header[(evtnum, 'DeadBlocksShift')] = (blocks_value >> 20) & 0b1111
-                    _append_header_key('DeadBlocksShift')
+                    # Extract the 17-22-bit integer (usually 8)
+                    self.lspretrigblocks = (pkt.data['IDX__TXHDRBLOCKS'].derived_value >> 16) &  0b1111
+
+                    # Extract the next 4-bit integer (usually 8)
+                    self.lsposttrigblocks = (pkt.data['IDX__TXHDRBLOCKS'].derived_value >> 12) & 0b1111
+
+                    # Extract the next 6 bits integer (usually 32)
+                    self.hspretrigblocks = (pkt.data['IDX__TXHDRBLOCKS'].derived_value >> 6) & 0b111111
+
+                    # Extract the first 6 bits (usually 32)
+                    self.hsposttrigblocks = (pkt.data['IDX__TXHDRBLOCKS'].derived_value) & 0b111111
 
 
                     print("HS pre trig sampling blocks: ", self.hspretrigblocks)
@@ -2483,9 +2478,9 @@ class IDEXEvent:
                     # Mask to extract 10-bit values
                     mask = 0b1111111111
 
-                    self.hgdelay = (self.TOFdelay) & mask # ADC0I / TOF HG bits (0-9)
-                    self.lgdelay = (self.TOFdelay >> 10) & mask # ADC0Q / TOF LG bits (10-19)
-                    self.mgdelay = (self.TOFdelay >> 20) & mask # ADC1Q / TOF MG bits (20-29)
+                    self.hgdelay = (self.TOFdelay) & mask # First 10 bits (0-9)
+                    self.mgdelay = (self.TOFdelay >> 10) & mask # Next 10 bits (10-19)
+                    self.lgdelay = (self.TOFdelay >> 20) & mask # Next 10 bits (20-29)
                     print(f"High gain delay = {self.hgdelay} samples.")
                     print(f"Mid gain delay = {self.mgdelay} samples.")
                     print(f"Low gain delay = {self.lgdelay} samples.")
