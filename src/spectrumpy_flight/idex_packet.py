@@ -3288,7 +3288,7 @@ class IDEXEvent:
     # ||
     # || Write the waveform data 
     # || to an HDF5 file
-    def write_to_hdf5(self, waveforms: dict, filename: str):
+    def write_to_hdf5(self, waveforms: dict, filename: str, *, write_cdf: bool = False):
         output_path = _resolve_output_path(filename)
         if output_path.exists():
             output_path.unlink()
@@ -4091,11 +4091,12 @@ class IDEXEvent:
                     precomputed_matches,
                 )
 
-        cdf_output_path = _resolve_cdf_output_path(filename)
-        try:
-            _write_hdf5_mirror_cdf(output_path, cdf_output_path)
-        except Exception as exc:
-            print(f"Warning: unable to write companion CDF '{cdf_output_path}': {exc}")
+        if write_cdf:
+            cdf_output_path = _resolve_cdf_output_path(filename)
+            try:
+                _write_hdf5_mirror_cdf(output_path, cdf_output_path)
+            except Exception as exc:
+                print(f"Warning: unable to write companion CDF '{cdf_output_path}': {exc}")
 
 # ||
 # ||
@@ -4251,6 +4252,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Plot all events (exports PNGs) when requested.",
     )
+    parser.add_argument(
+        "--CDF",
+        action="store_true",
+        dest="write_cdf",
+        help="Write a companion CDF file in addition to HDF5 output.",
+    )
     return parser
 
 
@@ -4287,7 +4294,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             packets.plot_all_data(packets.data, args.file)
         except Exception as exc:  # pragma: no cover - plotting is optional in tests
             print(exc)
-    packets.write_to_hdf5(packets.data, args.file)
+    packets.write_to_hdf5(packets.data, args.file, write_cdf=args.write_cdf)
     _write_trigger_summary(packets, args.file)
     return 0
 
