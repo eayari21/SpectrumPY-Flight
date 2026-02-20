@@ -841,6 +841,28 @@ def _cdf_var_name_from_hdf5_path(path: str, existing: Set[str]) -> str:
 
 def _normalise_hdf5_data_for_cdf(data: Any) -> Tuple[np.ndarray, int, int]:
     array = np.asarray(data)
+
+    if array.dtype.fields is not None:
+        field_names = list(array.dtype.names or ())
+        records: List[Dict[str, Any]] = []
+        reshaped = array.reshape(-1)
+        for row in reshaped:
+            record: Dict[str, Any] = {}
+            for field_name in field_names:
+                value = row[field_name]
+                if isinstance(value, np.ndarray):
+                    record[field_name] = value.tolist()
+                elif isinstance(value, np.bytes_):
+                    record[field_name] = value.decode('utf-8', errors='replace')
+                elif isinstance(value, np.generic):
+                    record[field_name] = value.item()
+                else:
+                    record[field_name] = value
+            records.append(record)
+        text_value = json.dumps(records, default=str)
+        text_array = np.asarray([text_value], dtype=object)
+        return text_array, 51, max(1, len(text_value))
+
     if array.dtype.kind in {'S', 'U', 'O'}:
         if array.shape == ():
             text_value = str(array.item())
