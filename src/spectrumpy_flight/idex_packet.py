@@ -3503,6 +3503,32 @@ class IDEXEvent:
                 }
                 unpacked_entries = dict(header_entries)
 
+                min_max_conversion_map = {
+                    'TOFMax_H': 'TOF H',
+                    'TOFMin_H': 'TOF H',
+                    'TOFMax_M': 'TOF M',
+                    'TOFMin_M': 'TOF M',
+                    'TOFMax_L': 'TOF L',
+                    'TOFMin_L': 'TOF L',
+                    'IonGridMax': 'Ion Grid',
+                    'IonGridMin': 'Ion Grid',
+                    'TargetHMax': 'Target H',
+                    'TargetHMin': 'Target H',
+                    'TargetLMax': 'Target L',
+                    'TargetLMin': 'Target L',
+                }
+                for key, channel in min_max_conversion_map.items():
+                    raw_value = unpacked_entries.get(key)
+                    if raw_value is None:
+                        continue
+                    scale = conversion_factors.get(channel)
+                    if scale is None:
+                        continue
+                    try:
+                        unpacked_entries[key] = float(raw_value) * scale
+                    except (TypeError, ValueError):
+                        continue
+
                 trigger_offset_us = self._trigger_offset_seconds(event_id)
                 hs_offset_us = self._high_trigger_offset(event_id)
                 ls_offset_us = self._low_trigger_offset(event_id)
