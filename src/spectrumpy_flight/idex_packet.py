@@ -874,6 +874,11 @@ def _normalise_hdf5_data_for_cdf(data: Any) -> Tuple[np.ndarray, int, int]:
     if array.dtype.kind == 'b':
         array = array.astype(np.int8)
 
+    if array.size == 0:
+        text_value = json.dumps(array.tolist(), default=str)
+        text_array = np.asarray([text_value], dtype=object)
+        return text_array, 51, max(1, len(text_value))
+
     if array.dtype.kind in {'i', 'u'}:
         array = array.astype(np.int64, copy=False)
         cdf_type = 8
