@@ -1,0 +1,27 @@
+﻿Science description (IDEX),IDEX Acronym,Value of SCI0TYPE in sci pkts,SUDA Meaning/Acronym,Also known as,Longer description (IDEX)
+FPGA pre-pended metadata,N/A,1 (0x01),Same,“event header” “FPGA header”,"FPGA Pre-pended metadata header containing SUDA’s configuration and status at the time of the trigger, recorded by the FPGA"
+Time of Flight High Gain waveform,TOFHG,2 (0x02),Same,HS ADC0-I,"Waveform measured at ion detector showing spectrum data for dust impacts at three different amplification gains (each peak represents different ion).  This channel has highest gain, so so smaller peaks are more prominent but big peaks saturate.
+Sampled at 260 Msps with 10-bit resolution, from HS ADC #0 channel I."
+Time of Flight Low Gain waveform,"TOFLG, LG",4 (0x04),Same,HS ADC0-Q,"Measures same signal as TOFHG except using lowest gain so that big peaks do not saturate but small peaks are not noticable.
+Sampled at 260 Msps with 10-bit resolution, from HS ADC #0 channel Q."
+Time of Flight Mid Gain waveform,"TOFMG, MG",8 (0x08),Same,HS ADC1-Q,"Measures same signal as TOFHG except using mid gain - hopefully few big peaks saturate and few small peaks are not noticed.
+Sampled at 260 Msps with 10-bit resolution, from HS ADC #1 channel Q."
+Target low range CSA waveform,TLR,16 (0x10),"Target CSA (QT, tCSA) ","LS ADC1
+""impact charge""","Measures the mass of a dust particle by measuring the impact charge, with lower dynamic range (thus TLR).  The interesting part of this signal occurs around the time of impact.
+Sampled at 4.0625 Msps with 12-bit resolution.  
+Confusingly, this signal is ""lower range"" but ""higher gain""."
+Target high range CSA waveform,THR,32 (0x20),"Velocity grid CSA (QV, vCSA) ","LS ADC0
+""impact charge""","Measures the mass of a dust particle by measuring the impact charge, with higher dynamic range (thus THR).  The interesting part of this signal occurs around the time of impact.
+Sampled at 4.0625 Msps with 12-bit resolution.  
+Confusingly, this signal is ""higher range"" but ""lower gain""."
+Ion grid CSA waveform,ION,64 (0x40),"Ion grid CSA (QI, iCSA) ","LS ADC2
+""Ion CSA""",Measures the ion charge of a dust particle by measuring the charge pickup from the ion grid electrode.  The interesting part of this signal occurs shortly after the time of impact.  Sampled at 4.0625 Msps with 12-bit resolution.
+,,,,,
+TOF = time of flight,,,,,
+CSA = charge sensitive amplifier,,,,,
+ADC = analog-to-digital converter,,,,,
+HS = High Speed,,,,,
+LS = Low Speed,,,,,
+Msps = Mega samples per second,,,,,
+Note: SUDA's Velocity grid waveform has no analog in IDEX (IDEX just has two Target measurements),,,,,
+Note: HS ADC #1 channel I is present but not used for anything.,,,,,
