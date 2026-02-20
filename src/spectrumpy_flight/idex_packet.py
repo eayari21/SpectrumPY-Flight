@@ -530,7 +530,7 @@ def _decode_trigger_origins(trigger_id: int) -> List[str]:
     if (u10 >> 2) & 1:
         labels.append("HS ADC1Q trigger (TOF MG)")
     if (u10 >> 3) & 1:
-        labels.append("LS ADC1 trigger (Target HG / low-range)")
+        labels.append("LS ADC1 trigger (Target HG / low range)")
     if (u10 >> 4) & 1:
         labels.append("SW trigger")
     if (u10 >> 5) & 1:
@@ -2520,8 +2520,9 @@ class IDEXEvent:
                     ls0_item = pkt.data.get('IDX__TXHDRLS0MAXMIN')
                     if ls0_item is not None:
                         ls0 = int(ls0_item.derived_value)
-                        self.header[(evtnum, 'IonGridMax')] = (ls0 >> 12) & 0xFFF
-                        self.header[(evtnum, 'IonGridMin')] = ls0 & 0xFFF
+                        # LS ADC0 -> Target LG (high range)
+                        self.header[(evtnum, 'TargetLMax')] = (ls0 >> 12) & 0xFFF
+                        self.header[(evtnum, 'TargetLMin')] = ls0 & 0xFFF
 
                     ls1_item = pkt.data.get('IDX__TXHDRLS1MAXMIN')
                     if ls1_item is not None:
@@ -2532,8 +2533,9 @@ class IDEXEvent:
                     ls2_item = pkt.data.get('IDX__TXHDRLS2MAXMIN')
                     if ls2_item is not None:
                         ls2 = int(ls2_item.derived_value)
-                        self.header[(evtnum, 'TargetLMax')] = (ls2 >> 12) & 0xFFF
-                        self.header[(evtnum, 'TargetLMin')] = ls2 & 0xFFF
+                        # LS ADC2 -> Ion Grid
+                        self.header[(evtnum, 'IonGridMax')] = (ls2 >> 12) & 0xFFF
+                        self.header[(evtnum, 'IonGridMin')] = ls2 & 0xFFF
 
                     trig_item = pkt.data.get('IDX__TXHDRTRIGID')
                     if trig_item is not None:
@@ -2892,7 +2894,7 @@ class IDEXEvent:
             "HS ADC0I trigger (TOF HG)": ["TOF H"],
             "HS ADC0Q trigger (TOF LG)": ["TOF L"],
             "HS ADC1Q trigger (TOF MG)": ["TOF M"],
-            "LS ADC1 trigger (Target HG / low-range)": ["Target H"],
+            "LS ADC1 trigger (Target HG / low range)": ["Target H"],
         }
         channels: List[str] = []
         for label in origin_labels:

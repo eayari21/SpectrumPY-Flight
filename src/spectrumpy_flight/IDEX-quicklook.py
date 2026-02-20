@@ -2560,9 +2560,13 @@ def _guess_trigger_origins(data_source: BaseDataSource, event: str) -> List[str]
 def _trigger_channels_from_origins(origins: List[str]) -> List[str]:
     origin_map = {
         "HS ADC0I trigger": ["TOF H"],
+        "HS ADC0I trigger (TOF HG)": ["TOF H"],
         "HS ADC0Q trigger": ["TOF L"],
+        "HS ADC0Q trigger (TOF LG)": ["TOF L"],
         "HS ADC1Q trigger": ["TOF M"],
-        "LS ADC1 trigger": ["Ion Grid", "Target L", "Target H"],
+        "HS ADC1Q trigger (TOF MG)": ["TOF M"],
+        "LS ADC1 trigger": ["Target H"],
+        "LS ADC1 trigger (Target HG / low range)": ["Target H"],
     }
     channels: List[str] = []
     for origin in origins:

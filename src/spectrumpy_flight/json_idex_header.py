@@ -530,7 +530,7 @@ def _decode_trigger_origins(evt: int) -> List[str]:
     if (u10 >> 2) & 1:
         labels.append("HS ADC1Q trigger (TOF MG)")
     if (u10 >> 3) & 1:
-        labels.append("LS ADC1 trigger")
+        labels.append("LS ADC1 trigger (Target HG / low range)")
     if (u10 >> 4) & 1:
         labels.append("SW trigger")
     if (u10 >> 5) & 1:
@@ -2855,9 +2855,13 @@ class IDEXEvent:
             return [channel] if channel else []
         origin_map = {
             "HS ADC0I trigger": ["TOF H"],
+            "HS ADC0I trigger (TOF HG)": ["TOF H"],
             "HS ADC0Q trigger": ["TOF L"],
+            "HS ADC0Q trigger (TOF LG)": ["TOF L"],
             "HS ADC1Q trigger": ["TOF M"],
-            "LS ADC1 trigger": ["Ion Grid", "Target L", "Target H"],
+            "HS ADC1Q trigger (TOF MG)": ["TOF M"],
+            "LS ADC1 trigger": ["Target H"],
+            "LS ADC1 trigger (Target HG / low range)": ["Target H"],
         }
         channels: List[str] = []
         for label in origin_labels:
