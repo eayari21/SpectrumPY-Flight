@@ -118,6 +118,12 @@ def _shape_to_text(shape: Sequence[int]) -> str:
 class HDFViewWindow(QMainWindow):
     """Simple HDF5 browser window."""
     TIME_DATASET_CANDIDATES = (
+        "/Metadata/unpacked/utc_timestamp_instrument",
+        "/Metadata/raw/utc_timestamp_instrument",
+        "/Metadata/utc_timestamp_instrument",
+        "/Metadata/unpacked/utc_timestamp_converted",
+        "/Metadata/raw/utc_timestamp_converted",
+        "/Metadata/utc_timestamp_converted",
         "/Metadata/unpacked/timestamp_utc",
         "/Metadata/raw/timestamp_utc",
         "/Metadata/timestamp_utc",
@@ -161,7 +167,7 @@ class HDFViewWindow(QMainWindow):
         self._search_edit.textChanged.connect(self._apply_filter)
         toolbar.addWidget(self._search_edit)
         export_action = QAction("Export Selected to CSV", self)
-        export_action.setToolTip("Export selected datasets with timestamp_utc to CSV")
+        export_action.setToolTip("Export selected datasets with instrument/conversion UTC timestamps to CSV")
         export_action.triggered.connect(self._export_selected_to_csv)
         toolbar.addAction(export_action)
         self.addToolBar(toolbar)
@@ -342,12 +348,12 @@ class HDFViewWindow(QMainWindow):
         def visitor(name: str, obj: h5py.Dataset) -> None:
             if isinstance(obj, h5py.Dataset):
                 dataset_name = obj.name.split("/")[-1].lower()
-                if dataset_name == "timestamp_utc":
+                if dataset_name in {"timestamp_utc", "utc_timestamp_instrument", "utc_timestamp_converted"}:
                     matches.append(obj.name)
 
         self._h5.visititems(visitor)
         if not matches:
-            raise ValueError("timestamp_utc dataset not found in the HDF5 file.")
+            raise ValueError("No UTC timestamp dataset found in the HDF5 file.")
         path = matches[0]
         return np.asarray(self._h5[path][()]), path
 
@@ -507,7 +513,7 @@ class HDFViewWindow(QMainWindow):
         header_name = os.path.basename(dataset_path.strip("/")) or dataset_path
         with open(filename, "w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
-            writer.writerow(["timestamp_utc", header_name])
+            writer.writerow(["utc_timestamp", header_name])
             for time_value, data_value in zip(time_vector, values):
                 writer.writerow([_format_scalar(time_value), _format_scalar(data_value)])
 
@@ -520,7 +526,7 @@ class HDFViewWindow(QMainWindow):
             event_series = self._collect_event_series(dataset_path)
             if event_series is None or event_series.shape[0] != time_vector.shape[0]:
                 raise ValueError(
-                    "Dataset length does not match timestamp_utc length "
+                    "Dataset length does not match UTC timestamp length "
                     f"({values.shape[0]} vs {time_vector.shape[0]})."
                 )
             values = event_series
@@ -548,7 +554,7 @@ class HDFViewWindow(QMainWindow):
             series_values.append(values)
         with open(filename, "w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
-            writer.writerow(["timestamp_utc", *headers])
+            writer.writerow(["utc_timestamp", *headers])
             for idx, time_value in enumerate(time_vector):
                 row = [_format_scalar(time_value)]
                 for values in series_values:

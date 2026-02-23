@@ -137,6 +137,12 @@ except Exception:  # pragma: no cover - cupy is optional
 
 from datetime import datetime, timedelta, timezone
 
+try:
+    import spiceypy as spice
+except Exception:  # pragma: no cover - optional dependency
+    spice = None
+
+
 from scipy.optimize import curve_fit
 from scipy.signal import detrend, butter, filtfilt
 from scipy.integrate import quad
@@ -278,15 +284,43 @@ def _parse_filename_epoch(filename: str) -> Tuple[Optional[datetime], bool]:
         return (None, False)
 
 
+def _utc_to_et(utc_iso: Optional[str]) -> Optional[float]:
+    """Convert a UTC timestamp string to SPICE ET when SPICE is available."""
+
+    if utc_iso is None or spice is None:
+        return None
+    try:
+        return float(spice.str2et(utc_iso))
+    except Exception:
+        return None
+
+
+def _et_to_utc(eta: Optional[float]) -> Optional[str]:
+    """Convert SPICE ET to a UTC timestamp string when SPICE is available."""
+
+    if eta is None or spice is None:
+        return None
+    try:
+        return str(spice.et2utc(float(eta), "ISOC", 6)) + "Z"
+    except Exception:
+        return None
+
+
 def _txhdr_time_fields(
     seconds_high: Optional[int],
     seconds_low: Optional[int],
     subseconds: Optional[int],
 ) -> Dict[str, Optional[object]]:
-    """Return epoch seconds and UTC timestamp based on TXHDR time fields."""
+    """Return instrument UTC/ET timestamps from TXHDR time fields."""
 
     if seconds_high is None or seconds_low is None or subseconds is None:
-        return {"epoch": None, "timestamp_utc": None}
+        return {
+            "epoch": None,
+            "utc_timestamp_instrument": None,
+            "et_instrument": None,
+            "et_converted": None,
+            "utc_timestamp_converted": None,
+        }
     try:
         epoch_seconds = (
             (float(1 << 16) * float(seconds_high))
@@ -294,11 +328,26 @@ def _txhdr_time_fields(
             + 20e-6 * float(subseconds)
         )
     except (TypeError, ValueError):
-        return {"epoch": None, "timestamp_utc": None}
+        return {
+            "epoch": None,
+            "utc_timestamp_instrument": None,
+            "et_instrument": None,
+            "et_converted": None,
+            "utc_timestamp_converted": None,
+        }
 
     utc_time = (SPACECRAFT_EPOCH + timedelta(seconds=epoch_seconds)).replace(tzinfo=timezone.utc)
-    utc_iso = utc_time.isoformat().replace("+00:00", "Z")
-    return {"epoch": epoch_seconds, "timestamp_utc": utc_iso}
+    utc_timestamp_instrument = utc_time.isoformat().replace("+00:00", "Z")
+    et_instrument = _utc_to_et(utc_timestamp_instrument)
+    et_converted = et_instrument
+    utc_timestamp_converted = _et_to_utc(et_converted)
+    return {
+        "epoch": epoch_seconds,
+        "utc_timestamp_instrument": utc_timestamp_instrument,
+        "et_instrument": et_instrument,
+        "et_converted": et_converted,
+        "utc_timestamp_converted": utc_timestamp_converted,
+    }
 
 
 def _collection_efficiency_ratio(
@@ -2636,14 +2685,23 @@ class IDEXEvent:
                             f" {time_fields['epoch']} seconds since epoch (Midnight January 1st,"
                             f" {SPACECRAFT_EPOCH.year})"
                         )
-                    if time_fields["timestamp_utc"] is not None:
-                        print(f"Trigger time = {time_fields['timestamp_utc']}")
+                    if time_fields["utc_timestamp_instrument"] is not None:
+                        print(f"Trigger time = {time_fields['utc_timestamp_instrument']}")
                     if time_fields["epoch"] is not None:
                         self.header[(evtnum, 'epoch')] = time_fields["epoch"]
                         _append_header_key('epoch')
-                    if time_fields["timestamp_utc"] is not None:
-                        self.header[(evtnum, 'timestamp_utc')] = time_fields["timestamp_utc"]
-                        _append_header_key('timestamp_utc')
+                    if time_fields["utc_timestamp_instrument"] is not None:
+                        self.header[(evtnum, 'utc_timestamp_instrument')] = time_fields["utc_timestamp_instrument"]
+                        _append_header_key('utc_timestamp_instrument')
+                    if time_fields["et_instrument"] is not None:
+                        self.header[(evtnum, 'et_instrument')] = time_fields["et_instrument"]
+                        _append_header_key('et_instrument')
+                    if time_fields["et_converted"] is not None:
+                        self.header[(evtnum, 'et_converted')] = time_fields["et_converted"]
+                        _append_header_key('et_converted')
+                    if time_fields["utc_timestamp_converted"] is not None:
+                        self.header[(evtnum, 'utc_timestamp_converted')] = time_fields["utc_timestamp_converted"]
+                        _append_header_key('utc_timestamp_converted')
 
 
                 if pkt.data['IDX__SCI0TYPE'].raw_value in [2, 4, 8, 16, 32, 64]:
