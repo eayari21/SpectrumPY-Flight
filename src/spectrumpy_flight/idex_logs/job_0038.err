@@ -1,2 +1,0 @@
-/opt/anaconda3/envs/idex/lib/python3.9/site-packages/scipy/optimize/_minpack_py.py:881: OptimizeWarning: Covariance of the parameters could not be estimated
-  warnings.warn('Covariance of the parameters could not be estimated',
