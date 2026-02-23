@@ -1,0 +1,8 @@
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/src/spectrumpy_flight/idex_packet.py:160: RuntimeWarning: invalid value encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/src/spectrumpy_flight/idex_packet.py:160: RuntimeWarning: overflow encountered in exp
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/Users/etay8828/Dropbox/IDEX Pipeline/3_Codes/3_SpectrumPY/4_Flight/src/spectrumpy_flight/idex_packet.py:160: RuntimeWarning: overflow encountered in multiply
+  return P1 + np.heaviside(x-P0, 0) * ( P4 * (1.0 - np.exp(-(x-P0)/P5)) * np.exp( -(x-P0)/P6))
+/opt/anaconda3/envs/idex/lib/python3.9/site-packages/scipy/optimize/_minpack_py.py:881: OptimizeWarning: Covariance of the parameters could not be estimated
+  warnings.warn('Covariance of the parameters could not be estimated',
