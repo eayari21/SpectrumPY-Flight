@@ -3061,6 +3061,18 @@ class IDEXEvent:
         channel_delay = delays.get(channel, 0)
         return float(channel_delay) * (1.0 / 260.0)
 
+    def _trigger_origin_delay_samples(self, event_id: Optional[Union[int, str]]) -> float:
+        trigger_channels = self._resolve_trigger_channels(event_id)
+        delays = {
+            'TOF H': self._get_header_value(event_id, 'TOFDelay_H', getattr(self, 'hgdelay', 0)),
+            'TOF M': self._get_header_value(event_id, 'TOFDelay_M', getattr(self, 'mgdelay', 0)),
+            'TOF L': self._get_header_value(event_id, 'TOFDelay_L', getattr(self, 'lgdelay', 0)),
+        }
+        for trigger_channel in ('TOF H', 'TOF M', 'TOF L'):
+            if trigger_channel in trigger_channels:
+                return float(delays.get(trigger_channel, 0.0))
+        return float(delays.get('TOF L', 0.0))
+
     def _trigger_offset_seconds(self, event_id: Optional[Union[int, str]]) -> float:
         trigger_offset = self._get_header_value(event_id, 'TriggerOffset', getattr(self, 'trig_offset', 0))
         return float(trigger_offset) * (1.0 / 32.5)
@@ -3162,9 +3174,10 @@ class IDEXEvent:
 
         if high_rate:
             # High-sampling trigger alignment (matches bac_L0_idex_packet.py)
+            trigger_delay_samples = self._trigger_origin_delay_samples(event_id)
             trigger_time = (
                 8 * (1.0 / 4.0625) * (self.lspretrigblocks + 1)
-                - (1.0 / 260.0) * (self.lgdelay-1)
+                - (1.0 / 260.0) * (trigger_delay_samples - 1)
             )
         else:
             # Low-sampling trigger alignment
