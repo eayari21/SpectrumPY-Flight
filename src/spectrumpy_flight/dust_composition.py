@@ -3687,6 +3687,7 @@ class DustCompositionWindow(QMainWindow):
         *,
         event_names: Optional[Sequence[str]] = None,
         on_event_changed: Optional[Callable[[str], None]] = None,
+        read_only: bool = False,
         parent: Optional[QWidget] = None,
     ):
         super().__init__(parent)
@@ -3704,6 +3705,7 @@ class DustCompositionWindow(QMainWindow):
         if event_name and event_name not in self._event_names:
             self._event_names.append(event_name)
         self._external_event_callback = on_event_changed
+        self._read_only = bool(read_only)
         self._event_selector: Optional[QComboBox] = None
         self._block_event_selector = False
 
@@ -4611,7 +4613,15 @@ class DustCompositionWindow(QMainWindow):
         self.reset_view_button.clicked.connect(self._reset_view)
         layout.addWidget(self.reset_view_button)
         self.save_button = QPushButton("Save Analysis", box)
-        self.save_button.setToolTip("Persist the current dust composition analysis back into the HDF5 file.")
+        if self._read_only:
+            self.save_button.setEnabled(False)
+            self.save_button.setToolTip(
+                "Saving is unavailable for this source type. Open an HDF5 file to persist results."
+            )
+        else:
+            self.save_button.setToolTip(
+                "Persist the current dust composition analysis back into the HDF5 file."
+            )
         self.save_button.clicked.connect(self._save_to_file)
         layout.addWidget(self.save_button)
         self.ternary_button = QPushButton("Ternary Plot…", box)
@@ -6415,6 +6425,7 @@ def launch_dust_composition_window(
     *,
     event_names: Optional[Sequence[str]] = None,
     on_event_changed: Optional[Callable[[str], None]] = None,
+    read_only: bool = False,
     parent: Optional[QWidget] = None,
 ) -> DustCompositionWindow:
     """Convenience helper used by the main quicklook window."""
@@ -6424,5 +6435,6 @@ def launch_dust_composition_window(
         event_name=event_name,
         event_names=event_names,
         on_event_changed=on_event_changed,
+        read_only=read_only,
         parent=parent,
     )
