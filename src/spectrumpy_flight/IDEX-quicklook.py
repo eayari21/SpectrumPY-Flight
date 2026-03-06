@@ -3873,6 +3873,7 @@ class MainWindow(QMainWindow):
         self.fit_buttons: Dict[str, QPushButton] = {}
         self.selected_channels = set(CHANNEL_ORDER)
         self._child_windows: List[QWidget] = []
+        self._dust_bridge_files: Dict[int, Tuple[Any, str]] = {}
         self._documentation_center: Optional[DocumentationCenter] = None
 
         self._create_actions()
@@ -4868,24 +4869,114 @@ class MainWindow(QMainWindow):
 
         window.destroyed.connect(_cleanup)
 
+    def _build_dust_composition_bridge_file(self) -> Tuple[Any, str]:
+        if h5py is None:
+            raise RuntimeError("h5py is unavailable, so CDF-to-HDF5 bridging cannot be created.")
+        if not self._data_source:
+            raise RuntimeError("No data source is available.")
+
+        bridge_path = Path(self._tmpdir.name) / f"dust_composition_bridge_{os.getpid()}_{len(self._dust_bridge_files)}.h5"
+        bridge_h5 = h5py.File(bridge_path, "w")
+
+        channel_paths = (
+            "Time (high sampling)",
+            "TOF L",
+            "TOF M",
+            "TOF H",
+            "Mass",
+            "Analysis/DustComposition/CombinedSignal",
+            "Analysis/DustComposition/CombinedTime",
+        )
+
+        for event_name in self._events:
+            event_group = bridge_h5.require_group(event_name)
+            for dataset_path in channel_paths:
+                try:
+                    values = self._data_source.get_dataset(event_name, dataset_path)
+                except Exception:
+                    continue
+                if values is None:
+                    continue
+                try:
+                    array = np.asarray(values)
+                except Exception:
+                    continue
+                if array.size == 0:
+                    continue
+                target_parent = event_group
+                parts = [segment for segment in dataset_path.split("/") if segment]
+                for segment in parts[:-1]:
+                    target_parent = target_parent.require_group(segment)
+                dataset_name = parts[-1]
+                if dataset_name in target_parent:
+                    del target_parent[dataset_name]
+                target_parent.create_dataset(dataset_name, data=array)
+
+        bridge_h5.flush()
+        return bridge_h5, str(bridge_path)
+
+    def _cleanup_dust_bridge_for_window(self, window: QWidget) -> None:
+        payload = self._dust_bridge_files.pop(id(window), None)
+        if not payload:
+            return
+        handle, path = payload
+        try:
+            handle.close()
+        except Exception:
+            pass
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+
     def action_open_dust_composition(self):
-        if not self._h5 or not self._current_event:
+        if not self._current_event:
             QMessageBox.information(
                 self,
                 "No Event",
-                "Open an HDF5 file and select an event before analysing dust composition.",
+                "Select an event before analysing dust composition.",
             )
             return
 
+        bridge_handle = None
+        bridge_path = None
+        read_only = False
+        source_handle = self._h5
+
+        if source_handle is None:
+            try:
+                bridge_handle, bridge_path = self._build_dust_composition_bridge_file()
+                source_handle = bridge_handle
+                read_only = True
+            except Exception as exc:
+                QMessageBox.critical(
+                    self,
+                    "Dust Composition Error",
+                    f"Unable to prepare dust composition data for this file:\n{exc}",
+                )
+                return
+
         try:
             window = launch_dust_composition_window(
-                self._h5,
+                source_handle,
                 self._current_event,
                 parent=self,
                 event_names=self._events,
                 on_event_changed=self._handle_child_event_change,
+                read_only=read_only,
             )
         except Exception as exc:
+            if bridge_handle is not None and bridge_path is not None:
+                try:
+                    bridge_handle.close()
+                except Exception:
+                    pass
+                try:
+                    os.remove(bridge_path)
+                except Exception:
+                    pass
             QMessageBox.critical(
                 self,
                 "Dust Composition Error",
@@ -4897,8 +4988,11 @@ class MainWindow(QMainWindow):
         window.show()
 
         self._child_windows.append(window)
+        if bridge_handle is not None and bridge_path is not None:
+            self._dust_bridge_files[id(window)] = (bridge_handle, bridge_path)
 
         def _cleanup(*_args):
+            self._cleanup_dust_bridge_for_window(window)
             if window in self._child_windows:
                 self._child_windows.remove(window)
 
@@ -6375,6 +6469,21 @@ class MainWindow(QMainWindow):
         if self._data_source is not None:
             try:
                 self._data_source.close()
+            except Exception:
+                pass
+        for window_id in list(self._dust_bridge_files.keys()):
+            payload = self._dust_bridge_files.pop(window_id, None)
+            if not payload:
+                continue
+            handle, path = payload
+            try:
+                handle.close()
+            except Exception:
+                pass
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
             except Exception:
                 pass
         try:
